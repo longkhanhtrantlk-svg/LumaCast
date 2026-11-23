@@ -1,6 +1,16 @@
 # LumaCast (M1) - LED Display Controller
 
-Bo dieu khien man hinh LED nhieu kenh / nhieu do phan giai. Xem thiet ke: `docs/KienTruc.md`.
+Bo dieu khien man hinh LED nhieu kenh / nhieu do phan giai. Xem thiet ke: `docs/KienTruc.md`; yeu cau: `docs/SPEC.md`.
+
+## Tài liệu
+| File | Nội dung |
+|---|---|
+| `docs/SPEC.md` | Yêu cầu chức năng/phi chức năng, ưu tiên, tiêu chí nghiệm thu, trạng thái |
+| `docs/PLAN.md` | Hiện trạng, lộ trình M3c → M7, nhiệm vụ, nghiệm thu, rủi ro, quy trình |
+| `docs/KienTruc.md` | Thiết kế kỹ thuật và quyết định |
+| `docs/PROJECT-FORMAT.md` | Đặc tả định dạng file project (phiên bản 1) |
+| `docs/TEST-PLAN.md` | Test tự động, checklist thử tay trên Windows, benchmark |
+| `docs/TEST-WINDOWS.md` | Hướng dẫn build và chạy trên Windows |
 
 ## Build
 Linux (de phat trien / chay test): `apt install qt6-base-dev libqt6opengl6-dev libavcodec-dev libavformat-dev libswscale-dev libavutil-dev`

@@ -1,6 +1,6 @@
 # LumaCast – Thiết kế kiến trúc phần mềm điều khiển màn hình LED (kiểu vMix)
 
-Tên tạm: **LumaCast**. Nền tảng: C++20 + Qt 6 (Quick/QML cho UI) + OpenGL 4.1 core. Đầu ra: card HDMI/DP, mỗi output là một cửa sổ fullscreen trên một màn hình hệ điều hành (bộ gửi tín hiệu LED như Novastar/Colorlight nhận HDMI).
+Tên sản phẩm: **LumaCast** (phụ đề: LED Display Controller). Nền tảng: C++20 + Qt 6 (Widgets cho UI) + OpenGL 3.3 core, Windows trước. Đầu ra: card HDMI/DP, mỗi output là một cửa sổ fullscreen trên một màn hình hệ điều hành (bộ gửi tín hiệu LED như Novastar/Colorlight nhận HDMI).
 
 ---
 
@@ -25,7 +25,7 @@ Luồng vMix-style: chọn Scene vào **Preview** → bấm Cut/Fade/Transition 
 ## 2. Sơ đồ tổng thể
 
 ```
- ┌──────────────────────────── UI (Qt Quick / QML) ────────────────────────────┐
+ ┌──────────────────────────── UI (Qt Widgets)     ────────────────────────────┐
  │ Multiview · Scene editor · Transition bar · Output setup · Plugin manager   │
  └───────────────▲───────────────────────────────────────┬─────────────────────┘
                  │ signals / models                      │ lệnh (lock-free queue)
@@ -179,49 +179,43 @@ Transition có thể đặt **riêng mỗi Channel** và mỗi nút chuyển nha
 
 ---
 
-## 8. UI (Qt Quick)
+## 8. Giao diện (Qt Widgets) — đã triển khai
 
-- **Multiview**: lưới thu nhỏ Preview/Program của từng Channel (render thumbnail từ texture, tần số thấp).
-- **Scene bin**: danh sách Scene/nguồn, kéo-thả.
-- **Scene editor**: canvas kéo/xoay/co giãn Layer, lớp, hiệu ứng, thuộc tính tự sinh từ param.
-- **Transition bar**: T-bar + nút Cut/Fade/Auto, chọn transition + thời lượng.
-- **Output panel**: trạng thái từng Output (FPS, dropped, độ trễ), Black/Freeze/Test.
-- Preview trong UI dùng context chia sẻ + `QQuickFramebufferObject`/RHI, độ phân giải thấp để không ăn tài nguyên.
+Cửa sổ chính (`MainWindow`) dạng dock, giao diện tối; bố cục lưu/khôi phục bằng `QSettings`.
+- **Trung tâm:** monitor Preview (viền xanh lá) và Program (viền đỏ, nhãn ON AIR); thanh chuyển: CUT, TAKE, AUTO, kiểu và thời lượng transition, T-bar, BLACK ALL, FTB.
+- **Dock:** Scenes (đánh dấu PGM/PVW), Media Pool (ảnh thu nhỏ, nhập media), Outputs (đèn trạng thái, FPS thật, Đen/Dừng từng Output), Inspector (tab Scene/Layer, tab Output).
+- **Menu:** File (mở, lưu, lưu thành, gần đây, nhập media), Edit (hoàn tác/làm lại), View (bật/tắt dock, đặt lại bố cục), Help.
+- **Mô hình luồng:** UI chạy trên thread chính, render trên một thread riêng. Mọi thao tác gửi qua `RenderEngine::post()` (hàng đợi có khoá, thực thi ở đầu khung kế tiếp).
+  UI giữ **bản sao (cache)** Layer/Output/tên Scene để không đọc dữ liệu render thread đang ghi; sau thay đổi cấu trúc (thêm Scene/nguồn) engine báo UI qua tín hiệu xếp hàng.
+- **Monitor:** engine render ảnh thu nhỏ (tối đa 480 px rộng) của Program và Preview mỗi ~4 khung, đọc về CPU, UI lấy bản sao có khoá.
+- **Chưa có (xem SPEC):** multiview nhiều Channel dạng lưới, Operator Mode, timeline, kéo-thả Output trên canvas, wizard tạo project.
 
 ---
 
-## 9. Cấu trúc mã nguồn & công cụ
+## 9. Cấu trúc mã nguồn và công cụ
 
 ```
 lumacast/
- ├─ CMakeLists.txt            (CMake + vcpkg/conan)
- ├─ app/                      main, khởi động, QML entry
- ├─ ui/                       QML + view-model (C++ models)
- ├─ core/                     Project, Scene, Layer, Channel, Output, Mapping, Undo
- ├─ render/                   GLContext, TexturePool, FBOGraph, Compositor,
- │                            TransitionRunner, EffectChain, OutputWindow
- ├─ media/                    FFmpegSource, ImageSource, TextSource, NdiSource, PBO uploader
- ├─ plugin/                   Host, Loader, ManifestParser, IsfRuntime, Sandbox
- ├─ control/                  HttpServer, WsServer, Osc, Midi, Hotkeys
- ├─ sdk/                      lumacast_plugin.h (C ABI) + ví dụ plug-in
- ├─ shaders/                  GLSL nội bộ (composite, yuv2rgb, scale, calib)
- ├─ plugins_builtin/          transition/effect dạng ISF đi kèm
- └─ tests/                    unit (core, plugin ABI), render test (so ảnh golden)
+ ├─ CMakeLists.txt        CMake; FFmpeg qua pkg-config (Linux) hoặc vcpkg (Windows)
+ ├─ docs/                 SPEC, PLAN, KienTruc, PROJECT-FORMAT, TEST-PLAN, TEST-WINDOWS
+ ├─ src/
+ │   ├─ core/             Types, Scene/Layer, Channel (Program/Preview/transition/T-bar/FTB), Project (JSON, wall)
+ │   ├─ render/           Compositor (toàn bộ GL), GlHelpers (FBO/texture), Engine (thread render, monitor),
+ │   │                    OutputSink (giao diện đích), OutputWindow (cửa sổ LED)
+ │   ├─ media/            Source (giao diện), StaticSources (ảnh/màu/test pattern), FFmpegSource (video)
+ │   └─ app/              main (CLI), MainWindow, InspectorPanel (Layer/Output + undo), MonitorWidget, Theme
+ └─ tests/                test_render.cpp (lõi/engine), test_ui.cpp (giao diện)
 ```
-Thư viện: Qt 6 (Core, Gui, Quick, Network, WebSockets), FFmpeg, (tuỳ chọn) NDI SDK, spdlog, nlohmann-json, GoogleTest. Build đa nền tảng Windows (ưu tiên – card capture/NDI phổ biến) + Linux.
+**Dự kiến thêm:** `plugin/` (Host, Loader, ManifestParser), `sdk/` (header C ABI + plug-in mẫu), `control/` (HTTP/WS/OSC/MIDI),
+`audio/` (mixer, WASAPI), `shaders/` (GLSL tách khỏi mã).
+
+**Thư viện đang dùng:** Qt 6 (Core, Gui, Widgets, OpenGL), FFmpeg (avformat, avcodec, swscale, avutil). **Dự kiến:** NDI SDK, thư viện âm thanh.
+**Build:** C++20, CMake ≥ 3.21, Ninja; Windows: MSVC 2022 + vcpkg (FFmpeg) + Qt 6.x (đã dùng 6.4 và 6.8.3).
 
 ---
 
-## 10. Lộ trình đề xuất
-
-| Mốc | Nội dung |
-|---|---|
-| **M1 – Lõi render** | Cửa sổ Output fullscreen, texture pool, nguồn ảnh/video (FFmpeg), 1 Channel, Layer cơ bản, Cut/Fade. |
-| **M2 – Nhiều kênh & độ phân giải** | Nhiều Channel/Output độc lập, Mapping + scale policy, calibration, test pattern, lưu/mở project. |
-| **M3 – Transition & Effect** | Bộ transition đầy đủ, effect chain, Stinger, easing, UI Preview/Program + multiview. |
-| **M4 – Plug-in** | ISF shader plug-in + hot-reload, manifest/params tự sinh UI, SDK C ABI + plug-in mẫu. |
-| **M5 – Vận hành** | Điều khiển ngoài (HTTP/OSC/MIDI), watchdog, autostart, log, NDI in/out, camera/capture, âm thanh theo Channel (WASAPI). |
-| **M6 – Tối ưu** | HW decode zero-copy, HAP, tối ưu GPU, process-isolated plug-in, tool đo hiệu năng. |
+## 10. Lộ trình
+Xem **`PLAN.md`** (mốc M3c, M4a/b, M5a/b/c, M6, M7 kèm nhiệm vụ, nghiệm thu, rủi ro). Yêu cầu và trạng thái: **`SPEC.md`**.
 
 ---
 
@@ -230,52 +224,55 @@ Thư viện: Qt 6 (Core, Gui, Quick, Network, WebSockets), FFmpeg, (tuỳ chọn
 1. **Đồng bộ nhiều màn khác tần số quét / xé hình** → một render thread, master clock, cho phép nhóm clock; cân nhắc card GPU có Genlock/Sync nếu ghép màn lớn chuyên nghiệp.
 2. **Băng thông GPU khi nhiều Output 4K** → render-at-output-res chọn lọc, texture pool, HAP/hw decode, giám sát tải GPU.
 3. **Ổn định plug-in bên thứ ba** → shader plug-in là đường chính, native có budget/timeout + vô hiệu hoá tự động, process riêng ở giai đoạn sau.
-4. **Chênh lệch driver GPU** → giữ GLSL 330/OpenGL 4.1 core, bộ test render so ảnh trên NVIDIA/AMD/Intel; để ngỏ chuyển sang Qt RHI/Vulkan sau.
+4. **Chênh lệch driver GPU** → giữ GLSL 330/OpenGL 3.3 core, bộ test render so ảnh trên NVIDIA/AMD/Intel; để ngỏ chuyển sang Qt RHI/Vulkan sau.
 5. **Phạm vi quá rộng** → bám MVP: M1–M3 đã đủ dùng được trong sự kiện nhỏ.
 
 ---
 
 ## 12. Quyết định đã chốt
+
 | Hạng mục | Quyết định |
 |---|---|
-| Âm thanh | **Có**, bật/tắt được theo từng Channel (mục 13) |
-| Output | Mục tiêu **4 Output**; độ phân giải chuẩn **1920×1080 và 3840×2160**, có tuỳ chọn scale cho vừa màn LED (mục 3.2) |
-| Nền tảng | **Chỉ Windows** (D3D11VA decode, WASAPI audio, DirectShow/Media Foundation capture) |
-| NDI / Camera | **Có** (NDI in/out + webcam/card capture), làm ở M5 |
-| Giấy phép | Đề xuất: lõi đóng + SDK plug-in mở MIT; FFmpeg LGPL, Qt LGPL liên kết động (chờ xác nhận) |
+| Tên | **LumaCast** (phụ đề "LED Display Controller"); "LED Control Studio Product Concept v1.0" là tài liệu UI/UX tham chiếu |
+| Nền tảng | **Windows trước**; macOS cần nhưng chưa gấp (M7) |
+| GPU | OpenGL 3.3 core; `Compositor` + `GlHelpers` + phần upload texture của nguồn là ranh giới GPU duy nhất (~600 dòng) để thay bằng RHI (QRhi/Metal) sau |
+| UI | Qt Widgets (dock), giao diện tối; **không dùng Qt Quick** (Qt Widgets chín hơn cho bàn điều khiển dày đặc, ghép ảnh thu nhỏ đơn giản, ít rủi ro) |
+| Output | Mục tiêu 4 Output; độ phân giải chuẩn 1920×1080 và 3840×2160; có scale cho vừa màn LED |
+| Âm thanh | Có, bật/tắt theo từng Channel (mục 13); làm ở M5a |
+| NDI / Camera | Có; làm ở M5b |
+| Giấy phép | Dùng cá nhân; nếu bán có gói Cơ bản và Thương mại (SPEC mục 5). Lõi đóng, SDK plug-in mở (đề xuất); FFmpeg LGPL, Qt LGPL liên kết động — **chờ xác nhận** |
 
-## 13. Âm thanh
-- Mỗi Channel có **Audio bus** riêng: công tắc Mute/On, volume, (tuỳ chọn) delay bù đồng bộ hình.
-- Mỗi Source có audio của riêng nó (file, NDI, capture); Layer/Scene quyết định nguồn nào vào bus. Transition cũng crossfade âm thanh theo `t` của Program cũ/mới.
-- Mỗi Channel chọn **thiết bị âm thanh đầu ra** (WASAPI, shared hoặc exclusive cho độ trễ thấp), vì mỗi Output LED có thể đi cùng một hệ loa khác nhau; có thể gộp nhiều Channel vào một thiết bị.
-- Đồng hồ chủ là **audio clock**; hình đồng bộ theo PTS của âm thanh để tránh lệch tiếng.
-- Mixer thread riêng (resample, mix, limiter), tách khỏi render thread; meter mức âm hiển thị trên UI.
+## 13. Âm thanh (thiết kế, chưa triển khai)
+- Mỗi Channel có **Audio bus** riêng: công tắc Mute/On, âm lượng, (tuỳ chọn) trễ bù đồng bộ hình.
+- Mỗi Source có âm thanh riêng (file, NDI, capture); Layer/Scene quyết định nguồn nào vào bus. Transition crossfade âm thanh theo tiến độ của Program cũ/mới.
+- Mỗi Channel chọn **thiết bị âm thanh đầu ra** (WASAPI, shared hoặc exclusive cho độ trễ thấp); có thể gộp nhiều Channel vào một thiết bị.
+- Đồng hồ chủ là **đồng hồ âm thanh**; hình đồng bộ theo PTS để tránh lệch tiếng.
+- Mixer thread riêng (resample, mix, limiter) tách khỏi render thread; meter mức âm hiển thị trên UI.
 - Với NDI/capture: bù trôi đồng hồ bằng resample thích ứng.
 
-## 14. Mo rong ngoai LED
-Loi (Source/Scene/Channel/Compositor) khong phu thuoc LED. Dich den la giao dien `OutputSink` (`src/render/OutputSink.h`):
-hien co `OutputWindow` (man hinh LED/projector/LCD qua cua so fullscreen); sau nay them NDI out, ghi file/RTMP/SRT,
-Art-Net/sACN/DMX. Tinh nang rieng tung loai man hinh (hieu chinh mau LED, edge blending + warp cho projector) di vao
-module rieng, cam vao truoc buoc `present()`. Ten San pham: **LumaCast** (phu de hien tai: "LED Display Controller").
+## 14. Mở rộng ngoài LED
+Lõi (Source/Scene/Channel/Compositor) không phụ thuộc LED. Đích đến là giao diện `OutputSink` (`src/render/OutputSink.h`): hiện có `OutputWindow`
+(màn hình LED/projector/LCD qua cửa sổ toàn màn hình); sau này thêm NDI ra, ghi file/RTMP/SRT, Art-Net/sACN/DMX. Tính năng riêng từng loại màn hình
+(hiệu chỉnh màu LED, edge-blending + warp cho máy chiếu) đi vào module riêng, cắm trước bước `present()`.
 
-## 15. Trang thai M2
-- Project JSON phien ban 1 (`core/Project.cpp`): sources (id on dinh), scenes (layers), channels, outputs (crop, calibration). Ghi nguyen tu (QSaveFile); mo file loi tra thong bao ro rang, khong crash.
-- Hieu chinh mau o shader Output cuoi: `out = pow(clamp(((c-0.5)*contrast+0.5)*brightness*gain), 1/gamma)`.
-- Wall = nhieu Output cung 1 Channel, moi cai crop 1 o cua canvas (`makeWall`). Chua bu khe/bezel.
-- Mo hinh luong: moi sua doi tu UI di qua `RenderEngine::post()`, UI giu ban sao Layer/Output (cache) de khong doc du lieu render thread dang ghi.
+## 15. Chi tiết đã triển khai
 
-## 16. Quyet dinh san pham (23/11/2026)
-- Ten san pham: **LumaCast** (mo ta: "LED Display Controller"). Tai lieu "LED Control Studio Product Concept v1.0" la dac ta UI/UX tham chieu.
-- Nen tang: **Windows truoc**. **macOS can nhung chua phai luc nay.** Giu OpenGL 3.3; `Compositor` + `GlHelpers` + phan upload texture cua nguon la
-  ranh gioi GPU duy nhat (~600 dong) -> khi lam macOS se thay bang RHI (QRhi/Metal) o day, khong dong vao UI hay loi.
-- UI: Qt Widgets (dock panel), giao dien toi. Khong dung Qt Quick.
-- M3a (UI Live Control): monitor Preview/Program, Scene list, Media Pool, thanh chuyen (CUT/TAKE), BLACK ALL, FTB, Outputs (Black/Freeze/trang thai),
-  Inspector (Layer, Output), menu File (Open/Save/Recent), autosave + khoi phuc, layout luu/khoi phuc, xac nhan khi thoat.
-- M3b: Layers panel hoan chinh, Undo/Redo, T-bar, timeline/keyframe (Phase 3 cua tai lieu concept).
+**Project (`core/Project.cpp`).** JSON phiên bản 1, ghi nguyên tử; chi tiết ở `PROJECT-FORMAT.md`. Mở file lỗi trả thông báo rõ, không crash.
 
-## 17. Trang thai M3b
-- Undo/Redo: `QUndoStack` trong MainWindow; moi chinh sua tren Inspector la mot `LayersCmd`/`OutputCmd` (luu truoc/sau), cac chinh sua cung mot truong
-  gop thanh mot buoc (mergeWith theo id). Thao tac live (CUT/TAKE/FTB/Black) KHONG nam trong undo. Nhap media chua hoan tac duoc.
-- T-bar: `Channel::setManual(type, t)` (render thread); tien do truc tiep, khong ease; bi bo qua khi dang chay transition tu dong.
-- AUTO: cong tac UI (khong phai trang thai engine): bat -> bam Scene = Preview + startTransition.
-- Timeline/keyframe tach sang M4: can scene clock + thuoc tinh Layer theo thoi gian (track/keyframe) trong engine, khong chi la UI.
+**Hiệu chỉnh màu** ở shader cuối của Output: `out = pow(clamp(((c−0.5)·contrast+0.5)·brightness·gain), 1/gamma)`.
+
+**Video wall** = nhiều Output cùng một Channel, mỗi cái crop một ô của canvas (`makeWall`). Chưa bù khe/bezel.
+
+**Video xoay.** `FFmpegSource` đọc display matrix (luồng và khung hình) → `TexRef.rotation` (0/90/180/270 theo chiều kim đồng hồ); `Compositor` xoay layer trên GPU,
+Fit/Fill tính theo tỉ lệ sau xoay; ảnh theo EXIF khi nạp.
+
+**Monitor, Dừng hình, FTB.** Engine tạo ảnh thu nhỏ (`Compositor::thumbnail`); Dừng hình = Output bỏ qua cả vẽ lẫn hoán đổi bộ đệm nên màn hình giữ khung cuối
+(Đen luôn thắng); FTB = `Compositor::fadeToBlack` phủ đen với độ mờ tăng/giảm theo thời gian (rủi ro R1 trong PLAN: Dừng hình chưa xác nhận trên Windows).
+
+**Hoàn tác/làm lại.** `QUndoStack` trong `MainWindow`; mỗi chỉnh sửa Inspector là `LayersCmd`/`OutputCmd` (lưu trước/sau); lần `redo()` đầu bị bỏ qua vì UI đã áp dụng;
+các chỉnh sửa liên tiếp cùng một trường gộp bằng `mergeWith` theo `id`. Thao tác live (CUT/TAKE/FTB/Đen) không nằm trong undo; nhập media chưa hoàn tác được.
+
+**T-bar và AUTO.** `Channel::setManual(type, t)` chạy trên render thread, tiến độ trực tiếp (không ease), bị bỏ qua khi đang chạy transition tự động; kéo hết = hoàn tất,
+về 0 = huỷ, CUT giữa chừng hoàn tất ngay. AUTO là công tắc giao diện: bật thì bấm Scene = đặt Preview + `startTransition`.
+
+**Pacing.** Một render thread, nhịp `fps` chủ (ngủ gần hết rồi quay vòng 1 ms cuối); khung hoàn tất sau hạn chót được đếm là rơi (`droppedFrames`).

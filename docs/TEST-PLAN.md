@@ -1,0 +1,80 @@
+# LumaCast — Kế hoạch kiểm thử (TEST-PLAN)
+
+Liên quan: `SPEC.md` (tiêu chí nghiệm thu), `PLAN.md` (Definition of Done), `TEST-WINDOWS.md` (cách build trên Windows).
+
+## 1. Tổng quan
+| Tầng | Công cụ | Chạy ở đâu | Số kiểm tra |
+|---|---|---|---|
+| Tự động — render/lõi | `lumacast_tests` | Linux (GPU phần mềm llvmpipe), Windows | 60 |
+| Tự động — giao diện | `lumacast_ui_tests` | Linux (xvfb), Windows | 49 |
+| Thử tay trên phần cứng thật | Checklist mục 3 | Windows, màn LED/bộ gửi tín hiệu thật | theo bảng |
+| Benchmark hiệu năng | Mục 4 | Windows, máy mục tiêu | theo bảng |
+
+Quy tắc: mỗi PR phải qua `ctest`; phần thử tay liên quan phải được chạy hoặc ghi rõ *chưa thử* trong mô tả PR.
+
+## 2. Test tự động
+Chạy:
+- Linux: `xvfb-run -a ctest --test-dir build --output-on-failure`
+- Windows: `ctest --test-dir build --output-on-failure` (cần driver OpenGL 3.3, không chạy qua Remote Desktop)
+
+**`lumacast_tests`** (đọc lại điểm ảnh từ FBO để so sánh): Scene/Layer (Fit/Fill/chiều ảnh), Transition (Fade, Cut, Wipe, Dip, T-bar),
+Output (Fit, Stretch, xoay, crop), hiệu chỉnh màu, video wall, FTB, thumbnail/snapshot, project (lưu–mở, đường dẫn tương đối, các lỗi),
+video FFmpeg (khung hình, lặp, xoay 90/180/270 so với FFmpeg tự xoay).
+
+**`lumacast_ui_tests`** (điều khiển widget như người dùng): engine + cửa sổ chính, monitor, CUT/TAKE/AUTO/T-bar, BLACK ALL, Dừng hình,
+FTB, Inspector (Layer, Output), Hoàn tác/Làm lại (kể cả gộp bước), kéo-thả/ẩn-hiện Layer, nhập media, lưu và tự lưu.
+
+**Giới hạn đã biết:**
+- Dùng GPU phần mềm trên Linux: không phản ánh hiệu năng và hành vi driver thật (NVIDIA/AMD/Intel).
+- Test video cần lệnh `ffmpeg` để tạo video thử; không có thì tự bỏ qua (thường xảy ra trên Windows nếu `ffmpeg.exe` không nằm trong PATH). Khi đó phần phát video chỉ kiểm chứng bằng thử tay.
+- Chưa có test cho: nhiều Output toàn màn hình, mất thiết bị, chạy dài hạn, kéo chuột thật (T-bar, kéo-thả Layer).
+
+## 3. Checklist thử tay trên Windows
+Trạng thái: **Đạt** · **Lỗi** · **Chưa thử**. Cập nhật cột này mỗi lần chạy và ghi vào mô tả PR.
+
+| ID | Bước | Kết quả mong đợi | Trạng thái |
+|---|---|---|---|
+| T-BLD | Build theo `TEST-WINDOWS.md`, `ctest` | Build sạch; 2/2 test qua | Đạt (Qt 6.8.3, FFmpeg 9.1, MSVC 2022) |
+| T-RUN | `lumacast.exe -o 960x540 -o 540x960 -m clip.mp4` | Hai cửa sổ Output, giao diện hiển thị, FPS ≈ 60 | Đạt (AMD Radeon, 60 fps) |
+| T-VID | Phát video thật, để chạy ≥ 2 phút | Mượt, tự lặp, không giật | Chưa thử (chỉ xem ngắn) |
+| T-PORT | Video dọc 9:16 | Đúng chiều, vừa khít Output dọc | Đạt |
+| T-TR | Thử CUT, TAKE (Fade/Dip/Wipe), AUTO | Chuyển đúng, Program/Preview hoán đổi | Chưa thử |
+| T-TBAR | Kéo T-bar bằng chuột: giữa chừng, về 0, hết hành trình | Hình pha theo tay; về 0 = huỷ; hết = hoàn tất, T-bar tự về 0 | Chưa thử |
+| T-UNDO | Chỉnh alpha/vị trí/màu Output vài lần, Ctrl+Z, Ctrl+Y | Quay lại từng bước đúng; kéo liên tục = một bước | Chưa thử |
+| T-LAYER | Kéo-thả đổi thứ tự Layer bằng chuột; tick ẩn/hiện | Thứ tự và hiển thị đổi ngay ở Program | Chưa thử |
+| T-FRZ | Bấm **Dừng** ở Output 1 khi video đang chạy | Hình Output 1 đứng yên; Output 2 vẫn chạy; Đen vẫn thắng Dừng | **Chưa thử — rủi ro R1** |
+| T-BLK | BLACK ALL, Đen từng Output, phím B | Đen đúng phạm vi; bấm lại trả hình | Chưa thử |
+| T-FTB | FTB bật/tắt | Program mờ dần về đen và trở lại | Chưa thử |
+| T-SAVE | Lưu, đóng, mở lại bằng `--project` | Mọi Scene/Layer/Output/màu khôi phục | Chưa thử |
+| T-REC | Chỉnh project, đợi > 60 s, tắt tiến trình đột ngột, mở lại | Hỏi khôi phục bản tự lưu; khôi phục đúng | Chưa thử |
+| T-IMP | Nhập media bằng nút và nhấp đúp trong Media Pool | Có Scene mới, ảnh thu nhỏ đúng, video có ảnh | Chưa thử |
+| T-KEY | Space, Enter, B, 1–9, Ctrl+S/O/Z | Đúng chức năng, không xung đột khi gõ vào ô số | Chưa thử |
+| T-QUIT | Đóng cửa sổ chính | Hỏi xác nhận; chọn Có thì mọi cửa sổ Output đóng | Chưa thử |
+| T-FS | `-o 1920x1080@1 --fullscreen` với màn LED/bộ gửi tín hiệu | Hình ra đúng màn, không viền, không xé; Esc thoát | **Chưa thử — OUT-09** |
+| T-WALL | `--wall 4x1 --cell 1920x1080` trên 4 màn | Hình liền mạch qua các màn | Chưa thử |
+| T-CAL | Dùng test chart; chỉnh sáng/gamma/gain từng Output | Màu khớp giữa các màn sau chỉnh | Chưa thử |
+| T-4K | 2 Output 4K + 2 Output 1080p, video 4K | Xem mục 4 | **Chưa thử — NFR-02** |
+| T-SOAK | Chạy liên tục ≥ 1 giờ có chuyển cảnh định kỳ | Không crash, khung rơi < 0,1 %, bộ nhớ ổn định | Chưa thử |
+| T-LOSS | Rút cáp/tắt một màn khi đang chạy | Báo đúng Output bị mất; các Output còn lại không ảnh hưởng | Chưa làm (OUT-12) |
+
+## 4. Benchmark hiệu năng
+Mỗi cấu hình đo 5 phút và ghi: FPS trung bình, số khung rơi, thời gian khung p50/p99, GPU %, VRAM, CPU %.
+
+| Cấu hình | Nguồn | Mục tiêu |
+|---|---|---|
+| B1: 1 Output 1080p | Video 1080p60 | 60 fps, rơi < 0,1 % |
+| B2: 4 Output 1080p, cùng Channel | Video 1080p60 | 60 fps, rơi < 0,1 % |
+| B3: 2 Output 4K + 2 Output 1080p | Video 4K30, test pattern | 60 fps, rơi < 0,1 % |
+| B4: 4 Output 4K | Video 4K | Ghi nhận giới hạn thật (có thể chưa đạt khi chưa có giải mã phần cứng) |
+| B5: B2 + Effect chuỗi (sau M4a) | Video 1080p60 | Ghi chi phí mỗi Effect |
+
+Phần cứng đã đo: AMD Radeon (model chưa ghi), 2 Output cửa sổ, 60 fps. **Cần ghi đủ tên GPU, driver, phiên bản Windows cho mỗi lần đo.**
+
+## 5. Mẫu báo kết quả (dán vào mô tả PR)
+```
+Phiên bản/commit: ...
+Máy: GPU ..., driver ..., Windows ..., số màn hình ...
+ctest: 2/2 qua | lỗi: ...
+Thử tay: T-RUN Đạt, T-TBAR Đạt, T-FRZ Lỗi (mô tả), T-FS Chưa thử, ...
+Benchmark: B2 = 60 fps, rơi 0,02 %, GPU 35 %
+```

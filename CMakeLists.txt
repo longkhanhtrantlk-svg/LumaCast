@@ -52,6 +52,7 @@ add_library(lumacast_ui STATIC
   src/app/Theme.cpp
   src/app/MonitorWidget.h src/app/MonitorWidget.cpp
   src/app/InspectorPanel.h src/app/InspectorPanel.cpp
+  src/app/ParamEditor.h src/app/ParamEditor.cpp
   src/app/MainWindow.h src/app/MainWindow.cpp
 )
 target_include_directories(lumacast_ui PUBLIC src src/app)

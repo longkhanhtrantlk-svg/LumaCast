@@ -8,6 +8,7 @@ Bo dieu khien man hinh LED nhieu kenh / nhieu do phan giai. Xem thiet ke: `docs/
 | `docs/SPEC.md` | Yêu cầu chức năng/phi chức năng, ưu tiên, tiêu chí nghiệm thu, trạng thái |
 | `docs/PLAN.md` | Hiện trạng, lộ trình M3c → M7, nhiệm vụ, nghiệm thu, rủi ro, quy trình |
 | `docs/KienTruc.md` | Thiết kế kỹ thuật và quyết định |
+| `docs/PLUGIN-SDK.md` | Huong dan viet plug-in shader (Effect/Transition) |
 | `docs/PROJECT-FORMAT.md` | Đặc tả định dạng file project (phiên bản 1) |
 | `docs/TEST-PLAN.md` | Test tự động, checklist thử tay trên Windows, benchmark |
 | `docs/TEST-WINDOWS.md` | Hướng dẫn build và chạy trên Windows |
@@ -25,6 +26,11 @@ Windows (muc tieu): Qt 6 + FFmpeg qua vcpkg (`vcpkg install ffmpeg[core,avcodec,
 
 `-o WxH[@man_hinh][/kenh]` (lap lai cho nhieu output), `--scale fit|fill|stretch|pixel`, `--fps 60`.
 Phim tat (kenh 1): `1..9` chon Preview, `Space` = AUTO, `Enter` = CUT.
+
+## M4a them (Effect, transition, plug-in)
+- Tab **Effect** (Inspector): gan chuoi Effect len Layer - lam mo, phat sang, chinh mau, tach RGB, pixelate, nhieu hat; tham so tu sinh giao dien; hoan tac duoc; luu trong project.
+- Transition moi: Push, Slide, Zoom, Luma wipe, **Stinger** (video alpha), chon easing; plug-in quet xoay di kem.
+- **Plug-in shader**: tha thu muc (plugin.json + file .frag) vao `plugins/` cua LumaCast hoac `%AppData%\LumaCast\plugins` -> tu nap lai khi sua file. Dock **Plug-in** liet ke, bat/tat, bao loi. Xem `docs/PLUGIN-SDK.md`.
 
 ## M3c them (do tin cay)
 - Output toan man hinh nhan dien man theo **ten**; mat man -> bao dung Output, cua so KHONG nhay sang man khac, man quay lai thi tu hien lai dung man.

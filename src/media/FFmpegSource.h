@@ -17,6 +17,7 @@ public:
     QString name() const override { return name_; }
     TexRef acquire(GL& gl) override;
     QImage snapshot(int maxWidth = 160) const override;
+    double durationSeconds() const override { return duration_; }
     void restart() override;                    // seek ve 0; cho den khi co khung moi thi acquire() tra ve rong (khong hien khung cu)
     QString error() const;     // rong neu khong loi
 
@@ -40,6 +41,7 @@ private:
     QString error_;
     uint64_t uploaded_ = 0;
     int rotation_ = 0;
+    std::atomic<double> duration_{0};
     std::atomic<bool> restartReq_{false};
     std::atomic<bool> waitFirst_{false};
     GlTexture tex_;

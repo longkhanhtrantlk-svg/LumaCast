@@ -56,6 +56,16 @@ Mã nguồn tham chiếu: `src/core/Project.cpp` (`saveProject`, `loadProject`).
 | `opacity` | số 0–1 | 1 | |
 | `fit` | chuỗi | `fit` | `stretch` · `fit` · `fill` |
 | `visible` | bool | true | |
+| `effects[]` | mảng | (rỗng) | chuỗi Effect, chạy **từ phần tử đầu đến cuối** trước khi Layer được vẽ vào Scene (trường tuỳ chọn, thêm ở M4a, vẫn `version` 1) |
+
+`effects[]`:
+| Trường | Kiểu | Mặc định | Ghi chú |
+|---|---|---|---|
+| `id` | chuỗi | — | `builtin.blur`, `builtin.glow`, `builtin.colorgrade`, `builtin.rgbsplit`, `builtin.pixelate`, `builtin.noise` hoặc `id` của plug-in; thiếu plug-in **không** làm lỗi nạp (Effect bị bỏ qua, dữ liệu được giữ) |
+| `enabled` | bool | true | |
+| `params` | đối tượng | (mặc định của Effect) | tên tham số → giá trị: số (`float`/`int`/`choice` theo chỉ số), `true/false`, `"#AARRGGBB"` (màu), `[x, y]` (điểm). Giá trị lạ/thiếu được kẹp hoặc lấy mặc định khi dùng |
+
+Chưa lưu trong project: Transition đang chọn (kiểu, tham số, easing, Stinger) — chỉ là trạng thái phiên làm việc.
 
 ### 2.3 `channels[]`
 | Trường | Kiểu | Mặc định | Ghi chú |

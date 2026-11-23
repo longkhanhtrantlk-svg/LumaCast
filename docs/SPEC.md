@@ -52,7 +52,7 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | SCN-03 | Đổi thứ tự Layer (kéo-thả hoặc nút), thêm/xoá, hoàn tác/làm lại | P0 | ✅ | Test tự động |
 | SCN-04 | Xoay Layer, crop Layer | P1 | ⬜ | Test render |
 | SCN-05 | Blend mode (Add, Multiply, Screen…) | P1 | ⬜ | Test render so với giá trị tính tay |
-| SCN-06 | Chuỗi Effect trên Layer/Scene (blur, glow, màu, RGB split…) | P0 | ⬜ | M4a: bật/tắt, tham số, hiển thị đúng ở Program |
+| SCN-06 | Chuỗi Effect trên **Layer** (blur, glow, chỉnh màu, RGB split, pixelate, noise): thêm/gỡ/đổi thứ tự/bật-tắt, tham số tự sinh, hoàn tác, lưu trong project | P0 | ✅ | Test tự động (từng Effect, hướng ảnh, chuỗi, UI). **Chưa có Effect cấp Scene** (xem PLAN) |
 | SCN-07 | Timeline và keyframe cho thuộc tính Layer | P1 | ⬜ | M4b: phát lại đúng theo đồng hồ Scene |
 | SCN-08 | Mask, chroma key, nhóm Layer | P2 | ⬜ | — |
 
@@ -66,8 +66,8 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | CHN-05 | AUTO: bật thì bấm Scene = chuyển thẳng lên Program; tắt thì chỉ vào Preview | P1 | ✅ | Test tự động |
 | CHN-06 | FTB: làm mờ dần Program về đen, bấm lại để trở lại | P0 | ✅ | Test tự động |
 | CHN-07 | Preview **không bao giờ** tự đổi Program | P0 | ✅ | Test tự động |
-| CHN-08 | Transition bổ sung: Stinger, Luma wipe, Push/Slide, Zoom; easing chọn được | P1 | ⬜ | M4a |
-| CHN-09 | Transition do plug-in cung cấp | P1 | ⬜ | M4a |
+| CHN-08 | Transition bổ sung: Push, Slide, Zoom, Luma wipe (5 mẫu), **Stinger** (video alpha, điểm cắt, tự phát lại từ đầu); easing chọn được (4 kiểu) | P1 | ✅ | Test tự động. T-bar kéo tay không hỗ trợ Stinger (rơi về Fade); thử tay Stinger với video alpha thật chưa làm (T-STG) |
+| CHN-09 | Transition do plug-in cung cấp (kèm tham số) | P1 | ✅ | Test tự động |
 
 ### 3.4 Output và mapping (OUT)
 | ID | Yêu cầu | Ưu tiên | TT | Nghiệm thu |
@@ -114,10 +114,10 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 ### 3.7 Plug-in (PLG)
 | ID | Yêu cầu | Ưu tiên | TT | Nghiệm thu |
 |---|---|---|---|---|
-| PLG-01 | Shader plug-in (GLSL + manifest JSON, kiểu ISF) cho Effect và Transition; tham số tự sinh giao diện; nạp lại nóng | P0 | ⬜ | M4a |
-| PLG-02 | Plug-in native (DLL, C ABI có phiên bản) cho Source/Effect/Output filter | P1 | ⬜ | M4a/M5 |
-| PLG-03 | Plug-in lỗi hoặc chạy quá hạn bị vô hiệu hoá, không làm sập ứng dụng | P0 | ⬜ | Với PLG-01/02 |
-| PLG-04 | Plugin Manager (danh sách, bật/tắt, cấu hình, phiên bản, tương thích) | P1 | ⬜ | — |
+| PLG-01 | Shader plug-in (GLSL + `plugin.json`) cho Effect và Transition; tham số tự sinh giao diện; nạp lại nóng; 4 plug-in mẫu + `PLUGIN-SDK.md` | P0 | ✅ | Test tự động (quét, kiểm tra manifest, hot reload, bật/tắt, ghi đè) + thử tay T-PLG |
+| PLG-02 | Plug-in native (DLL, C ABI có phiên bản) cho Source/Effect/Output filter | P1 | ⬜ | Hoãn sang sau M5 (xem PLAN) |
+| PLG-03 | Plug-in lỗi hoặc chạy quá hạn bị vô hiệu hoá, không làm sập ứng dụng | P0 | 🟡 | Lỗi manifest/biên dịch: ✅ có test, không crash, giữ dữ liệu project. **Shader chạy vô hạn/quá nặng: chưa bảo vệ được** (có thể treo GPU; watchdog chỉ báo) |
+| PLG-04 | Plugin Manager (danh sách, bật/tắt, phiên bản, tác giả, lý do lỗi, quét lại, mở thư mục) | P1 | 🟡 | Test tự động. Chưa có: cài từ file, cập nhật/gỡ cài đặt, kiểm tra tương thích GPU |
 
 ### 3.8 Âm thanh, điều khiển ngoài, vận hành (AUD / CTL / OPS)
 | ID | Yêu cầu | Ưu tiên | TT | Nghiệm thu |
@@ -145,7 +145,7 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | NFR-06 | Độ bền | File hỏng/media thiếu không làm crash | Đáp ứng với project JSON (PRJ-02) |
 | NFR-07 | Tương thích | Windows 10/11 x64; OpenGL 3.3 core; Qt ≥ 6.4 (đã dùng 6.4, 6.8.3); FFmpeg ≥ 6.1 (đã dùng 6.1, 9.1) | Đáp ứng |
 | NFR-08 | Giấy phép phụ thuộc | FFmpeg bản LGPL liên kết động; Qt LGPL liên kết động hoặc giấy phép thương mại | Đáp ứng (vcpkg `ffmpeg` mặc định) |
-| NFR-09 | Kiểm thử | Mọi tính năng mới có test tự động; PR phải qua `ctest` | 137 kiểm tra tự động |
+| NFR-09 | Kiểm thử | Mọi tính năng mới có test tự động; PR phải qua `ctest` | 225 kiểm tra tự động |
 | NFR-10 | Khả năng mở rộng | GPU chỉ chạm qua `Compositor`, `GlHelpers` và upload texture để thay bằng RHI (macOS) | Giữ nguyên tắc |
 
 ---

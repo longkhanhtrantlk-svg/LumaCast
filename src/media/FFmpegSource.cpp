@@ -112,6 +112,7 @@ void FFmpegSource::run() {
         return cleanup();
     }
     AVStream* st = fmt->streams[vs];
+    if (fmt->duration > 0) duration_ = double(fmt->duration) / AV_TIME_BASE;
     const AVCodec* codec = avcodec_find_decoder(st->codecpar->codec_id);
     cc = codec ? avcodec_alloc_context3(codec) : nullptr;
     if (!cc || avcodec_parameters_to_context(cc, st->codecpar) < 0) {

@@ -7,10 +7,13 @@ class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
 class QGroupBox;
+class QLabel;
 class QListWidget;
 class QUndoStack;
 
 namespace lc {
+
+class ParamEditor;
 
 // Inspector: tab "Scene / Layer" (danh sach Layer keo-tha, an/hien, thuoc tinh layer dang chon) va tab "Output"
 // (scale, xoay, mapping crop, hieu chinh mau). Moi thay doi di qua RenderEngine::post() va duoc ghi vao
@@ -26,10 +29,18 @@ public:
     void applyOutput(int outIdx, const OutputConfig& cfg);
 
     QListWidget* layerList() const { return layerList_; }       // cho test
+    QListWidget* effectList() const { return fxList_; }
+
+    // Danh sach Effect co the them + ghi chu loi: goi khi kho Effect/plug-in thay doi.
+    void refreshEffectCatalog();
+    void updateEffectNote();
 
 private:
     QWidget* buildSceneTab();
     QWidget* buildOutputTab();
+    QWidget* buildEffectTab();
+    void syncEffectList(int selectRow);
+    void syncEffectParams();
     int currentScene() const;
     int currentLayerIdx() const;                                 // chi so trong vector (-1 neu chua chon)
     void syncLayerList(int selectIdx);
@@ -61,6 +72,14 @@ private:
     QDoubleSpinBox* rectSpin_[4] = {};
     QDoubleSpinBox* alphaSpin_ = nullptr;
     QComboBox* fitCombo_ = nullptr;
+
+    // tab Effect
+    QLabel* fxTitle_ = nullptr;
+    QLabel* fxNote_ = nullptr;
+    QListWidget* fxList_ = nullptr;
+    QComboBox* fxAddCombo_ = nullptr;
+    QGroupBox* fxParamBox_ = nullptr;
+    ParamEditor* fxParams_ = nullptr;
 };
 
 } // namespace lc

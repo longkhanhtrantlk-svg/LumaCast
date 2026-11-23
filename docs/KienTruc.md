@@ -284,3 +284,10 @@ về 0 = huỷ, CUT giữa chừng hoàn tất ngay. AUTO là công tắc giao d
 - *Thống kê khung:* `FrameStats` (vòng đệm 300 mẫu) cho p50/p99/max thời gian render, cập nhật mỗi giây.
 - *Mẫu thử theo Output:* `makeOutputTestPattern` vẽ đúng độ phân giải cửa sổ, bỏ qua scale/xoay/crop/hiệu chỉnh; ưu tiên hiển thị: Đen > Mẫu thử > Dừng hình > Program.
 - *Log:* `core/Log` cài `qInstallMessageHandler`, ghi file xoay vòng (2 MB × 3).
+
+**Effect, Transition và plug-in shader (M4a).**
+- *Một cơ chế duy nhất:* `EffectDef` (id, loại, tham số, mã GLSL) dùng cho Effect/Transition dựng sẵn (`BuiltinEffects.cpp`) lẫn plug-in nạp từ thư mục (`PluginManager`). `buildFragmentSource` ghép header chuẩn + tham số thành uniform + `#line 1` + mã người dùng + `main()`.
+- *Kho dùng chung:* `EffectRegistry` giữ bản bất biến của các định nghĩa (đổi nguyên khối dưới mutex, người đọc giữ `shared_ptr`) nên UI thread nạp plug-in và render thread biên dịch/dùng không đụng nhau. Biên dịch ở render thread, nhớ theo `(id, revision)`; `revision` tăng khi **nội dung** (manifest + shader, băm SHA-1) đổi → nạp lại nóng chỉ biên dịch lại phần đã đổi.
+- *Chuỗi Effect:* `Compositor::applyLayerEffects` chạy trên texture nguồn (đảo trục dọc ở lượt đầu vì nguồn lưu từ trên xuống), ping-pong qua FBO của pool; kết quả ở FBO (gốc dưới-trái) nên lượt vẽ Layer lật lại uv. Chạy ở độ phân giải của nguồn.
+- *Transition:* `TransitionSpec` (kiểu, `pluginId`, tham số, easing, thời lượng, Stinger). Fade/Dip/Wipe vẫn là shader cứng; Push/Slide/Zoom/Luma và plug-in là shader từ kho. Stinger: Channel cắt cảnh cứng ở `cutPoint`, `Compositor::drawOverlay` vẽ video alpha đè lên; `Source::restart()` đưa video về đầu lúc bắt đầu (FFmpeg: seek về 0, trả rỗng cho đến khi có khung mới để không hiện khung cuối cũ).
+- *An toàn:* manifest/entry bị kiểm tra (chặn `../`, id `builtin.` bị cấm); shader lỗi → Effect bị bỏ qua và lỗi ghi vào kho; project giữ nguyên dữ liệu Effect của plug-in thiếu. **Không** chống được shader chạy vô hạn (xem `PLUGIN-SDK.md` mục 6).

@@ -9,6 +9,9 @@
 #include <QElapsedTimer>
 #include <QListWidget>
 #include <QAction>
+#include <QComboBox>
+#include <QDir>
+#include <QFile>
 #include <QMenuBar>
 #include <QPushButton>
 #include <QSlider>
@@ -26,7 +29,11 @@ static int g_fail = 0;
 
 static void pump(int ms) {
     QElapsedTimer t; t.start();
-    while (t.elapsed() < ms) { QApplication::processEvents(); QThread::msleep(5); }
+    while (t.elapsed() < ms) {
+        QApplication::processEvents();
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);     // nhu vong lap su kien that: xu ly deleteLater()
+        QThread::msleep(5);
+    }
 }
 static QPushButton* button(QWidget* root, const QString& text) {
     for (auto* b : root->findChildren<QPushButton*>()) if (b->text() == text) return b;
@@ -66,9 +73,24 @@ int main(int argc, char** argv) {
     p.outputs = {o1, o2};
     p.filePath = dir.filePath("ui.json");
 
+    // plug-in tam: 1 Effect tot, 1 Transition tot, 1 plug-in hong
+    QTemporaryDir plugDir;
+    auto writePlugin = [&](const QString& sub, const QString& manifest, const QString& file, const QString& shader) {
+        QDir().mkpath(plugDir.path() + "/" + sub);
+        QFile m(plugDir.path() + "/" + sub + "/plugin.json"); m.open(QIODevice::WriteOnly | QIODevice::Truncate); m.write(manifest.toUtf8()); m.close();
+        if (!file.isEmpty()) { QFile f(plugDir.path() + "/" + sub + "/" + file); f.open(QIODevice::WriteOnly | QIODevice::Truncate); f.write(shader.toUtf8()); f.close(); }
+    };
+    const QString invertShader = "vec4 effect(vec2 uv){ vec4 c = sampleInput(uv); return vec4(mix(c.rgb, 1.0 - c.rgb, amount), c.a); }";
+    writePlugin("invert", R"J({"id":"com.ui.invert","name":"Dao mau (test)","apiVersion":1,"type":"effect","version":"1.2","author":"Test","entry":"fx.frag",
+        "params":[{"name":"amount","label":"Muc do","type":"float","min":0,"max":1,"default":1}]})J", "fx.frag", invertShader);
+    writePlugin("sweep", R"J({"id":"com.ui.sweep","name":"Quet (test)","apiVersion":1,"type":"transition","entry":"t.frag",
+        "params":[{"name":"soft","type":"float","min":0.01,"max":0.5,"default":0.1}]})J", "t.frag",
+        "vec4 transition(vec2 uv){ return mix(sampleFrom(uv), sampleTo(uv), step(uv.x, uProgress)); }");
+    writePlugin("hong", R"J({"id":"com.ui.hong","apiVersion":9,"type":"effect","entry":"x.frag"})J", "x.frag", "x");
+
     RenderEngine engine(p);
     engine.startEngine();
-    MainWindow w(p, engine);
+    MainWindow w(p, engine, {plugDir.path()});
     w.setAskOnClose(false);
     w.show();
     pump(1400);                                   // fps cap nhat moi 1 giay, monitor ~15Hz
@@ -249,6 +271,128 @@ int main(int argc, char** argv) {
     emit scenes->itemClicked(scenes->item(target2));
     pump(300);
     CHECK(!ch->inTransition() && ch->program != target2 && ch->preview == target2, "AUTO tat: bam Scene chi vao Preview");
+
+
+    // ---- M4a: Plugin Manager, chon transition, tab Effect ----
+    {
+        auto* plist = w.findChild<QListWidget*>("pluginList");
+        QStringList texts;
+        for (int i = 0; i < plist->count(); ++i) texts << plist->item(i)->text();
+        const QString all = texts.join("\n");
+        CHECK(all.contains("Làm mờ") && all.contains("dựng sẵn") && all.contains("Dao mau (test)") && all.contains("Quet (test)"),
+              "Plugin Manager: liet ke Effect/Transition dung san va plug-in nguoi dung");
+        CHECK(all.contains("⚠") && all.contains("apiVersion 9"), "Plugin Manager: plug-in hong hien kem ly do (apiVersion 9)");
+
+        auto* tc = w.findChild<QComboBox*>("transCombo");
+        auto itemIdx = [&](const QString& key) { return tc->findData(key); };
+        CHECK(itemIdx("p:builtin.push") >= 0 && itemIdx("p:builtin.luma") >= 0 && itemIdx("p:com.ui.sweep") >= 0 && itemIdx("s") >= 0,
+              "Thanh chuyen co Push, Luma wipe, plug-in nguoi dung va Stinger");
+
+        // TAKE bang transition plug-in dung san (Push) + easing
+        emit scenes->itemDoubleClicked(scenes->item(0));
+        pump(250);
+        emit scenes->itemClicked(scenes->item(1));
+        pump(250);
+        auto* dur = w.findChild<QDoubleSpinBox*>();
+        for (auto* d : w.findChildren<QDoubleSpinBox*>()) if (d->suffix() == " s") dur = d;
+        dur->setValue(0.4);
+        tc->setCurrentIndex(itemIdx("p:builtin.push"));
+        w.findChild<QComboBox*>("easingCombo")->setCurrentIndex(1);        // Tuyen tinh
+        TransitionSpec sp = w.currentSpec();
+        CHECK(sp.type == TransitionType::Plugin && sp.pluginId == "builtin.push" && sp.easing == Easing::Linear && std::abs(sp.duration - 0.4) < 1e-9,
+              "currentSpec(): Plugin + id + easing + thoi luong theo thanh chuyen");
+        CHECK(!w.findChild<QPushButton*>("transParams")->isHidden(), "Push co tham so (huong) -> hien nut 'Tham so...'");
+        const int pgBefore = ch->program;
+        button(&w, "TAKE")->click();
+        pump(150);
+        CHECK(ch->inTransition(), "TAKE voi Push: dang chuyen");
+        pump(700);
+        CHECK(!ch->inTransition() && ch->program != pgBefore, "Push xong: Program doi");
+        CHECK(engine.registry().compileError("builtin.push").isEmpty(), "Push bien dich tren GPU khong loi");
+
+        tc->setCurrentIndex(itemIdx("s"));
+        sp = w.currentSpec();
+        CHECK(sp.type == TransitionType::Stinger && !sp.stinger && w.findChild<QComboBox*>("stingerCombo")->currentText().contains("chưa có video"),
+              "Stinger khi chua co video: bao '(chua co video)', spec khong co nguon (engine roi ve Fade)");
+        tc->setCurrentIndex(0);
+    }
+    {
+        // dua scene 0 len Program roi gan Effect vao layer cua no
+        emit scenes->itemDoubleClicked(scenes->item(0));
+        pump(300);
+        insp->setCurrentIndex(1);                                        // tab Effect
+        auto* plist = w.findChild<QListWidget*>("pluginList");
+        auto* fl = insp->effectList();
+        auto* addCombo = insp->findChild<QComboBox*>("effectAddCombo");
+        CHECK(fl && addCombo && addCombo->findData("builtin.blur") >= 0 && addCombo->findData("com.ui.invert") >= 0 &&
+                  addCombo->findData("builtin.push") < 0, "Tab Effect: danh sach them gom Effect dung san + plug-in, khong lan Transition");
+        const size_t scene0 = 0;
+        addCombo->setCurrentIndex(addCombo->findData("builtin.colorgrade"));
+        insp->findChild<QPushButton*>("effectAdd")->click();
+        pump(300);
+        CHECK(p.scenes[scene0]->layers[0].effects.size() == 1 && p.scenes[scene0]->layers[0].effects[0].effectId == "builtin.colorgrade" &&
+                  fl->count() == 1 && fl->currentRow() == 0, "Them Effect vao layer: engine nhan duoc, danh sach cap nhat");
+        auto* sat = insp->findChild<QDoubleSpinBox*>("param_saturation");
+        CHECK(sat != nullptr && std::abs(sat->value() - 1.0) < 1e-9, "Bo chinh tham so tu sinh: o 'saturation' co gia tri mac dinh 1");
+        sat->setValue(0.0);
+        pump(900);
+        const QColor px = engine.monitor(0).program.pixelColor(5, 5);
+        CHECK(std::abs(p.scenes[scene0]->layers[0].effects[0].params["saturation"].toDouble()) < 1e-9 &&
+                  std::abs(px.red() - px.green()) <= 6 && std::abs(px.green() - px.blue()) <= 6,
+              "Doi tham so -> Program tren monitor chuyen sang xam (Effect that su chay tren GPU)");
+        us->undo();
+        pump(300);
+        CHECK(std::abs(p.scenes[scene0]->layers[0].effects[0].params["saturation"].toDouble() - 1.0) < 1e-9 &&
+                  std::abs(insp->findChild<QDoubleSpinBox*>("param_saturation")->value() - 1.0) < 1e-9, "Hoan tac tham so Effect (engine + o nhap)");
+        us->redo();
+        pump(200);
+
+        fl->item(0)->setCheckState(Qt::Unchecked);
+        pump(200);
+        CHECK(!p.scenes[scene0]->layers[0].effects[0].enabled, "Bo tick Effect = tat");
+        fl->item(0)->setCheckState(Qt::Checked);
+        pump(200);
+
+        // plug-in nguoi dung + tham so + nap lai nong + tat plug-in
+        addCombo->setCurrentIndex(addCombo->findData("com.ui.invert"));
+        insp->findChild<QPushButton*>("effectAdd")->click();
+        pump(300);
+        CHECK(fl->count() == 2 && insp->findChild<QDoubleSpinBox*>("param_amount") != nullptr, "Them Effect cua plug-in: tham so (amount) tu sinh tu manifest");
+        const int rev1 = engine.registry().find("com.ui.invert")->revision;
+        writePlugin("invert", R"J({"id":"com.ui.invert","name":"Dao mau (test)","apiVersion":1,"type":"effect","version":"1.3","author":"Test","entry":"fx.frag",
+            "params":[{"name":"amount","label":"Muc do","type":"float","min":0,"max":1,"default":1}]})J", "fx.frag", invertShader + "\n// hot");
+        QElapsedTimer tm; tm.start();
+        while (engine.registry().find("com.ui.invert")->revision == rev1 && tm.elapsed() < 4000) pump(50);
+        CHECK(engine.registry().find("com.ui.invert")->revision > rev1, "Sua file shader plug-in: tu nap lai (hot reload) qua giao dien");
+        pump(300);
+
+        for (int i = 0; i < plist->count(); ++i)
+            if (plist->item(i)->data(Qt::UserRole).toString() == "com.ui.invert") plist->item(i)->setCheckState(Qt::Unchecked);
+        pump(500);
+        CHECK(!engine.registry().find("com.ui.invert") && fl->item(1)->text().startsWith("⚠ thiếu plug-in"),
+              "Tat plug-in: Effect dung no hien '⚠ thieu plug-in' (khong mat du lieu)");
+        CHECK(p.scenes[scene0]->layers[0].effects.size() == 2, "Du lieu Effect van con trong Scene");
+        for (int i = 0; i < plist->count(); ++i)
+            if (plist->item(i)->data(Qt::UserRole).toString() == "com.ui.invert") plist->item(i)->setCheckState(Qt::Checked);
+        pump(500);
+        CHECK(engine.registry().find("com.ui.invert") && fl->item(1)->text().startsWith("Dao mau"), "Bat lai plug-in: Effect hoat dong lai");
+
+        fl->setCurrentRow(1);
+        insp->findChild<QPushButton*>("effectDel")->click();
+        pump(200);
+        CHECK(p.scenes[scene0]->layers[0].effects.size() == 1, "Go Effect");
+        us->undo();
+        pump(200);
+        CHECK(p.scenes[scene0]->layers[0].effects.size() == 2, "Hoan tac go Effect");
+        us->redo();
+        pump(200);
+        // go het Effect de cac buoc sau (luu/mo, ...) khong bi anh huong
+        fl->setCurrentRow(0);
+        insp->findChild<QPushButton*>("effectDel")->click();
+        pump(200);
+        CHECK(p.scenes[scene0]->layers[0].effects.empty(), "Go het Effect");
+        insp->setCurrentIndex(0);
+    }
 
     // ---- Nhap media -> Scene moi ----
     QImage img(32, 18, QImage::Format_RGBA8888); img.fill(Qt::green);

@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 #include "InspectorPanel.h"
 #include "MonitorWidget.h"
+#include "ParamEditor.h"
 #include "render/OutputWindow.h"
 #include "Theme.h"
 #include <QAction>
@@ -9,6 +10,8 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QDesktopServices>
+#include <QDialog>
 #include <QDockWidget>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
@@ -26,6 +29,7 @@
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QToolButton>
+#include <QUrl>
 #include <QVBoxLayout>
 
 namespace lc {
@@ -33,7 +37,9 @@ namespace lc {
 static const QStringList kImageExt = {"png", "jpg", "jpeg", "bmp", "gif", "webp"};
 static const char* kMediaFilter = "Media (*.mp4 *.mov *.mkv *.avi *.webm *.png *.jpg *.jpeg *.bmp *.gif *.webp);;Tất cả (*.*)";
 
-MainWindow::MainWindow(Project& project, RenderEngine& engine) : project_(project), engine_(engine), sup_(engine) {
+MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList pluginDirs)
+    : project_(project), engine_(engine), sup_(engine), pm_(engine.registry(), std::move(pluginDirs)) {
+    pm_.rescan();                                   // nap Effect/Transition dung san + plug-in truoc khi dung giao dien
     for (const auto& c : project_.channels) {
         std::vector<QString> names;
         for (const auto& s : c->scenes) names.push_back(s->name);
@@ -96,9 +102,23 @@ void MainWindow::buildUi() {
     auto* takeB = new QPushButton("TAKE");
     takeB->setObjectName("take");
     transCombo_ = new QComboBox;
-    for (auto t : {TransitionType::Fade, TransitionType::DipToBlack, TransitionType::WipeLeft, TransitionType::WipeRight,
-                   TransitionType::WipeUp, TransitionType::WipeDown})
-        transCombo_->addItem(transitionName(t), int(t));
+    transCombo_->setObjectName("transCombo");
+    easingCombo_ = new QComboBox;
+    easingCombo_->setObjectName("easingCombo");
+    for (auto e : {Easing::EaseInOut, Easing::Linear, Easing::EaseIn, Easing::EaseOut}) easingCombo_->addItem(easingName(e), int(e));
+    easingCombo_->setToolTip("Đường cong tốc độ của hiệu ứng (T-bar kéo tay luôn tuyến tính)");
+    paramsBtn_ = new QPushButton("Tham số…");
+    paramsBtn_->setObjectName("transParams");
+    stingerCombo_ = new QComboBox;
+    stingerCombo_->setObjectName("stingerCombo");
+    stingerCombo_->setToolTip("Video có kênh alpha chạy đè lên lúc chuyển cảnh");
+    cutSpin_ = new QDoubleSpinBox;
+    cutSpin_->setObjectName("cutPoint");
+    cutSpin_->setRange(0.05, 0.95);
+    cutSpin_->setSingleStep(0.05);
+    cutSpin_->setValue(0.5);
+    cutSpin_->setPrefix("cắt tại ");
+    cutSpin_->setToolTip("Thời điểm (tỉ lệ 0–1 của video stinger) đổi cảnh phía dưới");
     durSpin_ = new QDoubleSpinBox;
     durSpin_->setRange(0.1, 10);
     durSpin_->setSingleStep(0.1);
@@ -122,7 +142,7 @@ void MainWindow::buildUi() {
     ftb_->setObjectName("ftb");
     ftb_->setCheckable(true);
     ftb_->setToolTip("Fade-To-Black: làm mờ dần Program của kênh đang chọn về đen (bấm lại để trở lại)");
-    for (QWidget* w : std::initializer_list<QWidget*>{cutB, takeB, autoBtn_, transCombo_, durSpin_}) bar->addWidget(w);
+    for (QWidget* w : std::initializer_list<QWidget*>{cutB, takeB, autoBtn_, transCombo_, paramsBtn_, stingerCombo_, cutSpin_, easingCombo_, durSpin_}) bar->addWidget(w);
     bar->addSpacing(12);
     bar->addWidget(new QLabel("T-bar"));
     bar->addWidget(tbar_);
@@ -137,12 +157,16 @@ void MainWindow::buildUi() {
     connect(blackAll_, &QPushButton::clicked, this, [this](bool on) { setBlackAll(on); });
     connect(ftb_, &QPushButton::clicked, this, [this] { toggleFtb(); });
     connect(chanCombo_, &QComboBox::currentIndexChanged, this, [this] { rebuildSceneList(); });
+    connect(transCombo_, &QComboBox::currentIndexChanged, this, [this] { onTransitionChanged(); });
+    connect(stingerCombo_, &QComboBox::currentIndexChanged, this, [this] { onTransitionChanged(); });
+    connect(paramsBtn_, &QPushButton::clicked, this, [this] { editTransitionParams(); });
+    rebuildTransitionCombo();
     connect(tbar_, &QSlider::valueChanged, this, [this](int v) {
         tbarMovedMs_ = QDateTime::currentMSecsSinceEpoch();
         auto ch = project_.channels[channelIdx()];
-        const auto tt = TransitionType(transCombo_->currentData().toInt());
+        const TransitionSpec spec = currentSpec();
         const float t = float(v) / 1000.0f;
-        engine_.post([ch, tt, t](double) { ch->setManual(tt, t); });
+        engine_.post([ch, spec, t](double) { ch->setManual(spec, t); });
     });
 
     // Phim tat theo dac ta: Space = TAKE, Enter = CUT, B = BLACK ALL, 1-9 = chon Preview
@@ -173,9 +197,8 @@ void MainWindow::buildDocks() {
         auto ch = project_.channels[channelIdx()];
         const int idx = sceneList_->row(it);
         if (autoBtn_->isChecked()) {                       // AUTO: chon scene = chuyen thang len Program
-            const auto tt = TransitionType(transCombo_->currentData().toInt());
-            const double d = durSpin_->value();
-            engine_.post([ch, idx, tt, d](double now) { ch->setPreview(idx); ch->startTransition(tt, d, now); });
+            const TransitionSpec spec = currentSpec();
+            engine_.post([ch, idx, spec](double now) { ch->setPreview(idx); ch->startTransition(spec, now); });
         } else {
             engine_.post([ch, idx](double) { ch->setPreview(idx); });
         }
@@ -280,9 +303,75 @@ void MainWindow::buildDocks() {
         });
     });
 
+
+    // Plug-in Manager
+    auto* plugDock = new QDockWidget("Plug-in", this);
+    plugDock->setObjectName("dockPlugins");
+    auto* pw = new QWidget;
+    auto* pv = new QVBoxLayout(pw);
+    pluginList_ = new QListWidget;
+    pluginList_->setObjectName("pluginList");
+    pluginList_->setWordWrap(true);
+    pv->addWidget(pluginList_);
+    auto* prow = new QHBoxLayout;
+    auto* rescanB = new QPushButton("Quét lại");
+    rescanB->setObjectName("pluginRescan");
+    auto* openB = new QPushButton("Mở thư mục plug-in");
+    prow->addWidget(rescanB);
+    prow->addWidget(openB);
+    pv->addLayout(prow);
+    auto* hint = new QLabel("Tự nạp lại khi bạn sửa file shader. Xem docs/PLUGIN-SDK.md để viết plug-in.");
+    hint->setWordWrap(true);
+    pv->addWidget(hint);
+    plugDock->setWidget(pw);
+    tabifyDockWidget(inspDock, plugDock);
+    inspDock->raise();
+    connect(rescanB, &QPushButton::clicked, this, [this] { pm_.rescan(); });
+    connect(openB, &QPushButton::clicked, this, [this] {
+        const QString dir = pm_.dirs().isEmpty() ? QString() : pm_.dirs().last();
+        QDir().mkpath(dir);
+        QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+    });
+    connect(pluginList_, &QListWidget::itemChanged, this, [this](QListWidgetItem* it) {
+        const QString id = it->data(Qt::UserRole).toString();
+        if (!id.isEmpty() && (it->flags() & Qt::ItemIsUserCheckable)) pm_.setEnabled(id, it->checkState() == Qt::Checked);
+    });
+    connect(&pm_, &PluginManager::changed, this, [this] {
+        rebuildPluginList();
+        rebuildTransitionCombo();
+        inspector_->refreshEffectCatalog();
+    });
+    rebuildPluginList();
+    pm_.watch(true);
+
     setCorner(Qt::BottomRightCorner, Qt::RightDockWidgetArea);
     rebuildSceneList();
     rebuildMediaList();
+}
+
+void MainWindow::rebuildPluginList() {
+    QSignalBlocker b(pluginList_);
+    pluginList_->clear();
+    for (const PluginInfo& i : engine_.registry().infos()) {
+        const QString kind = i.kind == EffectDef::Effect ? "Effect" : "Transition";
+        QListWidgetItem* it;
+        if (!i.ok && !i.builtin) {
+            it = new QListWidgetItem(QString("⚠ %1\n%2").arg(QFileInfo(i.dir).fileName(), i.error));
+            it->setForeground(QColor(colors::kProgram));
+            it->setFlags(it->flags() & ~Qt::ItemIsUserCheckable);
+        } else {
+            it = new QListWidgetItem(QString("%1  ·  %2%3%4").arg(i.name, kind, i.builtin ? "  ·  dựng sẵn" : QString("  ·  v%1  ·  %2").arg(i.version, i.author),
+                                                               i.ok ? "" : "\n⚠ " + i.error));
+            it->setToolTip(i.description);
+            if (!i.builtin) {
+                it->setFlags(it->flags() | Qt::ItemIsUserCheckable);
+                it->setCheckState(i.enabled ? Qt::Checked : Qt::Unchecked);
+            }
+            if (!i.ok) it->setForeground(QColor(colors::kWarn));
+        }
+        it->setData(Qt::UserRole, i.builtin ? QString() : i.id);
+        pluginList_->addItem(it);
+    }
 }
 
 void MainWindow::buildMenus() {
@@ -332,9 +421,91 @@ void MainWindow::cut() {
 
 void MainWindow::take() {
     auto ch = project_.channels[channelIdx()];
-    const auto tt = TransitionType(transCombo_->currentData().toInt());
-    const double d = durSpin_->value();
-    engine_.post([ch, tt, d](double now) { ch->startTransition(tt, d, now); });
+    const TransitionSpec spec = currentSpec();
+    engine_.post([ch, spec](double now) { ch->startTransition(spec, now); });
+}
+
+TransitionSpec MainWindow::currentSpec() const {
+    TransitionSpec s;
+    s.easing = Easing(easingCombo_->currentData().toInt());
+    s.duration = durSpin_->value();
+    const QString key = transCombo_->currentData().toString();
+    if (key.startsWith("b:")) {
+        s.type = TransitionType(key.mid(2).toInt());
+    } else if (key.startsWith("p:")) {
+        s.type = TransitionType::Plugin;
+        s.pluginId = key.mid(2);
+        s.params = transParams_.value(s.pluginId);
+    } else if (key == "s") {
+        s.type = TransitionType::Stinger;
+        const int k = stingerCombo_->currentData().toInt();
+        if (stingerCombo_->currentIndex() >= 0 && k >= 0 && k < int(project_.sources.size())) {
+            s.stinger = project_.sources[k].source;
+            s.cutPoint = cutSpin_->value();
+            if (s.stinger && s.stinger->durationSeconds() > 0) s.duration = s.stinger->durationSeconds();
+        }
+    }
+    return s;
+}
+
+void MainWindow::rebuildTransitionCombo() {
+    const QString keep = transCombo_->currentData().toString();
+    QSignalBlocker b(transCombo_);
+    transCombo_->clear();
+    for (auto t : {TransitionType::Fade, TransitionType::DipToBlack, TransitionType::WipeLeft, TransitionType::WipeRight,
+                   TransitionType::WipeUp, TransitionType::WipeDown})
+        transCombo_->addItem(transitionName(t), "b:" + QString::number(int(t)));
+    for (const auto& d : engine_.registry().all(EffectDef::Transition)) transCombo_->addItem(d->name, "p:" + d->id);
+    transCombo_->addItem("Stinger (video alpha)", "s");
+    const int k = transCombo_->findData(keep);
+    transCombo_->setCurrentIndex(k >= 0 ? k : 0);
+
+    {
+        QSignalBlocker bs(stingerCombo_);
+        const QVariant keepSt = stingerCombo_->currentData();
+        stingerCombo_->clear();
+        for (size_t i = 0; i < project_.sources.size(); ++i)
+            if (project_.sources[i].type == "video") stingerCombo_->addItem(project_.sources[i].source ? project_.sources[i].source->name() : project_.sources[i].id, int(i));
+        if (stingerCombo_->count() == 0) stingerCombo_->addItem("(chưa có video)", -1);
+        const int ks = stingerCombo_->findData(keepSt);
+        stingerCombo_->setCurrentIndex(ks >= 0 ? ks : 0);
+    }
+    onTransitionChanged();
+}
+
+void MainWindow::onTransitionChanged() {
+    const QString key = transCombo_->currentData().toString();
+    const bool stinger = key == "s";
+    stingerCombo_->setVisible(stinger);
+    cutSpin_->setVisible(stinger);
+    durSpin_->setEnabled(!stinger || !(stingerCombo_->currentData().toInt() >= 0 && stingerCombo_->currentIndex() >= 0 &&
+                                      project_.sources[stingerCombo_->currentData().toInt()].source &&
+                                      project_.sources[stingerCombo_->currentData().toInt()].source->durationSeconds() > 0));
+    bool hasParams = false;
+    if (key.startsWith("p:")) {
+        auto d = engine_.registry().find(key.mid(2));
+        hasParams = d && !d->params.isEmpty();
+    }
+    paramsBtn_->setVisible(hasParams);
+}
+
+void MainWindow::editTransitionParams() {
+    const QString key = transCombo_->currentData().toString();
+    if (!key.startsWith("p:")) return;
+    auto def = engine_.registry().find(key.mid(2));
+    if (!def) return;
+    QDialog dlg(this);
+    dlg.setWindowTitle("Tham số: " + def->name);
+    auto* lay = new QVBoxLayout(&dlg);
+    auto* ed = new ParamEditor(def, transParams_.value(def->id));
+    ed->setObjectName("transitionParams");
+    lay->addWidget(ed);
+    connect(ed, &ParamEditor::changed, this, [this, id = def->id](const QVariantMap& v, int) { transParams_[id] = v; });
+    auto* close = new QPushButton("Đóng");
+    lay->addWidget(close);
+    connect(close, &QPushButton::clicked, &dlg, &QDialog::accept);
+    dlg.exec();
+    transParams_[def->id] = ed->values();
 }
 
 void MainWindow::setBlackAll(bool on) {
@@ -412,6 +583,7 @@ void MainWindow::refreshSlow() {
         r.freeze->setChecked(sink->freeze);
         r.pattern->setChecked(sink->testPattern);
     }
+    inspector_->updateEffectNote();
     const bool stalled = engine_.stalled();
     if (stalled != lastStalled_) {
         lastStalled_ = stalled;

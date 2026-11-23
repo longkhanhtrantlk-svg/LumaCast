@@ -9,9 +9,10 @@
 | M2 | Project JSON, hiệu chỉnh màu, video wall, nhiều Layer, video dọc | ✅ xong | #1 |
 | M3a | Giao diện Live Control: monitor, Scene list, Media Pool, Outputs, Inspector, FTB, Đen/Dừng, tự lưu | ✅ xong | #1 |
 | M3b | Hoàn tác/làm lại, T-bar, AUTO, panel Layer kéo-thả | ✅ xong | #2 |
-| M3c | Độ tin cậy: log, watchdog, mất màn, mẫu thử theo Output, thống kê khung | 🟡 phần mã xong; còn thử trên phần cứng thật | (nhánh `m3c`) |
+| M3c | Độ tin cậy: log, watchdog, mất màn, mẫu thử theo Output, thống kê khung | 🟡 phần mã xong; còn thử trên phần cứng thật | #4 |
+| M4a | Effect trên Layer, Transition mới + Stinger + easing, plug-in shader, Plugin Manager | 🟡 phần mã xong; còn thử trên Windows | (nhánh `m4a`) |
 
-Quy mô mã: khoảng 4.500 dòng C++ · 137 kiểm tra tự động · build được trên Linux và Windows (MSVC 2022, Qt 6.8.3, FFmpeg 9.1).
+Quy mô mã: khoảng 6.500 dòng C++ (gồm test) · 225 kiểm tra tự động · build được trên Linux và Windows (MSVC 2022, Qt 6.8.3, FFmpeg 9.1).
 
 **Chưa được xác nhận trên phần cứng thật** (rủi ro đã biết, xem mục 5): nút Dừng hình trên Windows; fullscreen đúng màn LED;
 4 Output 4K; chạy liên tục nhiều giờ.
@@ -41,16 +42,17 @@ Kích cỡ: **S** vài ngày · **M** 1–2 tuần · **L** vài tuần (ước 
 - **Nghiệm thu:** 4 Output chạy ≥ 1 giờ, khung rơi < 0,1 %; rút một màn thì cảnh báo đúng Output; checklist Windows không còn mục "chưa thử" ở nhóm P0.
 - **Phụ thuộc:** máy Windows có nhiều màn hình, tốt nhất có màn LED/bộ gửi tín hiệu thật.
 
-### M4a — Effect, transition bổ sung, plug-in shader · Kích cỡ: L
-- [ ] Giao diện nội bộ `Effect` (1 texture vào, 1 ra, tham số), chuỗi Effect trên Layer/Scene bằng FBO ping-pong (SCN-06).
-- [ ] Effect dựng sẵn: blur, glow/bloom, chỉnh màu (LUT 1D), RGB split, pixelate, noise.
-- [ ] Transition mới: Stinger (video alpha, điểm cắt), Luma wipe, Push/Slide, Zoom; easing chọn được (CHN-08).
-- [ ] Trình nạp plug-in shader: GLSL + `plugin.json` (loại, tham số, mặc định), theo tinh thần ISF; nạp lại nóng (PLG-01).
-- [ ] Giao diện tham số tự sinh từ manifest (slider, màu, bật/tắt, danh sách chọn); lưu tham số vào project.
-- [ ] Bảo vệ plug-in: biên dịch shader lỗi → vô hiệu hoá + báo lỗi, không crash (PLG-03).
-- [ ] Plugin Manager cơ bản (danh sách, bật/tắt) (PLG-04); cập nhật `PROJECT-FORMAT.md` (bản 2 hoặc trường tuỳ chọn).
-- **Nghiệm thu:** thêm một Effect vào Layer, chỉnh tham số, thấy đổi ở Program; thả một file shader mới vào thư mục plug-in thì dùng được không cần khởi động lại; shader lỗi không làm sập ứng dụng; test render cho từng Effect/Transition.
-- **Phụ thuộc:** M3c (nền ổn định). **Rủi ro:** hiệu năng nhiều Effect ở 4K → đo bằng T-4K.
+### M4a — Effect, transition bổ sung, plug-in shader · Kích cỡ: L · **phần mã xong; còn thử trên phần cứng thật**
+- [x] Giao diện `EffectDef` (1 texture vào → 1 ra, tham số) và chuỗi Effect **trên Layer** bằng FBO ping-pong (SCN-06). *Chưa làm:* Effect cấp Scene (dùng Effect trên một Layer phủ kín Scene thay thế tạm).
+- [x] Effect dựng sẵn: làm mờ, phát sáng (glow), chỉnh màu (sáng/tương phản/bão hoà/sắc độ/gamma), tách RGB, pixelate, nhiễu hạt. *Thay đổi so với kế hoạch:* chỉnh màu thay cho LUT 1D (LUT cần texture phụ, chưa có trong SDK).
+- [x] Transition mới: Push, Slide, Zoom, Luma wipe (5 mẫu), **Stinger** (video alpha, điểm cắt, phát lại từ đầu); easing chọn được (CHN-08). T-bar không hỗ trợ Stinger.
+- [x] Trình nạp plug-in shader: GLSL + `plugin.json`, kiểm tra manifest/entry, nạp lại nóng, bật/tắt, ghi đè theo thư mục (PLG-01). Tài liệu: `PLUGIN-SDK.md`; 4 plug-in mẫu.
+- [x] Giao diện tham số tự sinh (số, tick, danh sách, màu, điểm); Effect lưu trong project (giữ dữ liệu khi thiếu plug-in); hoàn tác được.
+- [x] Biên dịch shader lỗi → Effect bị bỏ qua + báo lỗi + log, không crash; Transition lỗi → Fade (PLG-03, một phần).
+- [x] Plugin Manager cơ bản: danh sách, bật/tắt, lý do lỗi, quét lại, mở thư mục (PLG-04, một phần). `PROJECT-FORMAT.md`: thêm `layers[].effects` (trường tuỳ chọn, vẫn `version` 1).
+- [ ] **Chưa làm / chuyển sang sau:** plug-in native (DLL, C ABI) → sau M5; bảo vệ shader chạy vô hạn/quá nặng (không có cách an toàn trong cùng tiến trình; cần tiến trình riêng, M6); lưu transition đang chọn vào project; benchmark B5.
+- **Nghiệm thu:** thêm một Effect vào Layer, chỉnh tham số, thấy đổi ở Program (✅ test); thả một file shader mới vào thư mục plug-in thì dùng được không cần khởi động lại (✅ test hot reload); shader lỗi không làm sập ứng dụng (✅ test); test render cho từng Effect/Transition (✅). **Còn lại:** chạy thử trên Windows (T-FX, T-TRX, T-PLG, T-STG) và đo B5.
+- **Phụ thuộc:** M3c. **Rủi ro:** hiệu năng nhiều Effect ở 4K (chưa đo); shader plug-in nặng có thể treo GPU.
 
 ### M4b — Timeline và keyframe · Kích cỡ: L
 - [ ] Thêm xoay và crop cho Layer (SCN-04), blend mode (SCN-05) — là thuộc tính cần animate.

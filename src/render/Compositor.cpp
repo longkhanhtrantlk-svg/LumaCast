@@ -1,5 +1,6 @@
 #include "Compositor.h"
 #include <QMatrix2x2>
+#include <QVector3D>
 #include <QVector4D>
 #include <QtMath>
 #include <algorithm>
@@ -29,6 +30,29 @@ void main() {
     vec4 c = texture(uTex, vUv);
     o = vec4(c.rgb, c.a * uOpacity);
 })";
+
+// Shader cuoi cung cua Output: hieu chinh tuong phan/do sang/gain/gamma.
+static const char* kFragOut = R"(#version 330 core
+uniform sampler2D uTex;
+uniform float uBrightness;
+uniform float uContrast;
+uniform float uGamma;
+uniform vec3 uGain;
+in vec2 vUv;
+out vec4 o;
+void main() {
+    vec3 c = texture(uTex, vUv).rgb;
+    c = (c - 0.5) * uContrast + 0.5;
+    c *= uBrightness * uGain;
+    c = pow(clamp(c, 0.0, 1.0), vec3(1.0 / uGamma));
+    o = vec4(c, 1.0);
+})";
+
+static const char* kFragSolid = R"(#version 330 core
+uniform vec4 uColor;
+in vec2 vUv;
+out vec4 o;
+void main() { o = uColor; })";
 
 // Mode: 1 fade, 2 dip-to-black, 3 wipe-left, 4 wipe-right, 5 wipe-up, 6 wipe-down.
 static const char* kFragTrans = R"(#version 330 core
@@ -66,13 +90,17 @@ bool Compositor::init() {
     if (!gl_.initializeOpenGLFunctions()) return false;
     gl_.glGenVertexArrays(1, &vao_);
     blit_ = makeProgram(kFragBlit);
+    out_ = makeProgram(kFragOut);
     trans_ = makeProgram(kFragTrans);
-    return blit_ && trans_;
+    solid_ = makeProgram(kFragSolid);
+    return blit_ && out_ && trans_ && solid_;
 }
 
 void Compositor::shutdown() {
     blit_.reset();
+    out_.reset();
     trans_.reset();
+    solid_.reset();
     if (vao_) gl_.glDeleteVertexArrays(1, &vao_);
     vao_ = 0;
 }
@@ -109,21 +137,27 @@ void Compositor::renderScene(const Scene& scene, RenderTarget& dst) {
         if (!tex.id || tex.w <= 0 || tex.h <= 0) continue;
 
         double px = l.rect.x() * W, py = l.rect.y() * H, pw = l.rect.width() * W, ph = l.rect.height() * H;
-        const double sa = double(tex.w) / tex.h, ra = pw / ph;
+        // Video dien thoai: texture luu ngang nhung hien thi xoay 90/270 -> ti le hieu dung bi hoan doi.
+        const bool sideways = (tex.rotation / 90) % 2 != 0;
+        const double sa = sideways ? double(tex.h) / tex.w : double(tex.w) / tex.h, ra = pw / ph;
         // uv: day anh (v=1) o day quad, dinh anh (v=0) o dinh quad.
         double u0 = 0, u1 = 1, vTop = 0, vBot = 1;
         if (l.fit == LayerFit::Fit) {
             if (sa > ra) { const double nh = pw / sa; py += (ph - nh) / 2; ph = nh; }
             else         { const double nw = ph * sa; px += (pw - nw) / 2; pw = nw; }
         } else if (l.fit == LayerFit::Fill) {
-            if (sa > ra) { const double f = ra / sa; u0 = (1 - f) / 2; u1 = u0 + f; }
-            else         { const double f = sa / ra; vTop = (1 - f) / 2; vBot = vTop + f; }
+            // phan cat tinh trong khong gian DA XOAY (fu, fv); doi ve khong gian texture goc truoc khi xoay
+            double fu = 1, fv = 1;
+            if (sa > ra) fu = ra / sa; else fv = sa / ra;
+            const double cu = sideways ? fv : fu, cv = sideways ? fu : fv;
+            u0 = (1 - cu) / 2; u1 = u0 + cu;
+            vTop = (1 - cv) / 2; vBot = vTop + cv;
         }
         const QVector4D clip(float((px + pw / 2) / W * 2 - 1), float(1 - (py + ph / 2) / H * 2),
                              float(pw / W), float(ph / H));
         gl_.glBindTexture(GL_TEXTURE_2D, tex.id);
         blit_->setUniformValue("uOpacity", l.opacity);
-        drawQuad(*blit_, clip, QVector4D(float(u0), float(vBot), float(u1), float(vTop)), 0);
+        drawQuad(*blit_, clip, QVector4D(float(u0), float(vBot), float(u1), float(vTop)), float(tex.rotation));
     }
     gl_.glDisable(GL_BLEND);
 }
@@ -153,6 +187,31 @@ void Compositor::renderTransition(const RenderTarget& a, const RenderTarget& b, 
     gl_.glActiveTexture(GL_TEXTURE0);
 }
 
+QImage Compositor::thumbnail(TargetPool& pool, const RenderTarget& src, int maxW) {
+    const int tw = std::max(1, std::min(maxW, src.w));
+    const int th = std::max(1, int(std::lround(double(tw) * src.h / src.w)));
+    RenderTarget* t = pool.acquire(tw, th);
+    gl_.glBindFramebuffer(GL_FRAMEBUFFER, t->fbo);
+    OutputConfig cfg;
+    cfg.scale = ScaleMode::Stretch;
+    drawToCurrent(src.tex, src.w, src.h, cfg, tw, th);
+    QImage img(tw, th, QImage::Format_RGBA8888);
+    gl_.glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    gl_.glReadPixels(0, 0, tw, th, GL_RGBA, GL_UNSIGNED_BYTE, img.bits());
+    return img.mirrored(false, true);                 // GL goc duoi-trai -> anh goc tren-trai
+}
+
+void Compositor::fadeToBlack(RenderTarget& dst, float amount) {
+    gl_.glBindFramebuffer(GL_FRAMEBUFFER, dst.fbo);
+    gl_.glViewport(0, 0, dst.w, dst.h);
+    gl_.glEnable(GL_BLEND);
+    gl_.glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    solid_->bind();
+    solid_->setUniformValue("uColor", QVector4D(0, 0, 0, std::clamp(amount, 0.0f, 1.0f)));
+    drawQuad(*solid_, QVector4D(0, 0, 1, 1), QVector4D(0, 0, 1, 1), 0);
+    gl_.glDisable(GL_BLEND);
+}
+
 void Compositor::drawToCurrent(GLuint tex, int texW, int texH, const OutputConfig& cfg, int winW, int winH) {
     gl_.glViewport(0, 0, winW, winH);
     gl_.glClearColor(0, 0, 0, 1);
@@ -176,12 +235,16 @@ void Compositor::drawToCurrent(GLuint tex, int texW, int texH, const OutputConfi
     // crop toa do tren-trai -> uv goc duoi-trai
     const QVector4D uv(float(crop.left()), float(1 - crop.bottom()), float(crop.right()), float(1 - crop.top()));
 
-    blit_->bind();
-    blit_->setUniformValue("uTex", 0);
-    blit_->setUniformValue("uOpacity", 1.0f);
+    const Calibration& k = cfg.cal;
+    out_->bind();
+    out_->setUniformValue("uTex", 0);
+    out_->setUniformValue("uBrightness", k.brightness);
+    out_->setUniformValue("uContrast", k.contrast);
+    out_->setUniformValue("uGamma", std::max(0.1f, k.gamma));
+    out_->setUniformValue("uGain", QVector3D(k.gainR, k.gainG, k.gainB));
     gl_.glActiveTexture(GL_TEXTURE0);
     gl_.glBindTexture(GL_TEXTURE_2D, tex);
-    drawQuad(*blit_, clip, uv, float(cfg.rotation));
+    drawQuad(*out_, clip, uv, float(cfg.rotation));
 }
 
 } // namespace lc

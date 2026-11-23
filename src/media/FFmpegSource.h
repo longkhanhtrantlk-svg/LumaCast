@@ -16,12 +16,14 @@ public:
     ~FFmpegSource() override;
     QString name() const override { return name_; }
     TexRef acquire(GL& gl) override;
+    QImage snapshot(int maxWidth = 160) const override;
     QString error() const;     // rong neu khong loi
 
 private:
     struct Frame {
         std::vector<uint8_t> rgba;
         int w = 0, h = 0;
+        int rotation = 0;       // do xoay hien thi (theo chieu kim dong ho), tu display matrix
         uint64_t seq = 0;
     };
     void run();
@@ -36,6 +38,7 @@ private:
     std::shared_ptr<Frame> latest_;
     QString error_;
     uint64_t uploaded_ = 0;
+    int rotation_ = 0;
     GlTexture tex_;
 };
 

@@ -1,5 +1,6 @@
 #include "StaticSources.h"
 #include <QFileInfo>
+#include <QImageReader>
 #include <QPainter>
 
 namespace lc {
@@ -61,7 +62,9 @@ ImageSource::ImageSource(QImage img, QString name)
     : img_(img.convertToFormat(QImage::Format_RGBA8888)), name_(std::move(name)) {}
 
 std::shared_ptr<ImageSource> ImageSource::fromFile(const QString& path) {
-    QImage img(path);
+    QImageReader reader(path);
+    reader.setAutoTransform(true);                      // ton trong EXIF orientation
+    QImage img = reader.read();
     if (img.isNull()) return nullptr;
     return std::make_shared<ImageSource>(img, QFileInfo(path).fileName());
 }
@@ -72,6 +75,16 @@ TexRef ImageSource::acquire(GL& gl) {
         uploaded_ = true;
     }
     return {tex_.id(), tex_.w(), tex_.h()};
+}
+
+QImage ImageSource::snapshot(int maxWidth) const {
+    return img_.isNull() ? QImage() : img_.scaledToWidth(std::min(maxWidth, img_.width()), Qt::SmoothTransformation);
+}
+
+QImage ColorSource::snapshot(int maxWidth) const {
+    QImage img(maxWidth, std::max(1, maxWidth * 9 / 16), QImage::Format_RGBA8888);
+    img.fill(color_);
+    return img;
 }
 
 TexRef ColorSource::acquire(GL& gl) {

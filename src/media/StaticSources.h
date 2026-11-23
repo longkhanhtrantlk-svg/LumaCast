@@ -13,6 +13,7 @@ public:
     static std::shared_ptr<ImageSource> fromFile(const QString& path);   // nullptr neu loi
     QString name() const override { return name_; }
     TexRef acquire(GL& gl) override;
+    QImage snapshot(int maxWidth = 160) const override;
 private:
     QImage img_;
     QString name_;
@@ -25,6 +26,7 @@ public:
     ColorSource(QColor c, QString name) : color_(c), name_(std::move(name)) {}
     QString name() const override { return name_; }
     TexRef acquire(GL& gl) override;
+    QImage snapshot(int maxWidth = 160) const override;
 private:
     QColor color_;
     QString name_;

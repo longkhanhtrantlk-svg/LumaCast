@@ -22,6 +22,7 @@ OutputWindow::OutputWindow(const OutputConfig& cfg) : cfg_(cfg) {
 
 void OutputWindow::present(QOpenGLContext& ctx, Compositor& comp, RenderTarget* src) {
     if (!isExposed()) return;
+    if (freeze && !black) return;          // khong ve, khong swap -> man hinh giu khung cuoi
     ctx.makeCurrent(this);
     const int W = int(width() * devicePixelRatio()), H = int(height() * devicePixelRatio());
     comp.gl().glBindFramebuffer(GL_FRAMEBUFFER, ctx.defaultFramebufferObject());
@@ -33,6 +34,7 @@ void OutputWindow::present(QOpenGLContext& ctx, Compositor& comp, RenderTarget* 
         comp.drawToCurrent(src->tex, src->w, src->h, cfg_, W, H);
     }
     ctx.swapBuffers(this);
+    ++presented;
 }
 
 void OutputWindow::keyPressEvent(QKeyEvent* e) {

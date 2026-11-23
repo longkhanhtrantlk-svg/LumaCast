@@ -257,3 +257,18 @@ Loi (Source/Scene/Channel/Compositor) khong phu thuoc LED. Dich den la giao dien
 hien co `OutputWindow` (man hinh LED/projector/LCD qua cua so fullscreen); sau nay them NDI out, ghi file/RTMP/SRT,
 Art-Net/sACN/DMX. Tinh nang rieng tung loai man hinh (hieu chinh mau LED, edge blending + warp cho projector) di vao
 module rieng, cam vao truoc buoc `present()`. Ten San pham: **LumaCast** (phu de hien tai: "LED Display Controller").
+
+## 15. Trang thai M2
+- Project JSON phien ban 1 (`core/Project.cpp`): sources (id on dinh), scenes (layers), channels, outputs (crop, calibration). Ghi nguyen tu (QSaveFile); mo file loi tra thong bao ro rang, khong crash.
+- Hieu chinh mau o shader Output cuoi: `out = pow(clamp(((c-0.5)*contrast+0.5)*brightness*gain), 1/gamma)`.
+- Wall = nhieu Output cung 1 Channel, moi cai crop 1 o cua canvas (`makeWall`). Chua bu khe/bezel.
+- Mo hinh luong: moi sua doi tu UI di qua `RenderEngine::post()`, UI giu ban sao Layer/Output (cache) de khong doc du lieu render thread dang ghi.
+
+## 16. Quyet dinh san pham (23/11/2026)
+- Ten san pham: **LumaCast** (mo ta: "LED Display Controller"). Tai lieu "LED Control Studio Product Concept v1.0" la dac ta UI/UX tham chieu.
+- Nen tang: **Windows truoc**. **macOS can nhung chua phai luc nay.** Giu OpenGL 3.3; `Compositor` + `GlHelpers` + phan upload texture cua nguon la
+  ranh gioi GPU duy nhat (~600 dong) -> khi lam macOS se thay bang RHI (QRhi/Metal) o day, khong dong vao UI hay loi.
+- UI: Qt Widgets (dock panel), giao dien toi. Khong dung Qt Quick.
+- M3a (UI Live Control): monitor Preview/Program, Scene list, Media Pool, thanh chuyen (CUT/TAKE), BLACK ALL, FTB, Outputs (Black/Freeze/trang thai),
+  Inspector (Layer, Output), menu File (Open/Save/Recent), autosave + khoi phuc, layout luu/khoi phuc, xac nhan khi thoat.
+- M3b: Layers panel hoan chinh, Undo/Redo, T-bar, timeline/keyframe (Phase 3 cua tai lieu concept).

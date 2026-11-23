@@ -2,9 +2,11 @@
 #include "render/OutputWindow.h"
 #include <QElapsedTimer>
 #include <QGuiApplication>
+#include <QScreen>
 #include <chrono>
 #include <thread>
 #ifdef _WIN32
+#define NOMINMAX
 #include <windows.h>
 #include <timeapi.h>
 #endif
@@ -24,6 +26,21 @@ double RenderEngine::now() const {
 
 QString RenderEngine::error() const { return error_; }
 
+QString RenderEngine::gpuName() const {
+    std::lock_guard lk(monitorMutex_);
+    return gpu_;
+}
+
+RenderEngine::MonitorFrame RenderEngine::monitor(int ch) const {
+    std::lock_guard lk(monitorMutex_);
+    return ch >= 0 && ch < int(monitors_.size()) ? monitors_[ch] : MonitorFrame{};
+}
+
+void RenderEngine::syncOutputsToProject() {
+    for (size_t i = 0; i < sinks_.size() && i < project_.outputs.size(); ++i)
+        project_.outputs[i] = sinks_[i]->config();
+}
+
 void RenderEngine::post(std::function<void(double)> fn) {
     std::lock_guard lk(mutex_);
     commands_.push_back(std::move(fn));
@@ -34,13 +51,27 @@ void RenderEngine::startEngine() {
     surface_ = std::make_unique<QOffscreenSurface>();            // phai tao tren thread chinh
     surface_->setFormat(QSurfaceFormat::defaultFormat());
     surface_->create();
-    int i = 0;
+    // Che do cua so (phat trien): xep cac output thanh hang ngang duoi bang dieu khien, xuong dong khi het cho.
+    const QRect avail = QGuiApplication::primaryScreen()->availableGeometry();
+    int x = avail.left() + 20, y = avail.top() + 420, rowH = 0;
     for (const OutputConfig& cfg : project_.outputs) {
         auto w = std::make_unique<OutputWindow>(cfg);
-        if (!cfg.fullscreen) w->setPosition(60 + 40 * i, 60 + 40 * i);
-        if (cfg.fullscreen) w->showFullScreen(); else w->show();
+        if (cfg.fullscreen) {
+            w->showFullScreen();
+        } else {
+            // Cua so thu nghiem: thu nho neu lon hon man hinh (giu ti le), xep hang ngang, luon nam trong man hinh.
+            QSize sz = cfg.size;
+            const QSize maxSz(int(avail.width() * 0.6), int(avail.height() * 0.5));
+            if (sz.width() > maxSz.width() || sz.height() > maxSz.height()) sz = sz.scaled(maxSz, Qt::KeepAspectRatio);
+            w->resize(sz);
+            if (x + sz.width() > avail.right() && x > avail.left() + 20) { x = avail.left() + 20; y += rowH + 30; rowH = 0; }
+            const int py = std::min(y, std::max(avail.top(), avail.bottom() - sz.height() - 40));
+            w->setPosition(std::min(x, std::max(avail.left(), avail.right() - sz.width())), py);
+            x += sz.width() + 12;
+            rowH = std::max(rowH, sz.height());
+            w->show();
+        }
         sinks_.push_back(std::move(w));
-        ++i;
     }
     stop_ = false;
     start();
@@ -70,6 +101,13 @@ void RenderEngine::run() {
         return;
     }
     TargetPool pool(comp.gl());
+    {
+        std::lock_guard lk(monitorMutex_);
+        gpu_ = QString::fromUtf8(reinterpret_cast<const char*>(comp.gl().glGetString(GL_RENDERER)));
+        monitors_.assign(project_.channels.size(), MonitorFrame{});
+    }
+    const int monitorEvery = std::max(1, int(project_.fps / 15.0));
+    int monitorTick = 0;
 
     const auto period = std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(1.0 / project_.fps));
     auto next = Clock::now();
@@ -93,6 +131,19 @@ void RenderEngine::run() {
         for (size_t i = 0; i < project_.channels.size(); ++i)
             chanOut[i] = project_.channels[i]->render(comp, pool, t);
 
+        // 2b) anh thu nho cho monitor UI (~15 lan/giay)
+        if (++monitorTick >= monitorEvery) {
+            monitorTick = 0;
+            std::vector<MonitorFrame> mf(project_.channels.size());
+            for (size_t i = 0; i < project_.channels.size(); ++i) {
+                if (chanOut[i]) mf[i].program = comp.thumbnail(pool, *chanOut[i], 480);
+                if (RenderTarget* pv = project_.channels[i]->renderPreview(comp, pool))
+                    mf[i].preview = comp.thumbnail(pool, *pv, 480);
+            }
+            std::lock_guard lk(monitorMutex_);
+            monitors_ = std::move(mf);
+        }
+
         // 3) dua ra tung Output
         for (auto& sink : sinks_) {
             const int ch = sink->config().channel;
@@ -108,6 +159,7 @@ void RenderEngine::run() {
             fpsMark = nowC;
         }
         next += period;
+        if (nowC > next) dropped_ += 1 + uint64_t((nowC - next) / period);   // khung xong sau han chot = roi khung
         if (next < nowC - period * 4) next = nowC;               // tre qua nhieu -> bo qua, khong don
         const auto wake = next - std::chrono::milliseconds(1);
         if (Clock::now() < wake) std::this_thread::sleep_until(wake);

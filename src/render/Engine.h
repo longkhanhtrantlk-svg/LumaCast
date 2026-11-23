@@ -1,6 +1,7 @@
 #pragma once
-#include "core/Channel.h"
+#include "core/Project.h"
 #include "render/OutputSink.h"
+#include <QImage>
 #include <QOffscreenSurface>
 #include <QThread>
 #include <atomic>
@@ -8,13 +9,6 @@
 #include <mutex>
 
 namespace lc {
-
-struct Project {
-    std::vector<std::shared_ptr<Scene>> scenes;
-    std::vector<std::shared_ptr<Channel>> channels;
-    std::vector<OutputConfig> outputs;
-    double fps = 60.0;
-};
 
 // Mot render thread duy nhat cho moi Output -> cac man LED ghep khong bi lech khung.
 class RenderEngine : public QThread {
@@ -32,6 +26,13 @@ public:
     int outputCount() const { return int(sinks_.size()); }
     OutputSink* output(int i) const { return sinks_[i].get(); }
     QString error() const;
+    QString gpuName() const;
+    uint64_t droppedFrames() const { return dropped_; }
+    // Anh monitor (cap nhat ~15 lan/giay) cua Program/Preview cua mot Channel.
+    struct MonitorFrame { QImage program, preview; };
+    MonitorFrame monitor(int channel) const;
+    // Render thread (goi trong post): chep cau hinh Output hien tai ve Project de luu file.
+    void syncOutputsToProject();
 
 protected:
     void run() override;
@@ -44,7 +45,10 @@ private:
     std::vector<std::function<void(double)>> commands_;
     std::atomic<double> fps_{0};
     std::atomic<bool> stop_{false};
-    QString error_;
+    QString error_, gpu_;
+    std::atomic<uint64_t> dropped_{0};
+    mutable std::mutex monitorMutex_;
+    std::vector<MonitorFrame> monitors_;
     qint64 t0_ = 0;
 };
 

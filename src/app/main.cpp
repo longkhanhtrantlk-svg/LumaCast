@@ -1,7 +1,9 @@
-#include "ControlPanel.h"
+#include "MainWindow.h"
+#include "Theme.h"
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QFileInfo>
+#include <QMessageBox>
 #include <QRegularExpression>
 #include <QSurfaceFormat>
 
@@ -41,6 +43,8 @@ int main(int argc, char** argv) {
     QSurfaceFormat::setDefaultFormat(fmt);
 
     QApplication app(argc, argv);
+    app.setApplicationName("LumaCast");
+    applyDarkTheme(app);
     QCommandLineParser cli;
     cli.setApplicationDescription("LumaCast - LED Display Controller");
     cli.addHelpOption();
@@ -58,10 +62,20 @@ int main(int argc, char** argv) {
     Project proj;
     if (cli.isSet("project")) {
         QString err;
-        if (!loadProject(proj, cli.value("project"), &err)) {
+        QString toLoad = cli.value("project");
+        // Khoi phuc: neu ban autosave moi hon file project (vd mat dien giua show) thi hoi nguoi dung.
+        const QFileInfo main(toLoad), autosave(toLoad + ".autosave");
+        if (autosave.exists() && (!main.exists() || autosave.lastModified() > main.lastModified()) &&
+            QMessageBox::question(nullptr, "Khoi phuc project",
+                                  QString("Tim thay ban tu dong luu moi hon:\n%1\n(%2)\n\nKhoi phuc ban nay?")
+                                      .arg(autosave.fileName(), autosave.lastModified().toString("dd/MM/yyyy HH:mm:ss")),
+                                  QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes) == QMessageBox::Yes)
+            toLoad = autosave.filePath();
+        if (!loadProject(proj, toLoad, &err)) {
             qCritical().noquote() << "Khong mo duoc project:" << err;
             return 2;
         }
+        proj.filePath = cli.value("project");           // luu lai vao file goc, ke ca khi nap tu autosave
         if (cli.isSet("fullscreen"))
             for (auto& o : proj.outputs) o.fullscreen = true;
     } else {
@@ -133,8 +147,8 @@ int main(int argc, char** argv) {
 
     RenderEngine engine(proj);
     engine.startEngine();
-    ControlPanel panel(proj, engine);
-    panel.show();
+    MainWindow window(proj, engine);
+    window.show();
     const int rc = app.exec();
     engine.stopEngine();
     if (!engine.error().isEmpty()) qCritical().noquote() << engine.error();

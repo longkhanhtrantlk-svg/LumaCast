@@ -26,6 +26,29 @@ void Channel::startTransition(TransitionType type, double seconds, double now) {
 }
 
 RenderTarget* Channel::render(Compositor& comp, TargetPool& pool, double now) {
+    RenderTarget* out = renderProgram(comp, pool, now);
+    float a = ftbAmount;
+    if (ftbLast_ >= 0) {
+        const float step = float((now - ftbLast_) / std::max(0.05, ftbDuration_));
+        a = ftbTarget ? std::min(1.0f, a + step) : std::max(0.0f, a - step);
+    } else if (ftbTarget) {
+        a = 1.0f;
+    }
+    ftbLast_ = now;
+    ftbAmount = a;
+    if (a > 0.0f) comp.fadeToBlack(*out, a);
+    return out;
+}
+
+RenderTarget* Channel::renderPreview(Compositor& comp, TargetPool& pool) {
+    Scene* s = sceneAt(preview);
+    if (!s) return nullptr;
+    RenderTarget* t = pool.acquire(s->size.width(), s->size.height());
+    comp.renderScene(*s, *t);
+    return t;
+}
+
+RenderTarget* Channel::renderProgram(Compositor& comp, TargetPool& pool, double now) {
     if (active_) {
         double t = (now - start_) / duration_;
         if (t >= 1.0) finish();

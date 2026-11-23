@@ -48,6 +48,12 @@ void main() {
     o = vec4(c, 1.0);
 })";
 
+static const char* kFragSolid = R"(#version 330 core
+uniform vec4 uColor;
+in vec2 vUv;
+out vec4 o;
+void main() { o = uColor; })";
+
 // Mode: 1 fade, 2 dip-to-black, 3 wipe-left, 4 wipe-right, 5 wipe-up, 6 wipe-down.
 static const char* kFragTrans = R"(#version 330 core
 uniform sampler2D uA;
@@ -86,13 +92,15 @@ bool Compositor::init() {
     blit_ = makeProgram(kFragBlit);
     out_ = makeProgram(kFragOut);
     trans_ = makeProgram(kFragTrans);
-    return blit_ && out_ && trans_;
+    solid_ = makeProgram(kFragSolid);
+    return blit_ && out_ && trans_ && solid_;
 }
 
 void Compositor::shutdown() {
     blit_.reset();
     out_.reset();
     trans_.reset();
+    solid_.reset();
     if (vao_) gl_.glDeleteVertexArrays(1, &vao_);
     vao_ = 0;
 }
@@ -177,6 +185,31 @@ void Compositor::renderTransition(const RenderTarget& a, const RenderTarget& b, 
     trans_->setUniformValue("uMode", mode);
     drawQuad(*trans_, QVector4D(0, 0, 1, 1), QVector4D(0, 0, 1, 1), 0);
     gl_.glActiveTexture(GL_TEXTURE0);
+}
+
+QImage Compositor::thumbnail(TargetPool& pool, const RenderTarget& src, int maxW) {
+    const int tw = std::max(1, std::min(maxW, src.w));
+    const int th = std::max(1, int(std::lround(double(tw) * src.h / src.w)));
+    RenderTarget* t = pool.acquire(tw, th);
+    gl_.glBindFramebuffer(GL_FRAMEBUFFER, t->fbo);
+    OutputConfig cfg;
+    cfg.scale = ScaleMode::Stretch;
+    drawToCurrent(src.tex, src.w, src.h, cfg, tw, th);
+    QImage img(tw, th, QImage::Format_RGBA8888);
+    gl_.glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    gl_.glReadPixels(0, 0, tw, th, GL_RGBA, GL_UNSIGNED_BYTE, img.bits());
+    return img.mirrored(false, true);                 // GL goc duoi-trai -> anh goc tren-trai
+}
+
+void Compositor::fadeToBlack(RenderTarget& dst, float amount) {
+    gl_.glBindFramebuffer(GL_FRAMEBUFFER, dst.fbo);
+    gl_.glViewport(0, 0, dst.w, dst.h);
+    gl_.glEnable(GL_BLEND);
+    gl_.glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    solid_->bind();
+    solid_->setUniformValue("uColor", QVector4D(0, 0, 0, std::clamp(amount, 0.0f, 1.0f)));
+    drawQuad(*solid_, QVector4D(0, 0, 1, 1), QVector4D(0, 0, 1, 1), 0);
+    gl_.glDisable(GL_BLEND);
 }
 
 void Compositor::drawToCurrent(GLuint tex, int texW, int texH, const OutputConfig& cfg, int winW, int winH) {

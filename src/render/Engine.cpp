@@ -25,6 +25,16 @@ double RenderEngine::now() const {
 
 QString RenderEngine::error() const { return error_; }
 
+QString RenderEngine::gpuName() const {
+    std::lock_guard lk(monitorMutex_);
+    return gpu_;
+}
+
+RenderEngine::MonitorFrame RenderEngine::monitor(int ch) const {
+    std::lock_guard lk(monitorMutex_);
+    return ch >= 0 && ch < int(monitors_.size()) ? monitors_[ch] : MonitorFrame{};
+}
+
 void RenderEngine::syncOutputsToProject() {
     for (size_t i = 0; i < sinks_.size() && i < project_.outputs.size(); ++i)
         project_.outputs[i] = sinks_[i]->config();
@@ -83,6 +93,13 @@ void RenderEngine::run() {
         return;
     }
     TargetPool pool(comp.gl());
+    {
+        std::lock_guard lk(monitorMutex_);
+        gpu_ = QString::fromUtf8(reinterpret_cast<const char*>(comp.gl().glGetString(GL_RENDERER)));
+        monitors_.assign(project_.channels.size(), MonitorFrame{});
+    }
+    const int monitorEvery = std::max(1, int(project_.fps / 15.0));
+    int monitorTick = 0;
 
     const auto period = std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(1.0 / project_.fps));
     auto next = Clock::now();
@@ -106,6 +123,19 @@ void RenderEngine::run() {
         for (size_t i = 0; i < project_.channels.size(); ++i)
             chanOut[i] = project_.channels[i]->render(comp, pool, t);
 
+        // 2b) anh thu nho cho monitor UI (~15 lan/giay)
+        if (++monitorTick >= monitorEvery) {
+            monitorTick = 0;
+            std::vector<MonitorFrame> mf(project_.channels.size());
+            for (size_t i = 0; i < project_.channels.size(); ++i) {
+                if (chanOut[i]) mf[i].program = comp.thumbnail(pool, *chanOut[i], 480);
+                if (RenderTarget* pv = project_.channels[i]->renderPreview(comp, pool))
+                    mf[i].preview = comp.thumbnail(pool, *pv, 480);
+            }
+            std::lock_guard lk(monitorMutex_);
+            monitors_ = std::move(mf);
+        }
+
         // 3) dua ra tung Output
         for (auto& sink : sinks_) {
             const int ch = sink->config().channel;
@@ -121,6 +151,7 @@ void RenderEngine::run() {
             fpsMark = nowC;
         }
         next += period;
+        if (nowC > next) dropped_ += 1 + uint64_t((nowC - next) / period);   // khung xong sau han chot = roi khung
         if (next < nowC - period * 4) next = nowC;               // tre qua nhieu -> bo qua, khong don
         const auto wake = next - std::chrono::milliseconds(1);
         if (Clock::now() < wake) std::this_thread::sleep_until(wake);

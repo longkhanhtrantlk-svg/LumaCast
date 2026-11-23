@@ -16,6 +16,7 @@ public:
     ~FFmpegSource() override;
     QString name() const override { return name_; }
     TexRef acquire(GL& gl) override;
+    QImage snapshot(int maxWidth = 160) const override;
     QString error() const;     // rong neu khong loi
 
 private:

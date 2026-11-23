@@ -77,6 +77,16 @@ TexRef ImageSource::acquire(GL& gl) {
     return {tex_.id(), tex_.w(), tex_.h()};
 }
 
+QImage ImageSource::snapshot(int maxWidth) const {
+    return img_.isNull() ? QImage() : img_.scaledToWidth(std::min(maxWidth, img_.width()), Qt::SmoothTransformation);
+}
+
+QImage ColorSource::snapshot(int maxWidth) const {
+    QImage img(maxWidth, std::max(1, maxWidth * 9 / 16), QImage::Format_RGBA8888);
+    img.fill(color_);
+    return img;
+}
+
 TexRef ColorSource::acquire(GL& gl) {
     if (!uploaded_) {
         const uint8_t px[4] = {uint8_t(color_.red()), uint8_t(color_.green()), uint8_t(color_.blue()),

@@ -14,7 +14,9 @@ public:
     virtual OutputConfig& mutableConfig() = 0;     // CHI goi tren render thread (qua RenderEngine::post)
     // Render thread, context GL da tao. src = texture Program cua kenh (co the nullptr).
     virtual void present(QOpenGLContext& ctx, Compositor& comp, RenderTarget* src) = 0;
-    std::atomic<bool> black{false};      // ngat hinh tuc thi
+    std::atomic<bool> black{false};      // ngat hinh tuc thi (uu tien hon freeze)
+    std::atomic<bool> freeze{false};     // giu nguyen khung hinh cuoi tren man hinh
+    std::atomic<uint64_t> presented{0};  // so khung da dua ra (de tinh FPS tung output)
 };
 
 } // namespace lc

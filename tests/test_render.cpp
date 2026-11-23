@@ -294,6 +294,50 @@ int main(int argc, char** argv) {
         CHECK(!loadProject(bad, dir.filePath("kenh.json"), &err), "Output tro toi kenh khong ton tai -> bao loi");
     }
 
+
+    // --- Fade-To-Black, thumbnail monitor, snapshot nguon ---
+    {
+        Channel ch; ch.size = {64, 36};
+        ch.scenes = {colorScene("red", Qt::red), colorScene("blue", Qt::blue)};
+        ch.program = 0; ch.preview = 1;
+        pool.beginFrame();
+        ch.render(comp, pool, 100.0);                       // moc thoi gian
+        ch.toggleFtb(1.0);
+        pool.beginFrame();
+        auto* t = ch.render(comp, pool, 100.5);             // nua duong: do -> 50% den
+        CHECK(near(readPx(gl, *t, 5, 5), 127, 0, 0, 8) && std::abs(ch.ftbAmount - 0.5f) < 0.02f, "FTB 50%: do giam con ~ nua");
+        pool.beginFrame();
+        t = ch.render(comp, pool, 101.5);
+        CHECK(near(readPx(gl, *t, 5, 5), 0, 0, 0) && ch.ftbAmount == 1.0f, "FTB xong: den hoan toan");
+        ch.toggleFtb(1.0);                                   // bam lan nua -> tro lai
+        pool.beginFrame();
+        ch.render(comp, pool, 103.0);
+        CHECK(ch.ftbAmount == 0.0f, "FTB lan 2: tro lai hinh binh thuong");
+
+        // Preview thumbnail: scene xanh duong; Program do
+        pool.beginFrame();
+        auto* prog = ch.render(comp, pool, 104.0);
+        auto* prev = ch.renderPreview(comp, pool);
+        QImage tp = comp.thumbnail(pool, *prog, 32), tv = comp.thumbnail(pool, *prev, 32);
+        CHECK(tp.width() == 32 && tp.height() == 18 && tp.pixelColor(5, 5) == QColor(255, 0, 0) &&
+                  tv.pixelColor(5, 5) == QColor(0, 0, 255), "Thumbnail: dung kich thuoc, Program do, Preview xanh");
+    }
+    { // thumbnail khong lat nguoc: nua tren do, nua duoi xanh
+        QImage img(20, 20, QImage::Format_RGBA8888); img.fill(Qt::blue);
+        for (int y = 0; y < 10; ++y) for (int x = 0; x < 20; ++x) img.setPixelColor(x, y, Qt::red);
+        auto sc = std::make_shared<Scene>(); sc->size = {20, 20};
+        sc->layers.push_back({std::make_shared<ImageSource>(img, "i"), {0, 0, 1, 1}, 1.0f, LayerFit::Stretch});
+        pool.beginFrame();
+        auto* t = pool.acquire(20, 20);
+        comp.renderScene(*sc, *t);
+        QImage th = comp.thumbnail(pool, *t, 10);
+        CHECK(th.pixelColor(5, 1) == QColor(255, 0, 0) && th.pixelColor(5, 8) == QColor(0, 0, 255),
+              "Thumbnail giu dung chieu (tren do, duoi xanh)");
+        ImageSource is(img, "i");
+        CHECK(is.snapshot(10).width() == 10 && ColorSource(Qt::green, "g").snapshot(16).pixelColor(1, 1) == QColor(0, 255, 0),
+              "Source::snapshot cho anh va mau");
+    }
+
     // --- FFmpeg ---
     {
         const char* path = "/tmp/lumacast_test_red.mp4";

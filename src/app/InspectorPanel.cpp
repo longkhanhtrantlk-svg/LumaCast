@@ -1,15 +1,13 @@
-#include "ControlPanel.h"
+#include "InspectorPanel.h"
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
-#include <QFileDialog>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QPushButton>
 #include <QScrollArea>
-#include <QShortcut>
-#include <QTabWidget>
+#include <QTimer>
 
 namespace lc {
 
@@ -22,112 +20,21 @@ static QDoubleSpinBox* spin(double lo, double hi, double step, double v, int dec
     return s;
 }
 
-ControlPanel::ControlPanel(Project& project, RenderEngine& engine) : project_(project), engine_(engine) {
-    setWindowTitle("LumaCast - dieu khien");
+InspectorPanel::InspectorPanel(Project& project, RenderEngine& engine, QWidget* parent)
+    : QTabWidget(parent), project_(project), engine_(engine) {
     for (const auto& s : project_.scenes) layerCache_.push_back(s->layers);
     for (int i = 0; i < engine_.outputCount(); ++i) outCache_.push_back(engine_.output(i)->config());
-
-    auto* root = new QVBoxLayout(this);
-    auto* tabs = new QTabWidget;
-    tabs->addTab(buildChannelsTab(), "Kenh");
-    tabs->addTab(buildSceneTab(), "Scene / Layer");
-    tabs->addTab(buildOutputTab(), "Output");
-    root->addWidget(tabs);
-
-    auto* bar = new QHBoxLayout;
-    auto* saveB = new QPushButton("Luu project");
-    auto* saveAs = new QPushButton("Luu thanh...");
-    fpsLabel_ = new QLabel;
-    status_ = new QLabel;
-    bar->addWidget(saveB);
-    bar->addWidget(saveAs);
-    bar->addWidget(fpsLabel_);
-    bar->addStretch();
-    root->addLayout(bar);
-    root->addWidget(status_);
-    connect(saveB, &QPushButton::clicked, this, [this] { save(false); });
-    connect(saveAs, &QPushButton::clicked, this, [this] { save(true); });
-    new QShortcut(QKeySequence::Save, this, [this] { save(false); });
-
-    connect(&timer_, &QTimer::timeout, this, [this] { refresh(); });
-    timer_.start(100);
-    refresh();
+    addTab(buildSceneTab(), "Scene / Layer");
+    addTab(buildOutputTab(), "Output");
 }
 
-// ---------------- tab Kenh ----------------
+// ---------------- Scene / Layer ----------------
 
-QWidget* ControlPanel::buildChannelsTab() {
-    auto* page = new QWidget;
-    auto* root = new QVBoxLayout(page);
-    for (size_t ci = 0; ci < project_.channels.size(); ++ci) {
-        std::shared_ptr<Channel> ch = project_.channels[ci];
-        auto* box = new QGroupBox(QString("Kenh %1: %2").arg(ci + 1).arg(ch->name));
-        auto* v = new QVBoxLayout(box);
-
-        auto* status = new QHBoxLayout;
-        auto* prog = new QLabel, * prev = new QLabel;
-        prog->setStyleSheet("color:#ff5555;font-weight:bold");
-        prev->setStyleSheet("color:#55dd55;font-weight:bold");
-        status->addWidget(prog);
-        status->addWidget(prev);
-        v->addLayout(status);
-        chanUi_.push_back({prog, prev});
-
-        auto* scenes = new QHBoxLayout;
-        for (size_t si = 0; si < ch->scenes.size(); ++si) {
-            auto* b = new QPushButton(QString("%1  %2").arg(si + 1).arg(ch->scenes[si]->name));
-            const int idx = int(si);
-            connect(b, &QPushButton::clicked, this, [this, ch, idx] {
-                engine_.post([ch, idx](double) { ch->setPreview(idx); });
-            });
-            scenes->addWidget(b);
-            if (ci == 0 && si < 9) {
-                auto* sc = new QShortcut(QKeySequence(Qt::Key_1 + int(si)), this);
-                connect(sc, &QShortcut::activated, b, &QPushButton::click);
-            }
-        }
-        v->addLayout(scenes);
-
-        auto* tr = new QHBoxLayout;
-        auto* type = new QComboBox;
-        for (auto t : {TransitionType::Fade, TransitionType::DipToBlack, TransitionType::WipeLeft,
-                       TransitionType::WipeRight, TransitionType::WipeUp, TransitionType::WipeDown})
-            type->addItem(transitionName(t), int(t));
-        auto* dur = spin(0.1, 10, 0.1, 1.0, 1);
-        dur->setSuffix(" s");
-        auto* cut = new QPushButton("CUT");
-        auto* autoB = new QPushButton("AUTO");
-        tr->addWidget(type);
-        tr->addWidget(dur);
-        tr->addWidget(cut);
-        tr->addWidget(autoB);
-        v->addLayout(tr);
-        root->addWidget(box);
-
-        connect(cut, &QPushButton::clicked, this, [this, ch] { engine_.post([ch](double) { ch->cut(); }); });
-        connect(autoB, &QPushButton::clicked, this, [this, ch, type, dur] {
-            const auto tt = TransitionType(type->currentData().toInt());
-            const double d = dur->value();
-            engine_.post([ch, tt, d](double now) { ch->startTransition(tt, d, now); });
-        });
-        if (ci == 0) {
-            connect(new QShortcut(QKeySequence(Qt::Key_Space), this), &QShortcut::activated, autoB, &QPushButton::click);
-            connect(new QShortcut(QKeySequence(Qt::Key_Return), this), &QShortcut::activated, cut, &QPushButton::click);
-        }
-    }
-    root->addStretch();
-    return page;
-}
-
-// ---------------- tab Scene / Layer ----------------
-
-QWidget* ControlPanel::buildSceneTab() {
+QWidget* InspectorPanel::buildSceneTab() {
     auto* page = new QWidget;
     auto* v = new QVBoxLayout(page);
 
     sceneCombo_ = new QComboBox;
-    for (const auto& s : project_.scenes)
-        sceneCombo_->addItem(QString("%1  (%2x%3)").arg(s->name).arg(s->size.width()).arg(s->size.height()));
     v->addWidget(sceneCombo_);
 
     layerHost_ = new QWidget;
@@ -140,8 +47,6 @@ QWidget* ControlPanel::buildSceneTab() {
 
     auto* add = new QHBoxLayout;
     addSrcCombo_ = new QComboBox;
-    for (const auto& d : project_.sources)
-        addSrcCombo_->addItem(QString("%1 [%2]").arg(d.source ? d.source->name() : d.id, d.type));
     auto* addB = new QPushButton("Them layer");
     add->addWidget(addSrcCombo_, 1);
     add->addWidget(addB);
@@ -157,28 +62,42 @@ QWidget* ControlPanel::buildSceneTab() {
         pushLayers(si);
         rebuildLayerRows();
     });
-    rebuildLayerRows();
+    refreshFromProject();
     return page;
 }
 
-void ControlPanel::pushLayers(int si) {
+void InspectorPanel::refreshFromProject() {
+    while (layerCache_.size() < project_.scenes.size()) layerCache_.push_back(project_.scenes[layerCache_.size()]->layers);
+    const int keep = sceneCombo_->currentIndex();
+    sceneCombo_->blockSignals(true);
+    sceneCombo_->clear();
+    for (const auto& s : project_.scenes)
+        sceneCombo_->addItem(QString("%1  (%2x%3)").arg(s->name).arg(s->size.width()).arg(s->size.height()));
+    sceneCombo_->setCurrentIndex(keep >= 0 && keep < sceneCombo_->count() ? keep : (sceneCombo_->count() ? 0 : -1));
+    sceneCombo_->blockSignals(false);
+    addSrcCombo_->clear();
+    for (const auto& d : project_.sources)
+        addSrcCombo_->addItem(QString("%1 [%2]").arg(d.source ? d.source->name() : d.id, d.type));
+    rebuildLayerRows();
+}
+
+void InspectorPanel::pushLayers(int si) {
     auto scene = project_.scenes[si];
     auto layers = layerCache_[si];
     engine_.post([scene, layers](double) { scene->layers = layers; });
 }
 
-void ControlPanel::rebuildLayerRows() {
+void InspectorPanel::rebuildLayerRows() {
     while (QLayoutItem* it = layerRows_->takeAt(0)) {
         if (it->widget()) it->widget()->deleteLater();
         delete it;
     }
     const int si = sceneCombo_->currentIndex();
-    if (si < 0) return;
+    if (si < 0 || si >= int(layerCache_.size())) return;
     const auto& layers = layerCache_[si];
     for (int li = 0; li < int(layers.size()); ++li) {
         const Layer& l = layers[li];
-        const SourceDef* d = project_.findSource(l.source.get());
-        auto* row = new QGroupBox(QString("%1. %2").arg(li + 1).arg(d ? (l.source->name()) : "?"));
+        auto* row = new QGroupBox(QString("%1. %2").arg(li + 1).arg(l.source ? l.source->name() : "?"));
         auto* g = new QGridLayout(row);
 
         auto* vis = new QCheckBox("Hien");
@@ -225,7 +144,7 @@ void ControlPanel::rebuildLayerRows() {
             pushLayers(si);
             QTimer::singleShot(0, this, [this] { rebuildLayerRows(); });   // khong xoa widget dang xu ly click
         };
-        connect(up, &QPushButton::clicked, this, [=] { reorder(li, li - 1); });       // "len" = ve sau, hien tren
+        connect(up, &QPushButton::clicked, this, [=] { reorder(li, li - 1); });
         connect(down, &QPushButton::clicked, this, [=] { reorder(li, li + 1); });
         connect(del, &QPushButton::clicked, this, [this, si, li] {
             layerCache_[si].erase(layerCache_[si].begin() + li);
@@ -236,40 +155,34 @@ void ControlPanel::rebuildLayerRows() {
     }
 }
 
-// ---------------- tab Output ----------------
+// ---------------- Output ----------------
 
-void ControlPanel::pushOutput(int i) {
+void InspectorPanel::pushOutput(int i) {
     OutputSink* sink = engine_.output(i);
     OutputConfig cfg = outCache_[i];
     engine_.post([sink, cfg](double) { sink->mutableConfig() = cfg; });
 }
 
-QWidget* ControlPanel::buildOutputTab() {
+QWidget* InspectorPanel::buildOutputTab() {
     auto* host = new QWidget;
     auto* root = new QVBoxLayout(host);
     for (int i = 0; i < engine_.outputCount(); ++i) {
         const OutputConfig& c = outCache_[i];
         auto* box = new QGroupBox(QString("%1  (%2x%3, kenh %4)").arg(c.name).arg(c.size.width()).arg(c.size.height()).arg(c.channel + 1));
         auto* g = new QGridLayout(box);
-        OutputSink* sink = engine_.output(i);
-
-        auto* black = new QCheckBox("Den");
-        connect(black, &QCheckBox::toggled, this, [sink](bool on) { sink->black = on; });
-        g->addWidget(black, 0, 0);
 
         auto* scale = new QComboBox;
         scale->addItems({"Fit", "Fill", "Stretch", "Pixel 1:1"});
         scale->setCurrentIndex(int(c.scale));
         connect(scale, &QComboBox::currentIndexChanged, this, [this, i](int k) { outCache_[i].scale = ScaleMode(k); pushOutput(i); });
-        g->addWidget(scale, 0, 1);
+        g->addWidget(scale, 0, 0);
 
         auto* rot = new QComboBox;
-        rot->addItems({"0", "90", "180", "270"});
+        rot->addItems({"Xoay 0", "Xoay 90", "Xoay 180", "Xoay 270"});
         rot->setCurrentIndex(c.rotation / 90);
         connect(rot, &QComboBox::currentIndexChanged, this, [this, i](int k) { outCache_[i].rotation = k * 90; pushOutput(i); });
-        g->addWidget(rot, 0, 2);
+        g->addWidget(rot, 0, 1);
 
-        // Mapping: vung cua Channel hien tren output nay
         const char* cn[4] = {"crop x", "y", "w", "h"};
         const double cv[4] = {c.crop.x(), c.crop.y(), c.crop.width(), c.crop.height()};
         for (int k = 0; k < 4; ++k) {
@@ -281,10 +194,9 @@ QWidget* ControlPanel::buildOutputTab() {
                 else if (k == 2) r.setWidth(std::max(0.001, v)); else r.setHeight(std::max(0.001, v));
                 pushOutput(i);
             });
-            g->addWidget(sp, 1, k);
+            g->addWidget(sp, 1 + k / 2, k % 2);
         }
 
-        // Hieu chinh mau
         struct Item { const char* label; double lo, hi, step; float Calibration::*field; };
         const Item items[] = {
             {"sang", 0, 2, 0.05, &Calibration::brightness}, {"tuong phan", 0, 3, 0.05, &Calibration::contrast},
@@ -298,7 +210,7 @@ QWidget* ControlPanel::buildOutputTab() {
             connect(sp, &QDoubleSpinBox::valueChanged, this, [this, i, field](double v) {
                 outCache_[i].cal.*field = float(v); pushOutput(i);
             });
-            g->addWidget(sp, 2 + col / 3, col % 3);
+            g->addWidget(sp, 3 + col / 2, col % 2);
             ++col;
         }
         root->addWidget(box);
@@ -308,36 +220,6 @@ QWidget* ControlPanel::buildOutputTab() {
     sa->setWidgetResizable(true);
     sa->setWidget(host);
     return sa;
-}
-
-// ---------------- chung ----------------
-
-void ControlPanel::save(bool saveAs) {
-    QString path = project_.filePath;
-    if (path.isEmpty() || saveAs) {
-        path = QFileDialog::getSaveFileName(this, "Luu project", path.isEmpty() ? "project.lumacast.json" : path,
-                                            "LumaCast project (*.json)");
-        if (path.isEmpty()) return;
-    }
-    project_.filePath = path;
-    engine_.post([this, path](double) {
-        engine_.syncOutputsToProject();                     // lay cau hinh Output hien tai, tren render thread
-        QString err;
-        const bool ok = saveProject(project_, path, &err);
-        QMetaObject::invokeMethod(this, [this, ok, err, path] {
-            status_->setText(ok ? "Da luu: " + path : "Loi luu: " + err);
-        }, Qt::QueuedConnection);
-    });
-}
-
-void ControlPanel::refresh() {
-    for (size_t i = 0; i < chanUi_.size(); ++i) {
-        const Channel& c = *project_.channels[i];
-        auto nameOf = [&](int idx) { return idx >= 0 && idx < int(c.scenes.size()) ? c.scenes[idx]->name : "-"; };
-        chanUi_[i].program->setText("PROGRAM: " + nameOf(c.program) + (c.inTransition() ? "  (dang chuyen)" : ""));
-        chanUi_[i].preview->setText("PREVIEW: " + nameOf(c.preview));
-    }
-    fpsLabel_->setText(QString("Render: %1 fps").arg(engine_.fps(), 0, 'f', 1));
 }
 
 } // namespace lc

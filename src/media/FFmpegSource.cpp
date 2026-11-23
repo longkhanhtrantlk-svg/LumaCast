@@ -59,6 +59,18 @@ TexRef FFmpegSource::acquire(GL& gl) {
     return {tex_.id(), tex_.w(), tex_.h(), rotation_};
 }
 
+QImage FFmpegSource::snapshot(int maxWidth) const {
+    std::shared_ptr<Frame> f;
+    {
+        std::lock_guard lk(m_);
+        f = latest_;
+    }
+    if (!f) return {};
+    QImage img(f->rgba.data(), f->w, f->h, f->w * 4, QImage::Format_RGBA8888);   // f giu bo nho song
+    img = img.scaledToWidth(std::min(maxWidth, f->w), Qt::SmoothTransformation);   // scaled* tao ban sao
+    return f->rotation ? img.transformed(QTransform().rotate(f->rotation)) : img;
+}
+
 void FFmpegSource::run() {
     AVFormatContext* fmt = nullptr;
     AVCodecContext* cc = nullptr;

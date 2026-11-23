@@ -1,5 +1,6 @@
 #pragma once
 #include "render/GlHelpers.h"
+#include <QImage>
 #include <QString>
 
 namespace lc {
@@ -16,6 +17,8 @@ public:
     virtual ~Source() = default;
     virtual QString name() const = 0;
     virtual TexRef acquire(GL& gl) = 0;     // khung hinh moi nhat, dang texture GL
+    // Anh thu nho cho UI (Media Pool). Goi tu thread bat ky; rong neu chua co hinh.
+    virtual QImage snapshot(int maxWidth = 160) const { Q_UNUSED(maxWidth); return {}; }
 };
 
 } // namespace lc

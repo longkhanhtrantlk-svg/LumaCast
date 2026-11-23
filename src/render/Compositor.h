@@ -1,5 +1,6 @@
 #pragma once
 #include "core/Scene.h"
+#include <QImage>
 #include "render/GlHelpers.h"
 #include <QOpenGLShaderProgram>
 #include <memory>
@@ -18,6 +19,10 @@ public:
                           RenderTarget& dst);
     // Ve texture Channel vao framebuffer DANG BUOC (cua so hoac FBO) kich thuoc winW x winH.
     void drawToCurrent(GLuint tex, int texW, int texH, const OutputConfig& cfg, int winW, int winH);
+    // Thu nho texture (toi da maxW rong) va doc ve CPU cho monitor UI. Chay tren render thread.
+    QImage thumbnail(TargetPool& pool, const RenderTarget& src, int maxW);
+    // Phu den len dst voi do mo `amount` (0..1): dung cho Fade-To-Black.
+    void fadeToBlack(RenderTarget& dst, float amount);
     void shutdown();
 
 private:
@@ -25,7 +30,7 @@ private:
 
     GL gl_;
     GLuint vao_ = 0;
-    std::unique_ptr<QOpenGLShaderProgram> blit_, out_, trans_;
+    std::unique_ptr<QOpenGLShaderProgram> blit_, out_, trans_, solid_;
 };
 
 } // namespace lc

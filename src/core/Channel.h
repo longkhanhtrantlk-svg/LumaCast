@@ -20,12 +20,21 @@ public:
     void cut();
     void startTransition(TransitionType type, double seconds, double now);
 
+    // Fade-To-Black: dua toan bo Program ve den (bam lan nua de tro lai). Render thread (qua post).
+    std::atomic<bool> ftbTarget{false};
+    std::atomic<float> ftbAmount{0.0f};      // 0 = binh thuong, 1 = den hoan toan (de UI hien thi)
+    void toggleFtb(double seconds) { ftbDuration_ = seconds; ftbTarget = !ftbTarget; }
+
     // Render thread. Tra ve texture Program cua khung hinh nay (hop le den het khung).
     RenderTarget* render(Compositor& comp, TargetPool& pool, double now);
+    // Texture cua scene dang o Preview (nullptr neu khong co) -- cho monitor.
+    RenderTarget* renderPreview(Compositor& comp, TargetPool& pool);
 
 private:
     Scene* sceneAt(int i) const { return i >= 0 && i < int(scenes.size()) ? scenes[i].get() : nullptr; }
     void finish();
+    RenderTarget* renderProgram(Compositor& comp, TargetPool& pool, double now);
+    double ftbDuration_ = 1.0, ftbLast_ = -1.0;
 
     bool active_ = false;
     TransitionType type_ = TransitionType::Fade;

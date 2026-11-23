@@ -39,8 +39,17 @@ if(WIN32)
   target_link_libraries(lumacast_core PUBLIC winmm)   # timeBeginPeriod(1) cho nhip 60fps chinh xac
 endif()
 
-add_executable(lumacast src/app/main.cpp src/app/ControlPanel.h src/app/ControlPanel.cpp)
-target_link_libraries(lumacast PRIVATE lumacast_core Qt6::Widgets)
+add_library(lumacast_ui STATIC
+  src/app/Theme.cpp
+  src/app/MonitorWidget.h src/app/MonitorWidget.cpp
+  src/app/InspectorPanel.h src/app/InspectorPanel.cpp
+  src/app/MainWindow.h src/app/MainWindow.cpp
+)
+target_include_directories(lumacast_ui PUBLIC src src/app)
+target_link_libraries(lumacast_ui PUBLIC lumacast_core Qt6::Widgets)
+
+add_executable(lumacast src/app/main.cpp)
+target_link_libraries(lumacast PRIVATE lumacast_ui)
 
 add_executable(lumacast_tests tests/test_render.cpp)
 target_link_libraries(lumacast_tests PRIVATE lumacast_core)
@@ -48,7 +57,6 @@ target_link_libraries(lumacast_tests PRIVATE lumacast_core)
 enable_testing()
 add_test(NAME render COMMAND lumacast_tests)
 
-add_executable(lumacast_ui_tests tests/test_ui.cpp src/app/ControlPanel.cpp src/app/ControlPanel.h)
-target_include_directories(lumacast_ui_tests PRIVATE src)
-target_link_libraries(lumacast_ui_tests PRIVATE lumacast_core Qt6::Widgets)
+add_executable(lumacast_ui_tests tests/test_ui.cpp)
+target_link_libraries(lumacast_ui_tests PRIVATE lumacast_ui)
 add_test(NAME ui COMMAND lumacast_ui_tests)

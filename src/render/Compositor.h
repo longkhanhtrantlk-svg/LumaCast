@@ -25,7 +25,7 @@ private:
 
     GL gl_;
     GLuint vao_ = 0;
-    std::unique_ptr<QOpenGLShaderProgram> blit_, trans_;
+    std::unique_ptr<QOpenGLShaderProgram> blit_, out_, trans_;
 };
 
 } // namespace lc

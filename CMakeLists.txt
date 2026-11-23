@@ -12,6 +12,7 @@ pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET libavformat libavcodec libswsc
 
 add_library(lumacast_core STATIC
   src/core/Channel.cpp
+  src/core/Project.cpp
   src/render/GlHelpers.cpp
   src/render/Compositor.cpp
   src/render/Engine.h
@@ -34,3 +35,8 @@ target_link_libraries(lumacast_tests PRIVATE lumacast_core)
 
 enable_testing()
 add_test(NAME render COMMAND lumacast_tests)
+
+add_executable(lumacast_ui_tests tests/test_ui.cpp src/app/ControlPanel.cpp src/app/ControlPanel.h)
+target_include_directories(lumacast_ui_tests PRIVATE src)
+target_link_libraries(lumacast_ui_tests PRIVATE lumacast_core Qt6::Widgets)
+add_test(NAME ui COMMAND lumacast_ui_tests)

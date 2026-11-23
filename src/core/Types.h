@@ -22,6 +22,14 @@ inline const char* transitionName(TransitionType t) {
     return "?";
 }
 
+// Hieu chinh mau/do sang theo tung man hinh (cac tam LED khac lo khac nhau). Mac dinh = khong doi.
+struct Calibration {
+    float brightness = 1.0f;   // nhan
+    float contrast = 1.0f;     // quanh 0.5
+    float gamma = 1.0f;        // out = in^(1/gamma)
+    float gainR = 1.0f, gainG = 1.0f, gainB = 1.0f;
+};
+
 // Mot man hinh LED vat ly (mot cua so output).
 struct OutputConfig {
     QString name;
@@ -32,6 +40,7 @@ struct OutputConfig {
     ScaleMode scale = ScaleMode::Fit;
     int rotation = 0;           // 0 / 90 / 180 / 270 (theo chieu kim dong ho)
     QRectF crop{0, 0, 1, 1};    // vung cua Channel, toa do chuan hoa, goc tren-trai (Mapping)
+    Calibration cal;
 };
 
 } // namespace lc

@@ -24,6 +24,11 @@ double RenderEngine::now() const {
 
 QString RenderEngine::error() const { return error_; }
 
+void RenderEngine::syncOutputsToProject() {
+    for (size_t i = 0; i < sinks_.size() && i < project_.outputs.size(); ++i)
+        project_.outputs[i] = sinks_[i]->config();
+}
+
 void RenderEngine::post(std::function<void(double)> fn) {
     std::lock_guard lk(mutex_);
     commands_.push_back(std::move(fn));
@@ -34,13 +39,20 @@ void RenderEngine::startEngine() {
     surface_ = std::make_unique<QOffscreenSurface>();            // phai tao tren thread chinh
     surface_->setFormat(QSurfaceFormat::defaultFormat());
     surface_->create();
-    int i = 0;
+    // Che do cua so (phat trien): xep cac output thanh hang ngang duoi bang dieu khien, xuong dong khi het cho.
+    int x = 20, y = 500, rowH = 0;
     for (const OutputConfig& cfg : project_.outputs) {
         auto w = std::make_unique<OutputWindow>(cfg);
-        if (!cfg.fullscreen) w->setPosition(60 + 40 * i, 60 + 40 * i);
-        if (cfg.fullscreen) w->showFullScreen(); else w->show();
+        if (cfg.fullscreen) {
+            w->showFullScreen();
+        } else {
+            if (x + cfg.size.width() > 1800 && x > 20) { x = 20; y += rowH + 30; rowH = 0; }
+            w->setPosition(x, y);
+            x += cfg.size.width() + 12;
+            rowH = std::max(rowH, cfg.size.height());
+            w->show();
+        }
         sinks_.push_back(std::move(w));
-        ++i;
     }
     stop_ = false;
     start();

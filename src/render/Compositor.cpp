@@ -1,5 +1,6 @@
 #include "Compositor.h"
 #include <QMatrix2x2>
+#include <QVector3D>
 #include <QVector4D>
 #include <QtMath>
 #include <algorithm>
@@ -28,6 +29,23 @@ out vec4 o;
 void main() {
     vec4 c = texture(uTex, vUv);
     o = vec4(c.rgb, c.a * uOpacity);
+})";
+
+// Shader cuoi cung cua Output: hieu chinh tuong phan/do sang/gain/gamma.
+static const char* kFragOut = R"(#version 330 core
+uniform sampler2D uTex;
+uniform float uBrightness;
+uniform float uContrast;
+uniform float uGamma;
+uniform vec3 uGain;
+in vec2 vUv;
+out vec4 o;
+void main() {
+    vec3 c = texture(uTex, vUv).rgb;
+    c = (c - 0.5) * uContrast + 0.5;
+    c *= uBrightness * uGain;
+    c = pow(clamp(c, 0.0, 1.0), vec3(1.0 / uGamma));
+    o = vec4(c, 1.0);
 })";
 
 // Mode: 1 fade, 2 dip-to-black, 3 wipe-left, 4 wipe-right, 5 wipe-up, 6 wipe-down.
@@ -66,12 +84,14 @@ bool Compositor::init() {
     if (!gl_.initializeOpenGLFunctions()) return false;
     gl_.glGenVertexArrays(1, &vao_);
     blit_ = makeProgram(kFragBlit);
+    out_ = makeProgram(kFragOut);
     trans_ = makeProgram(kFragTrans);
-    return blit_ && trans_;
+    return blit_ && out_ && trans_;
 }
 
 void Compositor::shutdown() {
     blit_.reset();
+    out_.reset();
     trans_.reset();
     if (vao_) gl_.glDeleteVertexArrays(1, &vao_);
     vao_ = 0;
@@ -176,12 +196,16 @@ void Compositor::drawToCurrent(GLuint tex, int texW, int texH, const OutputConfi
     // crop toa do tren-trai -> uv goc duoi-trai
     const QVector4D uv(float(crop.left()), float(1 - crop.bottom()), float(crop.right()), float(1 - crop.top()));
 
-    blit_->bind();
-    blit_->setUniformValue("uTex", 0);
-    blit_->setUniformValue("uOpacity", 1.0f);
+    const Calibration& k = cfg.cal;
+    out_->bind();
+    out_->setUniformValue("uTex", 0);
+    out_->setUniformValue("uBrightness", k.brightness);
+    out_->setUniformValue("uContrast", k.contrast);
+    out_->setUniformValue("uGamma", std::max(0.1f, k.gamma));
+    out_->setUniformValue("uGain", QVector3D(k.gainR, k.gainG, k.gainB));
     gl_.glActiveTexture(GL_TEXTURE0);
     gl_.glBindTexture(GL_TEXTURE_2D, tex);
-    drawQuad(*blit_, clip, uv, float(cfg.rotation));
+    drawQuad(*out_, clip, uv, float(cfg.rotation));
 }
 
 } // namespace lc

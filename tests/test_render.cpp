@@ -1,11 +1,16 @@
 // Test render khong can cua so: ve vao FBO roi doc lai pixel.
 #include "core/Channel.h"
+#include "core/Project.h"
 #include "media/FFmpegSource.h"
 #include "media/StaticSources.h"
 #include "render/Compositor.h"
 #include <QGuiApplication>
 #include <QOffscreenSurface>
 #include <QSurfaceFormat>
+#include <QDir>
+#include <QFile>
+#include <QImage>
+#include <QTemporaryDir>
 #include <QThread>
 #include <cstdlib>
 #include <iostream>
@@ -156,6 +161,137 @@ int main(int argc, char** argv) {
         comp.drawToCurrent(src->tex, 40, 20, c, 100, 100);
         CHECK(near(readPx(gl, *win, 50, 50), 0, 255, 0) && near(readPx(gl, *win, 5, 50), 0, 255, 0),
               "Crop nua phai -> toan bo la xanh");
+    }
+
+
+    // --- Hieu chinh mau (Calibration) ---
+    {
+        auto s = std::make_shared<Scene>(); s->size = {8, 8};
+        s->layers.push_back({std::make_shared<ColorSource>(QColor(64, 0, 0), "c"), {0, 0, 1, 1}, 1.0f, LayerFit::Stretch});
+        pool.beginFrame();
+        auto* src = pool.acquire(8, 8);
+        comp.renderScene(*s, *src);
+        auto* win = pool.acquire(8, 8);
+        OutputConfig c;
+        auto draw = [&](const OutputConfig& cfg) {
+            gl.glBindFramebuffer(GL_FRAMEBUFFER, win->fbo);
+            comp.drawToCurrent(src->tex, 8, 8, cfg, 8, 8);
+            return readPx(gl, *win, 4, 4);
+        };
+        CHECK(near(draw(c), 64, 0, 0, 2), "Calibration mac dinh = khong doi mau");
+        c.cal.brightness = 0.5f;
+        CHECK(near(draw(c), 32, 0, 0, 2), "Calibration: brightness 0.5 -> 32");
+        c.cal = Calibration{}; c.cal.gamma = 2.0f;
+        CHECK(near(draw(c), 128, 0, 0, 3), "Calibration: gamma 2.0 -> 64 len ~128");
+        c.cal = Calibration{}; c.cal.gainR = 0.0f;
+        CHECK(near(draw(c), 0, 0, 0, 1), "Calibration: gain R = 0 -> mat kenh do");
+        c.cal = Calibration{}; c.cal.contrast = 2.0f;
+        CHECK(near(draw(c), 1, 0, 0, 3) || draw(c).r < 4, "Calibration: tuong phan 2 day toi xuong den");
+    }
+
+    // --- Video wall ---
+    {
+        auto wall = makeWall(0, 4, 1, QSize(1920, 1080), 0, false);
+        CHECK(wall.size() == 4 && wall[2].crop == QRectF(0.5, 0, 0.25, 1) && wall[2].screenIndex == 2,
+              "makeWall 4x1: o thu 3 cat 50%..75%, man hinh so 2");
+        auto wall2 = makeWall(0, 2, 2, QSize(960, 540));
+        CHECK(wall2.size() == 4 && wall2[3].crop == QRectF(0.5, 0.5, 0.5, 0.5), "makeWall 2x2: o cuoi la goc duoi-phai");
+
+        // Canvas 8x2: nua trai do, nua phai xanh la, chia 2 output -> output 1 do het, output 2 xanh het
+        QImage img(8, 2, QImage::Format_RGBA8888); img.fill(Qt::green);
+        for (int y = 0; y < 2; ++y) for (int x = 0; x < 4; ++x) img.setPixelColor(x, y, Qt::red);
+        auto s = std::make_shared<Scene>(); s->size = {8, 2};
+        s->layers.push_back({std::make_shared<ImageSource>(img, "i"), {0, 0, 1, 1}, 1.0f, LayerFit::Stretch});
+        pool.beginFrame();
+        auto* canvas = pool.acquire(8, 2);
+        comp.renderScene(*s, *canvas);
+        auto* win = pool.acquire(4, 2);
+        auto w2 = makeWall(0, 2, 1, QSize(4, 2));
+        gl.glBindFramebuffer(GL_FRAMEBUFFER, win->fbo);
+        comp.drawToCurrent(canvas->tex, 8, 2, w2[0], 4, 2);
+        const Px a = readPx(gl, *win, 0, 0), b = readPx(gl, *win, 3, 1);
+        gl.glBindFramebuffer(GL_FRAMEBUFFER, win->fbo);
+        comp.drawToCurrent(canvas->tex, 8, 2, w2[1], 4, 2);
+        const Px c2 = readPx(gl, *win, 0, 0), d = readPx(gl, *win, 3, 1);
+        CHECK(near(a, 255, 0, 0) && near(b, 255, 0, 0) && near(c2, 0, 255, 0) && near(d, 0, 255, 0),
+              "Wall: canvas chia dung - output trai toan do, output phai toan xanh");
+    }
+
+    // --- Luu / mo project ---
+    {
+        QTemporaryDir dir;
+        CHECK(dir.isValid(), "Tao thu muc tam");
+        QImage red(10, 10, QImage::Format_RGBA8888); red.fill(Qt::red);
+        const QString imgPath = dir.filePath("img.png");
+        red.save(imgPath);
+
+        Project p;
+        p.fps = 50;
+        SourceDef di; di.type = "image"; di.path = imgPath;
+        SourceDef dc; dc.type = "color"; dc.color = QColor(10, 20, 30); dc.label = "nen";
+        SourceDef dt; dt.type = "testpattern"; dt.size = QSize(320, 180); dt.label = "T";
+        auto sImg = p.addSource(di), sCol = p.addSource(dc), sTest = p.addSource(dt);
+        CHECK(sImg && sCol && sTest && p.sources.size() == 3, "Project: them 3 nguon");
+
+        auto sc1 = std::make_shared<Scene>();
+        sc1->name = "Mot"; sc1->size = {640, 360}; sc1->background = QColor(1, 2, 3);
+        sc1->layers.push_back({sCol, {0, 0, 1, 1}, 1.0f, LayerFit::Stretch, true});
+        sc1->layers.push_back({sImg, {0.25, 0.1, 0.5, 0.4}, 0.6f, LayerFit::Fill, false});
+        auto sc2 = std::make_shared<Scene>();
+        sc2->name = "Hai"; sc2->size = {1920, 1080};
+        sc2->layers.push_back({sTest, {0, 0, 1, 1}, 1.0f, LayerFit::Fit, true});
+        p.scenes = {sc1, sc2};
+        auto ch = std::make_shared<Channel>();
+        ch->name = "K1"; ch->size = {640, 360}; ch->scenes = {sc2, sc1}; ch->program = 1; ch->preview = 0;
+        p.channels = {ch};
+        OutputConfig oc; oc.name = "LED-A"; oc.channel = 0; oc.screenIndex = 3; oc.fullscreen = true;
+        oc.size = {3840, 2160}; oc.scale = ScaleMode::Fill; oc.rotation = 270;
+        oc.crop = QRectF(0.25, 0, 0.5, 1);
+        oc.cal.brightness = 0.8f; oc.cal.gamma = 2.2f; oc.cal.gainB = 0.9f;
+        p.outputs = {oc};
+
+        QDir(dir.path()).mkpath("sub");
+        const QString file = dir.filePath("sub/p.json");
+        QString err;
+        CHECK(saveProject(p, file, &err), "Luu project ra file");
+
+        QFile f(file); f.open(QIODevice::ReadOnly);
+        const QString text = QString::fromUtf8(f.readAll());
+        CHECK(!text.contains(dir.path()) && text.contains("../img.png"), "Media luu theo duong dan TUONG DOI");
+
+        Project q;
+        CHECK(loadProject(q, file, &err), "Mo lai project: " + err.toStdString());
+        CHECK(q.fps == 50 && q.sources.size() == 3 && q.scenes.size() == 2 && q.channels.size() == 1 && q.outputs.size() == 1,
+              "Mo lai: so luong sources/scenes/channels/outputs dung");
+        const auto& r1 = q.scenes[0];
+        CHECK(r1->name == "Mot" && r1->size == QSize(640, 360) && r1->background == QColor(1, 2, 3) && r1->layers.size() == 2,
+              "Mo lai: Scene (ten, kich thuoc, nen, 2 layer)");
+        const Layer& L = r1->layers[1];
+        CHECK(L.rect == QRectF(0.25, 0.1, 0.5, 0.4) && std::abs(L.opacity - 0.6f) < 1e-6 && L.fit == LayerFit::Fill && !L.visible,
+              "Mo lai: Layer (rect, opacity, fit, visible)");
+        CHECK(q.channels[0]->scenes.size() == 2 && q.channels[0]->scenes[0] == q.scenes[1] &&
+                  q.channels[0]->program == 1 && q.channels[0]->preview == 0,
+              "Mo lai: Channel dung thu tu scene, Program/Preview");
+        const OutputConfig& o = q.outputs[0];
+        CHECK(o.name == "LED-A" && o.screenIndex == 3 && o.fullscreen && o.size == QSize(3840, 2160) &&
+                  o.scale == ScaleMode::Fill && o.rotation == 270 && o.crop == QRectF(0.25, 0, 0.5, 1) &&
+                  std::abs(o.cal.brightness - 0.8f) < 1e-6 && std::abs(o.cal.gamma - 2.2f) < 1e-6 &&
+                  std::abs(o.cal.gainB - 0.9f) < 1e-6 && o.cal.gainR == 1.0f,
+              "Mo lai: Output (man hinh, scale, xoay, crop, hieu chinh mau)");
+
+        Project bad;
+        CHECK(!loadProject(bad, dir.filePath("khong_co.json"), &err) && !err.isEmpty(), "Mo file khong ton tai -> bao loi");
+        QFile g(dir.filePath("hong.json")); g.open(QIODevice::WriteOnly); g.write("{ khong phai json"); g.close();
+        CHECK(!loadProject(bad, dir.filePath("hong.json"), &err), "Mo JSON hong -> bao loi, khong crash");
+        QFile h(dir.filePath("sai.json")); h.open(QIODevice::WriteOnly);
+        h.write(R"({"app":"LumaCast","version":1,"sources":[],"scenes":[{"name":"x","layers":[{"source":"khong_co"}]}],
+                    "channels":[{"scenes":[0]}],"outputs":[{"channel":0}]})"); h.close();
+        CHECK(!loadProject(bad, dir.filePath("sai.json"), &err) && err.contains("khong_co"),
+              "Layer tham chieu nguon khong ton tai -> bao loi ro rang");
+        QFile k(dir.filePath("kenh.json")); k.open(QIODevice::WriteOnly);
+        k.write(R"({"app":"LumaCast","version":1,"sources":[],"scenes":[{"name":"x"}],
+                    "channels":[{"scenes":[0]}],"outputs":[{"channel":5}]})"); k.close();
+        CHECK(!loadProject(bad, dir.filePath("kenh.json"), &err), "Output tro toi kenh khong ton tai -> bao loi");
     }
 
     // --- FFmpeg ---

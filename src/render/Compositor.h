@@ -11,6 +11,10 @@
 namespace lc {
 
 // Toan bo ve len GPU: Scene -> FBO, Transition(A,B) -> FBO, Channel -> cua so Output.
+// Vung `d` (chuan hoa, goc tren-trai, THEO HINH DA XOAY) -> vung tuong ung tren texture goc (chua xoay).
+// rotation: 0/90/180/270 theo chieu kim dong ho (video dien thoai).
+QRectF cropToTexture(const QRectF& d, int rotation);
+
 class Compositor {
 public:
     bool init();                              // can context GL hien hanh; false neu loi shader
@@ -37,7 +41,7 @@ public:
     void shutdown();
 
 private:
-    void drawQuad(QOpenGLShaderProgram& prog, QVector4D clipRect, QVector4D uvRect, float rotDeg);
+    void drawQuad(QOpenGLShaderProgram& prog, QVector4D clipRect, QVector4D uvRect, float rotDeg, float quadRotDeg = 0, float aspect = 1);
     QOpenGLShaderProgram* effectProgram(const EffectDef& d);          // bien dich lan dau, nho theo (id, revision); nullptr neu loi
     void setParamUniforms(QOpenGLShaderProgram& prog, const EffectDef& d, const QVariantMap& values);
     RenderTarget* applyLayerEffects(const Layer& l, const TexRef& tex);   // nullptr neu khong co Effect nao dang chay

@@ -50,10 +50,10 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | SCN-01 | Scene có độ phân giải riêng và nhiều Layer | P0 | ✅ | Test tự động |
 | SCN-02 | Layer: vị trí, kích thước, độ mờ (alpha), kiểu fit (Stretch/Fit/Fill), ẩn/hiện | P0 | ✅ | Test tự động |
 | SCN-03 | Đổi thứ tự Layer (kéo-thả hoặc nút), thêm/xoá, hoàn tác/làm lại | P0 | ✅ | Test tự động |
-| SCN-04 | Xoay Layer, crop Layer | P1 | ⬜ | Test render |
-| SCN-05 | Blend mode (Add, Multiply, Screen…) | P1 | ⬜ | Test render so với giá trị tính tay |
+| SCN-04 | Xoay Layer (độ, quanh tâm layer, đúng trên Scene không vuông) và crop Layer (tính theo hình đã xoay, đúng cả với video điện thoại xoay 90/180/270; kết hợp Fit/Fill) | P1 | ✅ | Test tự động (điểm ảnh; 4 nguồn xoay × crop) |
+| SCN-05 | Blend mode: Normal, Add, Multiply, Screen (kể cả opacity) | P1 | 🟡 | Test tự động so với giá trị tính tay. Chưa có Overlay, Soft light… |
 | SCN-06 | Chuỗi Effect trên **Layer** (blur, glow, chỉnh màu, RGB split, pixelate, noise): thêm/gỡ/đổi thứ tự/bật-tắt, tham số tự sinh, hoàn tác, lưu trong project | P0 | ✅ | Test tự động (từng Effect, hướng ảnh, chuỗi, UI). **Chưa có Effect cấp Scene** (xem PLAN) |
-| SCN-07 | Timeline và keyframe cho thuộc tính Layer | P1 | ⬜ | M4b: phát lại đúng theo đồng hồ Scene |
+| SCN-07 | Timeline và keyframe cho thuộc tính Layer (vị trí X/Y, rộng, cao, alpha, xoay): đồng hồ Scene (phát/tạm dừng/về 0/tua, lặp, thời lượng, tự phát lại khi lên Program), 5 kiểu nội suy, thêm/dời/xoá keyframe bằng chuột hoặc nút ◆, tự đặt keyframe khi sửa giá trị, hoàn tác | P1 | ✅ | Test tự động (nội suy, đồng hồ, điểm ảnh ở từng thời điểm, chuột thật trên timeline, hoàn tác). Chưa: zoom/cuộn timeline, chọn nhiều key, sao chép key, keyframe cho crop/tham số Effect, đường cong Bézier |
 | SCN-08 | Mask, chroma key, nhóm Layer | P2 | ⬜ | — |
 
 ### 3.3 Channel và chuyển cảnh (CHN)
@@ -145,7 +145,7 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | NFR-06 | Độ bền | File hỏng/media thiếu không làm crash | Đáp ứng với project JSON (PRJ-02) |
 | NFR-07 | Tương thích | Windows 10/11 x64; OpenGL 3.3 core; Qt ≥ 6.4 (đã dùng 6.4, 6.8.3); FFmpeg ≥ 6.1 (đã dùng 6.1, 9.1) | Đáp ứng |
 | NFR-08 | Giấy phép phụ thuộc | FFmpeg bản LGPL liên kết động; Qt LGPL liên kết động hoặc giấy phép thương mại | Đáp ứng (vcpkg `ffmpeg` mặc định) |
-| NFR-09 | Kiểm thử | Mọi tính năng mới có test tự động; PR phải qua `ctest` | 225 kiểm tra tự động |
+| NFR-09 | Kiểm thử | Mọi tính năng mới có test tự động; PR phải qua `ctest` | 326 kiểm tra tự động |
 | NFR-10 | Khả năng mở rộng | GPU chỉ chạm qua `Compositor`, `GlHelpers` và upload texture để thay bằng RHI (macOS) | Giữ nguyên tắc |
 
 ---

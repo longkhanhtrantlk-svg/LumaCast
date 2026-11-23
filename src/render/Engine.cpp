@@ -149,6 +149,7 @@ void RenderEngine::run() {
         ctx.makeCurrent(surface_.get());
         pool.beginFrame();
         comp.setTime(t);
+        for (const auto& sc : project_.scenes) sc->clock.tick(t, sc->duration, sc->loop);     // dong ho keyframe cua moi Scene
         for (size_t i = 0; i < project_.channels.size(); ++i)
             chanOut[i] = project_.channels[i]->render(comp, pool, t);
 

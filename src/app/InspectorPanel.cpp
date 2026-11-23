@@ -87,6 +87,7 @@ void InspectorPanel::editLayers(int si, std::vector<Layer> after, const QString&
     layerCache_[si] = after;
     pushLayers(si);
     undo_->push(new LayersCmd(this, si, std::move(before), std::move(after), text, mergeId));
+    emit layerDataChanged();
 }
 
 void InspectorPanel::editOutput(int i, OutputConfig after, const QString& text, int mergeId) {
@@ -148,42 +149,54 @@ QWidget* InspectorPanel::buildSceneTab() {
     v->addLayout(ops);
 
     propBox_ = new QGroupBox("Thuộc tính layer đang chọn");
+    propBox_->setToolTip("Ô viền vàng = thuộc tính đang có keyframe: chỉnh giá trị sẽ tự đặt/sửa keyframe tại vị trí playhead.");
     auto* g = new QGridLayout(propBox_);
-    const char* names[4] = {"x ", "y ", "w ", "h "};
-    for (int k = 0; k < 4; ++k) {
-        rectSpin_[k] = spin(-4, 8, 0.01, 0);
-        rectSpin_[k]->setPrefix(names[k]);
-        g->addWidget(rectSpin_[k], k / 2, k % 2);
-        connect(rectSpin_[k], &QDoubleSpinBox::valueChanged, this, [this, k](double val) {
-            const int si = currentScene(), li = currentLayerIdx();
-            if (li < 0) return;
-            auto after = layerCache_[si];
-            QRectF& r = after[li].rect;
-            if (k == 0) r.moveLeft(val); else if (k == 1) r.moveTop(val);
-            else if (k == 2) r.setWidth(val); else r.setHeight(val);
-            editLayers(si, after, "Sửa vị trí/kích thước layer", 1000000 + si * 10000 + li * 100 + k);
-        });
+    struct PS { AnimProp p; const char* prefix; const char* name; double lo, hi, step; int row, col; };
+    const PS props[kAnimPropCount] = {
+        {AnimProp::X, "x ", "layerX", -4, 8, 0.01, 0, 0}, {AnimProp::Y, "y ", "layerY", -4, 8, 0.01, 0, 1},
+        {AnimProp::W, "w ", "layerW", 0, 8, 0.01, 1, 0}, {AnimProp::H, "h ", "layerH", 0, 8, 0.01, 1, 1},
+        {AnimProp::Opacity, "alpha ", "layerAlpha", 0, 1, 0.05, 2, 0}, {AnimProp::Rotation, "xoay ", "layerRot", -3600, 3600, 1, 3, 0}};
+    for (const PS& ps : props) {
+        auto* sp = spin(ps.lo, ps.hi, ps.step, ps.p == AnimProp::Opacity ? 1 : 0);
+        sp->setPrefix(ps.prefix);
+        sp->setObjectName(ps.name);
+        if (ps.p == AnimProp::Rotation) sp->setSuffix("°");
+        g->addWidget(sp, ps.row, ps.col);
+        propSpin_[int(ps.p)] = sp;
+        connect(sp, &QDoubleSpinBox::valueChanged, this, [this, p = ps.p](double val) { setLayerProp(p, val); });
     }
-    alphaSpin_ = spin(0, 1, 0.05, 1);
-    alphaSpin_->setPrefix("alpha ");
-    g->addWidget(alphaSpin_, 2, 0);
-    connect(alphaSpin_, &QDoubleSpinBox::valueChanged, this, [this](double val) {
-        const int si = currentScene(), li = currentLayerIdx();
-        if (li < 0) return;
-        auto after = layerCache_[si];
-        after[li].opacity = float(val);
-        editLayers(si, after, "Sửa độ mờ layer", 1000000 + si * 10000 + li * 100 + 4);
-    });
     fitCombo_ = new QComboBox;
     fitCombo_->addItems({"Stretch", "Fit", "Fill"});
     g->addWidget(fitCombo_, 2, 1);
     connect(fitCombo_, &QComboBox::currentIndexChanged, this, [this](int i) {
-        const int si = currentScene(), li = currentLayerIdx();
-        if (li < 0) return;
-        auto after = layerCache_[si];
-        after[li].fit = LayerFit(i);
-        editLayers(si, after, "Đổi kiểu fit layer");
+        editCurrentLayer([i](Layer& l) { l.fit = LayerFit(i); }, "Đổi kiểu fit layer");
     });
+    blendCombo_ = new QComboBox;
+    blendCombo_->setObjectName("layerBlend");
+    blendCombo_->addItems({"Normal", "Add (cộng sáng)", "Multiply (nhân)", "Screen (màn lọc)"});
+    g->addWidget(blendCombo_, 3, 1);
+    connect(blendCombo_, &QComboBox::currentIndexChanged, this, [this](int i) {
+        editCurrentLayer([i](Layer& l) { l.blend = BlendMode(i); }, "Đổi chế độ hoà trộn layer");
+    });
+    const char* cropPrefix[4] = {"cắt x ", "cắt y ", "cắt w ", "cắt h "};
+    const char* cropName[4] = {"layerCropX", "layerCropY", "layerCropW", "layerCropH"};
+    for (int k = 0; k < 4; ++k) {
+        cropSpin_[k] = spin(0, 1, 0.01, k < 2 ? 0 : 1, 3);
+        cropSpin_[k]->setPrefix(cropPrefix[k]);
+        cropSpin_[k]->setObjectName(cropName[k]);
+        cropSpin_[k]->setToolTip("Vùng của nguồn được dùng, tính theo hình đã xoay (0–1, gốc trên-trái)");
+        g->addWidget(cropSpin_[k], 4 + k / 2, k % 2);
+        connect(cropSpin_[k], &QDoubleSpinBox::valueChanged, this, [this, k](double val) {
+            editCurrentLayer([k, val](Layer& l) {
+                QRectF r = l.crop;
+                if (k == 0) r.moveLeft(val); else if (k == 1) r.moveTop(val);
+                else if (k == 2) r.setWidth(std::max(0.001, val)); else r.setHeight(std::max(0.001, val));
+                if (r.right() > 1) { if (k == 2) r.setWidth(1 - r.x()); else r.moveLeft(1 - r.width()); }
+                if (r.bottom() > 1) { if (k == 3) r.setHeight(1 - r.y()); else r.moveTop(1 - r.height()); }
+                l.crop = r.intersected(QRectF(0, 0, 1, 1));
+            }, "Sửa vùng cắt layer", 1000000 + 50 + k);
+        });
+    }
     v->addWidget(propBox_);
 
     connect(sceneCombo_, &QComboBox::currentIndexChanged, this, [this] { syncLayerList(-1); });
@@ -265,6 +278,7 @@ void InspectorPanel::syncLayerList(int selectIdx) {
         }
     }
     syncProps();
+    emit layerDataChanged();
 }
 
 void InspectorPanel::syncProps() {
@@ -272,15 +286,68 @@ void InspectorPanel::syncProps() {
     const bool ok = li >= 0;
     propBox_->setEnabled(ok);
     if (fxList_) syncEffectList(fxList_->currentRow());
-    QSignalBlocker b0(rectSpin_[0]), b1(rectSpin_[1]), b2(rectSpin_[2]), b3(rectSpin_[3]), b4(alphaSpin_), b5(fitCombo_);
+    auto setv = [](QDoubleSpinBox* s, double v) { QSignalBlocker b(s); s->setValue(v); };
     if (!ok) return;
     const Layer& l = layerCache_[si][li];
-    rectSpin_[0]->setValue(l.rect.x());
-    rectSpin_[1]->setValue(l.rect.y());
-    rectSpin_[2]->setValue(l.rect.width());
-    rectSpin_[3]->setValue(l.rect.height());
-    alphaSpin_->setValue(l.opacity);
-    fitCombo_->setCurrentIndex(int(l.fit));
+    const LayerState st = evalLayer(l, playheadTime());               // gia tri hieu dung tai playhead (tinh + keyframe)
+    setv(propSpin_[int(AnimProp::X)], st.rect.x());
+    setv(propSpin_[int(AnimProp::Y)], st.rect.y());
+    setv(propSpin_[int(AnimProp::W)], st.rect.width());
+    setv(propSpin_[int(AnimProp::H)], st.rect.height());
+    setv(propSpin_[int(AnimProp::Opacity)], st.opacity);
+    setv(propSpin_[int(AnimProp::Rotation)], st.rotation);
+    for (int p = 0; p < kAnimPropCount; ++p) {                         // vien vang = thuoc tinh dang co keyframe
+        const Track* tr = l.track(AnimProp(p));
+        propSpin_[p]->setStyleSheet(tr && !tr->keys.empty() ? "QDoubleSpinBox{border:1px solid #e0a526;}" : QString());
+    }
+    setv(cropSpin_[0], l.crop.x()); setv(cropSpin_[1], l.crop.y());
+    setv(cropSpin_[2], l.crop.width()); setv(cropSpin_[3], l.crop.height());
+    { QSignalBlocker b(fitCombo_); fitCombo_->setCurrentIndex(int(l.fit)); }
+    { QSignalBlocker b(blendCombo_); blendCombo_->setCurrentIndex(int(l.blend)); }
+}
+
+std::shared_ptr<Scene> InspectorPanel::currentScenePtr() const {
+    const int si = currentScene();
+    return si >= 0 && si < int(project_.scenes.size()) ? project_.scenes[si] : nullptr;
+}
+
+const Layer* InspectorPanel::currentLayerData() const {
+    const int si = currentScene(), li = currentLayerIdx();
+    return si >= 0 && si < int(layerCache_.size()) && li >= 0 && li < int(layerCache_[si].size()) ? &layerCache_[si][li] : nullptr;
+}
+
+double InspectorPanel::playheadTime() const {
+    auto sc = currentScenePtr();
+    return sc ? double(sc->clock.time) : 0.0;
+}
+
+void InspectorPanel::editCurrentLayer(const std::function<void(Layer&)>& mutate, const QString& text, int mergeId) {
+    const int si = currentScene(), li = currentLayerIdx();
+    if (li < 0) return;
+    auto after = layerCache_[si];
+    mutate(after[li]);
+    editLayers(si, after, text, mergeId);
+}
+
+void InspectorPanel::setLayerProp(AnimProp p, double v) {
+    const int si = currentScene(), li = currentLayerIdx();
+    if (li < 0) return;
+    const double t = playheadTime();
+    editCurrentLayer([p, v, t](Layer& l) {
+        if (Track* tr = l.track(p); tr && !tr->keys.empty()) {          // co keyframe: tu dat/sua key tai playhead
+            const int k = findKey(*tr, t);
+            setKey(*tr, t, v, k >= 0 ? tr->keys[k].interp : Interp::Linear);
+            return;
+        }
+        switch (p) {
+        case AnimProp::X: l.rect.moveLeft(v); break;
+        case AnimProp::Y: l.rect.moveTop(v); break;
+        case AnimProp::W: l.rect.setWidth(v); break;
+        case AnimProp::H: l.rect.setHeight(v); break;
+        case AnimProp::Opacity: l.opacity = float(v); break;
+        case AnimProp::Rotation: l.rotation = float(v); break;
+        }
+    }, "Sửa thuộc tính layer", 1000000 + si * 10000 + li * 100 + int(p));
 }
 
 void InspectorPanel::onLayersReordered() {

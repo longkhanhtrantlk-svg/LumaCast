@@ -15,10 +15,15 @@ static const char* kVert = R"(#version 330 core
 uniform vec4 uRect;
 uniform vec4 uUvRect;
 uniform mat2 uUvRot;
+uniform vec2 uRotSC;        // (sin, cos - 1) cua goc xoay HINH HOC cua quad; 0 = khong xoay
+uniform float uAspectM1;    // (rong/cao cua dich) - 1, de xoay dung trong khong gian diem anh
 out vec2 vUv;
 void main() {
     vec2 p = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1));
-    gl_Position = vec4(uRect.xy + (p * 2.0 - 1.0) * uRect.zw, 0.0, 1.0);
+    vec2 o = (p * 2.0 - 1.0) * uRect.zw;
+    float s = uRotSC.x, c = 1.0 + uRotSC.y, A = 1.0 + uAspectM1;
+    o = vec2(c * o.x - s * o.y / A, s * o.x * A + c * o.y);
+    gl_Position = vec4(uRect.xy + o, 0.0, 1.0);
     vec2 q = uUvRot * (p - 0.5) + 0.5;
     vUv = mix(uUvRect.xy, uUvRect.zw, q);
 })";
@@ -26,11 +31,15 @@ void main() {
 static const char* kFragBlit = R"(#version 330 core
 uniform sampler2D uTex;
 uniform float uOpacity;
+uniform int uBlendMode;      // 0 thuong | 1 add/screen (nhan alpha truoc) | 2 multiply
 in vec2 vUv;
 out vec4 o;
 void main() {
     vec4 c = texture(uTex, vUv);
-    o = vec4(c.rgb, c.a * uOpacity);
+    float a = c.a * uOpacity;
+    if (uBlendMode == 1) o = vec4(c.rgb * a, a);
+    else if (uBlendMode == 2) o = vec4(mix(vec3(1.0), c.rgb, a), a);
+    else o = vec4(c.rgb, a);
 })";
 
 // Shader cuoi cung cua Output: hieu chinh tuong phan/do sang/gain/gamma.
@@ -108,12 +117,16 @@ void Compositor::shutdown() {
     vao_ = 0;
 }
 
-void Compositor::drawQuad(QOpenGLShaderProgram& prog, QVector4D clipRect, QVector4D uvRect, float rotDeg) {
+void Compositor::drawQuad(QOpenGLShaderProgram& prog, QVector4D clipRect, QVector4D uvRect, float rotDeg, float quadRotDeg, float aspect) {
     const float a = qDegreesToRadians(rotDeg), c = std::cos(a), s = std::sin(a);
     const float m[4] = {c, -s, s, c};   // hang truoc; quay nguoc chieu kim dong ho goc `a` tren toa do uv
     prog.setUniformValue("uRect", clipRect);
     prog.setUniformValue("uUvRect", uvRect);
     prog.setUniformValue("uUvRot", QMatrix2x2(m));
+    // xoay hinh hoc cua quad (Layer.rotation): duong = theo chieu kim dong ho tren man hinh (y len) -> goc am
+    const float qa = qDegreesToRadians(-quadRotDeg);
+    prog.setUniformValue("uRotSC", QVector2D(std::sin(qa), std::cos(qa) - 1.0f));
+    prog.setUniformValue("uAspectM1", aspect - 1.0f);
     gl_.glBindVertexArray(vao_);
     gl_.glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
@@ -125,12 +138,24 @@ void Compositor::clear(RenderTarget& dst, const QColor& c) {
     gl_.glClear(GL_COLOR_BUFFER_BIT);
 }
 
+QRectF cropToTexture(const QRectF& d, int rotation) {
+    switch (((rotation % 360) + 360) % 360) {
+    case 90: return QRectF(d.y(), 1 - d.x() - d.width(), d.height(), d.width());
+    case 180: return QRectF(1 - d.x() - d.width(), 1 - d.y() - d.height(), d.width(), d.height());
+    case 270: return QRectF(1 - d.y() - d.height(), d.x(), d.height(), d.width());
+    default: return d;
+    }
+}
+
 void Compositor::renderScene(const Scene& scene, RenderTarget& dst) {
     clear(dst, scene.background);
 
     const double W = dst.w, H = dst.h;
+    const double sceneTime = scene.clock.time;
     for (const Layer& l : scene.layers) {
         if (!l.visible || !l.source) continue;
+        const LayerState st = evalLayer(l, sceneTime);               // gia tri tinh + keyframe tai thoi diem Scene
+        if (st.opacity <= 0.0f || st.rect.width() <= 0 || st.rect.height() <= 0) continue;
         TexRef tex = l.source->acquire(gl_);
         if (!tex.id || tex.w <= 0 || tex.h <= 0) continue;
 
@@ -146,34 +171,42 @@ void Compositor::renderScene(const Scene& scene, RenderTarget& dst) {
         gl_.glBindFramebuffer(GL_FRAMEBUFFER, dst.fbo);
         gl_.glViewport(0, 0, dst.w, dst.h);
         gl_.glEnable(GL_BLEND);
-        gl_.glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        switch (l.blend) {
+        case BlendMode::Normal: gl_.glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA); break;
+        case BlendMode::Add: gl_.glBlendFuncSeparate(GL_ONE, GL_ONE, GL_ZERO, GL_ONE); break;
+        case BlendMode::Multiply: gl_.glBlendFuncSeparate(GL_DST_COLOR, GL_ZERO, GL_ZERO, GL_ONE); break;
+        case BlendMode::Screen: gl_.glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_COLOR, GL_ZERO, GL_ONE); break;
+        }
         blit_->bind();
         blit_->setUniformValue("uTex", 0);
+        blit_->setUniformValue("uBlendMode", l.blend == BlendMode::Normal ? 0 : l.blend == BlendMode::Multiply ? 2 : 1);
         gl_.glActiveTexture(GL_TEXTURE0);
 
-        double px = l.rect.x() * W, py = l.rect.y() * H, pw = l.rect.width() * W, ph = l.rect.height() * H;
-        // Video dien thoai: texture luu ngang nhung hien thi xoay 90/270 -> ti le hieu dung bi hoan doi.
+        double px = st.rect.x() * W, py = st.rect.y() * H, pw = st.rect.width() * W, ph = st.rect.height() * H;
+        // Vung nguon duoc dung (crop) tinh theo HINH DA XOAY; video dien thoai luu ngang nhung hien thi xoay 90/270.
         const bool sideways = (tex.rotation / 90) % 2 != 0;
-        const double sa = sideways ? double(tex.h) / tex.w : double(tex.w) / tex.h, ra = pw / ph;
-        // uv: day anh (v=1) o day quad, dinh anh (v=0) o dinh quad.
-        double u0 = 0, u1 = 1, vTop = 0, vBot = 1;
+        QRectF cr = l.crop.intersected(QRectF(0, 0, 1, 1));
+        if (cr.width() < 1e-3 || cr.height() < 1e-3) cr = QRectF(0, 0, 1, 1);
+        const double dw = (sideways ? tex.h : tex.w) * cr.width(), dh = (sideways ? tex.w : tex.h) * cr.height();
+        const double sa = dw / dh, ra = pw / ph;
+        QRectF d = cr;
         if (l.fit == LayerFit::Fit) {
             if (sa > ra) { const double nh = pw / sa; py += (ph - nh) / 2; ph = nh; }
             else         { const double nw = ph * sa; px += (pw - nw) / 2; pw = nw; }
         } else if (l.fit == LayerFit::Fill) {
-            // phan cat tinh trong khong gian DA XOAY (fu, fv); doi ve khong gian texture goc truoc khi xoay
-            double fu = 1, fv = 1;
-            if (sa > ra) fu = ra / sa; else fv = sa / ra;
-            const double cu = sideways ? fv : fu, cv = sideways ? fu : fv;
-            u0 = (1 - cu) / 2; u1 = u0 + cu;
-            vTop = (1 - cv) / 2; vBot = vTop + cv;
+            // cat them o giua phan da crop cho vua khung
+            if (sa > ra) { const double f = ra / sa; d = QRectF(cr.x() + cr.width() * (1 - f) / 2, cr.y(), cr.width() * f, cr.height()); }
+            else         { const double f = sa / ra; d = QRectF(cr.x(), cr.y() + cr.height() * (1 - f) / 2, cr.width(), cr.height() * f); }
         }
-        if (bottomUp) { vTop = 1 - vTop; vBot = 1 - vBot; }          // FBO goc duoi-trai: khong lat doc
+        const QRectF t = cropToTexture(d, tex.rotation);                    // vung tren texture goc (v tinh tu tren xuong)
+        double vTop = t.top(), vBot = t.bottom();
+        if (bottomUp) { vTop = 1 - vTop; vBot = 1 - vBot; }                  // FBO goc duoi-trai: khong lat doc
         const QVector4D clip(float((px + pw / 2) / W * 2 - 1), float(1 - (py + ph / 2) / H * 2),
                              float(pw / W), float(ph / H));
         gl_.glBindTexture(GL_TEXTURE_2D, tex.id);
-        blit_->setUniformValue("uOpacity", l.opacity);
-        drawQuad(*blit_, clip, QVector4D(float(u0), float(vBot), float(u1), float(vTop)), float(tex.rotation));
+        blit_->setUniformValue("uOpacity", st.opacity);
+        drawQuad(*blit_, clip, QVector4D(float(t.left()), float(vBot), float(t.right()), float(vTop)), float(tex.rotation),
+                 st.rotation, float(W / H));
     }
     gl_.glDisable(GL_BLEND);
 }
@@ -306,6 +339,7 @@ void Compositor::drawOverlay(Source& src, RenderTarget& dst) {
     blit_->bind();
     blit_->setUniformValue("uTex", 0);
     blit_->setUniformValue("uOpacity", 1.0f);
+    blit_->setUniformValue("uBlendMode", 0);
     gl_.glActiveTexture(GL_TEXTURE0);
     gl_.glBindTexture(GL_TEXTURE_2D, tex.id);
     drawQuad(*blit_, QVector4D(0, 0, 1, 1), QVector4D(0, 1, 1, 0), float(tex.rotation));

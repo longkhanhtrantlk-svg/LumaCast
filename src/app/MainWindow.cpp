@@ -2,6 +2,7 @@
 #include "InspectorPanel.h"
 #include "MonitorWidget.h"
 #include "ParamEditor.h"
+#include "TimelineWidget.h"
 #include "render/OutputWindow.h"
 #include "Theme.h"
 #include <QAction>
@@ -206,7 +207,7 @@ void MainWindow::buildDocks() {
     connect(sceneList_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* it) {
         auto ch = project_.channels[channelIdx()];
         const int idx = sceneList_->row(it);
-        engine_.post([ch, idx](double) { ch->setPreview(idx); ch->cut(); });
+        engine_.post([ch, idx](double now) { ch->setPreview(idx); ch->cut(now); });
     });
 
     // Outputs
@@ -303,6 +304,16 @@ void MainWindow::buildDocks() {
         });
     });
 
+
+    // Timeline (tab canh Media Pool)
+    auto* tlDock = new QDockWidget("Timeline", this);
+    tlDock->setObjectName("dockTimeline");
+    timeline_ = new TimelineWidget(*inspector_, engine_, project_);
+    tlDock->setWidget(timeline_);
+    addDockWidget(Qt::BottomDockWidgetArea, tlDock);
+    tabifyDockWidget(mediaDock, tlDock);
+    mediaDock->raise();
+    connect(timeline_, &TimelineWidget::playheadChanged, this, [this] { inspector_->refreshProps(); });
 
     // Plug-in Manager
     auto* plugDock = new QDockWidget("Plug-in", this);
@@ -416,7 +427,7 @@ void MainWindow::buildMenus() {
 
 void MainWindow::cut() {
     auto ch = project_.channels[channelIdx()];
-    engine_.post([ch](double) { ch->cut(); });
+    engine_.post([ch](double now) { ch->cut(now); });
 }
 
 void MainWindow::take() {

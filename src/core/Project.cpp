@@ -7,6 +7,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSaveFile>
+#include <algorithm>
+#include <cmath>
 
 namespace lc {
 
@@ -127,6 +129,9 @@ bool saveProject(const Project& p, const QString& path, QString* err) {
         o["width"] = s->size.width();
         o["height"] = s->size.height();
         o["background"] = s->background.name(QColor::HexArgb);
+        o["duration"] = s->duration;
+        o["loop"] = s->loop;
+        o["restartOnAir"] = s->restartOnAir;
         QJsonArray layers;
         for (const Layer& l : s->layers) {
             const SourceDef* d = p.findSource(l.source.get());
@@ -137,6 +142,22 @@ bool saveProject(const Project& p, const QString& path, QString* err) {
             lo["opacity"] = double(l.opacity);
             lo["fit"] = fitStr(l.fit);
             lo["visible"] = l.visible;
+            if (l.rotation != 0.0f) lo["rotation"] = double(l.rotation);
+            if (l.crop != QRectF(0, 0, 1, 1)) lo["crop"] = QJsonArray{l.crop.x(), l.crop.y(), l.crop.width(), l.crop.height()};
+            if (l.blend != BlendMode::Normal) lo["blend"] = blendId(l.blend);
+            if (!l.tracks.empty()) {
+                QJsonArray tracks;
+                for (const Track& tr : l.tracks) {
+                    if (tr.keys.empty()) continue;
+                    QJsonObject to;
+                    to["prop"] = animPropId(tr.prop);
+                    QJsonArray keys;
+                    for (const Keyframe& k : tr.keys) keys.append(QJsonObject{{"t", k.time}, {"v", k.value}, {"i", interpId(k.interp)}});
+                    to["keys"] = keys;
+                    tracks.append(to);
+                }
+                lo["tracks"] = tracks;
+            }
             if (!l.effects.empty()) {
                 QJsonArray fx;
                 for (const EffectInstance& e : l.effects) {
@@ -243,6 +264,12 @@ bool loadProject(Project& out, const QString& path, QString* err) {
         s->size = QSize(o["width"].toInt(1920), o["height"].toInt(1080));
         if (s->size.width() < 1 || s->size.height() < 1) return fail("Kich thuoc Scene khong hop le: " + s->name);
         s->background = QColor(o["background"].toString("#ff000000"));
+        {
+            const double dur = o["duration"].toDouble(10.0);
+            s->duration = std::isfinite(dur) && dur >= 0.1 ? dur : 10.0;
+            s->loop = o["loop"].toBool(true);
+            s->restartOnAir = o["restartOnAir"].toBool(true);
+        }
         for (const QJsonValue& lv : o["layers"].toArray()) {
             const QJsonObject lo = lv.toObject();
             const QString sid = lo["source"].toString();
@@ -255,6 +282,34 @@ bool loadProject(Project& out, const QString& path, QString* err) {
             l.opacity = float(lo["opacity"].toDouble(1));
             l.fit = parseFit(lo["fit"].toString());
             l.visible = lo["visible"].toBool(true);
+            {
+                const double rot = lo["rotation"].toDouble(0);
+                l.rotation = std::isfinite(rot) ? float(rot) : 0.0f;
+                const QJsonArray cr = lo["crop"].toArray();
+                if (cr.size() == 4) {
+                    const QRectF c(cr[0].toDouble(), cr[1].toDouble(), cr[2].toDouble(), cr[3].toDouble());
+                    if (c.width() > 0 && c.height() > 0) l.crop = c;
+                }
+                const QString bl = lo["blend"].toString();
+                l.blend = bl == "add" ? BlendMode::Add : bl == "multiply" ? BlendMode::Multiply : bl == "screen" ? BlendMode::Screen : BlendMode::Normal;
+                for (const QJsonValue& tv : lo["tracks"].toArray()) {
+                    const QJsonObject to = tv.toObject();
+                    Track tr;
+                    if (!animPropFromId(to["prop"].toString(), tr.prop) || l.track(tr.prop)) continue;        // prop la hoac trung: bo qua
+                    for (const QJsonValue& kv : to["keys"].toArray()) {
+                        const QJsonObject ko = kv.toObject();
+                        const double t = ko["t"].toDouble(0), v = ko["v"].toDouble(0);
+                        if (!std::isfinite(t) || !std::isfinite(v)) continue;
+                        Keyframe k;
+                        k.time = std::max(0.0, t);
+                        k.value = v;
+                        if (!interpFromId(ko["i"].toString("linear"), k.interp)) k.interp = Interp::Linear;
+                        tr.keys.push_back(k);
+                    }
+                    sortKeys(tr);
+                    if (!tr.keys.empty()) l.tracks.push_back(tr);
+                }
+            }
             for (const QJsonValue& ev : lo["effects"].toArray()) {
                 const QJsonObject eo = ev.toObject();
                 EffectInstance e;

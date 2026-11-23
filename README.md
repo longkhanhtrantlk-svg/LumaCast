@@ -27,6 +27,11 @@ Windows (muc tieu): Qt 6 + FFmpeg qua vcpkg (`vcpkg install ffmpeg[core,avcodec,
 `-o WxH[@man_hinh][/kenh]` (lap lai cho nhieu output), `--scale fit|fill|stretch|pixel`, `--fps 60`.
 Phim tat (kenh 1): `1..9` chon Preview, `Space` = AUTO, `Enter` = CUT.
 
+## M4b them (hoat hoa)
+- Layer: **xoay**, **cat (crop)** theo hinh da xoay, **blend** Add/Multiply/Screen. O co vien vang = dang co keyframe.
+- **Timeline** (tab canh Media Pool): Phat/Tam dung/Ve 0/Tua, lap, thoi luong; 6 lan keyframe (X, Y, Rong, Cao, Alpha, Xoay). Nhap doi them key, nut ◆ them/xoa tai playhead, keo key, Delete, chuot phai doi kieu noi suy (tuyen tinh/em/giu bac). Sua gia tri o nhap khi da co keyframe se tu dat key. Hoan tac duoc.
+- Scene **tu phat lai tu dau khi len Program** (tat duoc). Timeline canh bao khi Scene dang chon dang o PROGRAM.
+
 ## M4a them (Effect, transition, plug-in)
 - Tab **Effect** (Inspector): gan chuoi Effect len Layer - lam mo, phat sang, chinh mau, tach RGB, pixelate, nhieu hat; tham so tu sinh giao dien; hoan tac duoc; luu trong project.
 - Transition moi: Push, Slide, Zoom, Luma wipe, **Stinger** (video alpha), chon easing; plug-in quet xoay di kem.

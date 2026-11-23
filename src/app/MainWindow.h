@@ -22,6 +22,7 @@ class QToolButton;
 namespace lc {
 
 class InspectorPanel;
+class TimelineWidget;
 class MonitorWidget;
 
 // Cua so chinh kieu "live production": Preview/Program, thanh chuyen, Scene list, Media Pool,
@@ -38,6 +39,7 @@ public:
     bool addMediaFile(const QString& path);        // them nguon + Scene tu file; false neu loi
     QString autosavePath() const;
     InspectorPanel* inspector() const { return inspector_; }
+    TimelineWidget* timeline() const { return timeline_; }
     QUndoStack* undoStack() { return &undo_; }
 
 protected:
@@ -77,6 +79,7 @@ private:
     PluginManager pm_;                 // plug-in shader (Effect/Transition)
     QUndoStack undo_;                  // phai khai bao truoc inspector_
     InspectorPanel* inspector_ = nullptr;
+    TimelineWidget* timeline_ = nullptr;
     MonitorWidget* preview_ = nullptr;
     MonitorWidget* program_ = nullptr;
     QComboBox* chanCombo_ = nullptr;

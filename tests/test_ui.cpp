@@ -8,7 +8,11 @@
 #include <QDoubleSpinBox>
 #include <QElapsedTimer>
 #include <QListWidget>
+#include <QAction>
+#include <QMenuBar>
 #include <QPushButton>
+#include <QSlider>
+#include <QUndoStack>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QThread>
@@ -151,6 +155,101 @@ int main(int argc, char** argv) {
     pump(200);
     CHECK(std::abs(engine.output(0)->config().cal.brightness - 0.5f) < 1e-4, "Inspector: doi 'sang' -> Output.cal.brightness = 0.5");
 
+
+    // ---- Undo / Redo ----
+    auto* us = w.undoStack();
+    alpha->setValue(0.2); alpha->setValue(0.3); alpha->setValue(0.4);     // ba chinh sua lien tiep cung mot truong
+    pump(200);
+    CHECK(std::abs(p.scenes[0]->layers[0].opacity - 0.4f) < 1e-4, "Doi alpha lien tiep: ap dung gia tri cuoi");
+    us->undo();
+    pump(200);
+    CHECK(std::abs(p.scenes[0]->layers[0].opacity - 0.5f) < 1e-4 && std::abs(alpha->value() - 0.5) < 1e-4,
+          "Hoan tac MOT lan: ca 3 lan keo gop thanh mot buoc, ve 0.5, o nhap cung cap nhat");
+    us->redo();
+    pump(200);
+    CHECK(std::abs(p.scenes[0]->layers[0].opacity - 0.4f) < 1e-4 && std::abs(alpha->value() - 0.4) < 1e-4, "Lam lai: 0.4");
+
+    auto* bright = byPrefix(insp, "sáng ");
+    bright->setValue(0.8);
+    pump(200);
+    CHECK(std::abs(engine.output(0)->config().cal.brightness - 0.8f) < 1e-4, "Output: doi sang = 0.8");
+    us->undo();
+    pump(200);
+    CHECK(std::abs(engine.output(0)->config().cal.brightness - 0.5f) < 1e-4 && std::abs(bright->value() - 0.5) < 1e-4,
+          "Hoan tac hieu chinh mau Output (engine + o nhap)");
+    us->redo();
+    pump(100);
+
+    // ---- Layer: an/hien, doi thu tu (keo-tha), them/xoa deu hoan tac duoc ----
+    auto* ll = insp->layerList();
+    button(insp, "Thêm layer")->click();
+    pump(200);
+    CHECK(p.scenes[0]->layers.size() == 2 && ll->count() == 2 && ll->currentRow() == 0, "Them layer: layer moi o tren cung va duoc chon");
+    alpha->setValue(0.3);                                  // danh dau layer moi (index 1)
+    pump(200);
+    CHECK(std::abs(p.scenes[0]->layers[1].opacity - 0.3f) < 1e-4 && std::abs(p.scenes[0]->layers[0].opacity - 0.4f) < 1e-4,
+          "Thuoc tinh ap dung cho layer dang chon");
+    ll->model()->moveRow(QModelIndex(), 0, QModelIndex(), 2);       // keo layer tren cung xuong duoi
+    pump(300);
+    CHECK(std::abs(p.scenes[0]->layers[0].opacity - 0.3f) < 1e-4 && std::abs(p.scenes[0]->layers[1].opacity - 0.4f) < 1e-4,
+          "Keo-tha doi thu tu layer -> engine nhan thu tu moi");
+    us->undo();
+    pump(200);
+    CHECK(std::abs(p.scenes[0]->layers[1].opacity - 0.3f) < 1e-4, "Hoan tac doi thu tu");
+    ll->item(1)->setCheckState(Qt::Unchecked);                      // an layer goc (hang duoi)
+    pump(200);
+    CHECK(!p.scenes[0]->layers[0].visible, "Bo tick = an layer");
+    us->undo();
+    pump(200);
+    CHECK(p.scenes[0]->layers[0].visible && ll->item(1)->checkState() == Qt::Checked, "Hoan tac an layer");
+    us->undo();                                                     // hoan tac alpha 0.3 cua layer moi
+    us->undo();                                                     // hoan tac them layer
+    pump(300);
+    CHECK(p.scenes[0]->layers.size() == 1 && ll->count() == 1, "Hoan tac them layer -> con 1 layer");
+    us->redo(); us->redo();
+    pump(300);
+    CHECK(p.scenes[0]->layers.size() == 2, "Lam lai them layer");
+    us->undo(); us->undo();
+    pump(200);
+
+    bool hasUndo = false, hasRedo = false;
+    for (QAction* a : w.findChildren<QAction*>()) {
+        hasUndo = hasUndo || a->text().startsWith("Hoàn tác");
+        hasRedo = hasRedo || a->text().startsWith("Làm lại");
+    }
+    CHECK(hasUndo && hasRedo, "Menu Edit co Hoan tac / Lam lai");
+
+    // ---- T-bar ----
+    auto* tbar = w.findChild<QSlider*>("tbar");
+    CHECK(tbar != nullptr, "Co T-bar");
+    const int pg0 = ch->program;
+    tbar->setValue(500);
+    pump(300);
+    CHECK(ch->manualActive() && ch->inTransition() && ch->program == pg0, "Keo T-bar 50%: dang chuyen, Program chua doi");
+    tbar->setValue(0);
+    pump(300);
+    CHECK(!ch->inTransition() && ch->program == pg0, "Keo T-bar ve 0: huy, Program giu nguyen");
+    tbar->setValue(400);
+    pump(100);
+    tbar->setValue(1000);
+    pump(900);
+    CHECK(ch->program != pg0 && !ch->manualActive() && tbar->value() == 0, "Keo het T-bar: Program doi, T-bar tu ve 0");
+
+    // ---- AUTO ----
+    auto* autoBtn = button(&w, "AUTO");
+    autoBtn->click();
+    const int target = ch->program == 0 ? 1 : 0;
+    emit scenes->itemClicked(scenes->item(target));
+    pump(300);
+    CHECK(ch->inTransition(), "AUTO bat: bam Scene = chay transition ngay");
+    pump(1400);
+    CHECK(ch->program == target && !ch->inTransition(), "AUTO: Scene da len Program");
+    autoBtn->click();
+    const int target2 = ch->program == 0 ? 1 : 0;
+    emit scenes->itemClicked(scenes->item(target2));
+    pump(300);
+    CHECK(!ch->inTransition() && ch->program != target2 && ch->preview == target2, "AUTO tat: bam Scene chi vao Preview");
+
     // ---- Nhap media -> Scene moi ----
     QImage img(32, 18, QImage::Format_RGBA8888); img.fill(Qt::green);
     const QString png = dir.filePath("g.png");
@@ -170,8 +269,8 @@ int main(int argc, char** argv) {
     Project q;
     QString err;
     CHECK(loadProject(q, p.filePath, &err), "Project luu tu UI mo lai duoc: " + err.toStdString());
-    CHECK(q.scenes.size() == 3 && q.sources.size() == 3 && std::abs(q.outputs[0].cal.brightness - 0.5f) < 1e-4 &&
-              std::abs(q.scenes[0]->layers[0].opacity - 0.5f) < 1e-4, "File luu chua scene moi + hieu chinh mau + alpha MOI");
+    CHECK(q.scenes.size() == 3 && q.sources.size() == 3 && std::abs(q.outputs[0].cal.brightness - 0.8f) < 1e-4 &&
+              std::abs(q.scenes[0]->layers[0].opacity - 0.4f) < 1e-4, "File luu chua scene moi + hieu chinh mau + alpha sau Undo/Redo");
     Project r;
     CHECK(loadProject(r, p.filePath + ".autosave", &err) && r.scenes.size() == 3, "Autosave: file duoc tao va mo lai duoc");
 

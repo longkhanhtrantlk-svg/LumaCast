@@ -2,6 +2,7 @@
 #include "render/Engine.h"
 #include <QMainWindow>
 #include <QTimer>
+#include <QUndoStack>
 
 class QAction;
 class QComboBox;
@@ -10,6 +11,7 @@ class QLabel;
 class QListWidget;
 class QMenu;
 class QPushButton;
+class QSlider;
 class QToolButton;
 
 namespace lc {
@@ -29,6 +31,7 @@ public:
     bool addMediaFile(const QString& path);        // them nguon + Scene tu file; false neu loi
     QString autosavePath() const;
     InspectorPanel* inspector() const { return inspector_; }
+    QUndoStack* undoStack() { return &undo_; }
 
 protected:
     void closeEvent(QCloseEvent* e) override;
@@ -59,6 +62,7 @@ private:
 
     Project& project_;
     RenderEngine& engine_;
+    QUndoStack undo_;                  // phai khai bao truoc inspector_
     InspectorPanel* inspector_ = nullptr;
     MonitorWidget* preview_ = nullptr;
     MonitorWidget* program_ = nullptr;
@@ -67,6 +71,9 @@ private:
     QDoubleSpinBox* durSpin_ = nullptr;
     QPushButton* blackAll_ = nullptr;
     QPushButton* ftb_ = nullptr;
+    QPushButton* autoBtn_ = nullptr;
+    QSlider* tbar_ = nullptr;
+    qint64 tbarMovedMs_ = 0;
     QListWidget* sceneList_ = nullptr;
     QListWidget* mediaList_ = nullptr;
     QLabel* statusLabel_ = nullptr;

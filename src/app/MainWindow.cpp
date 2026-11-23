@@ -22,6 +22,7 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QShortcut>
+#include <QSlider>
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QToolButton>
@@ -104,6 +105,15 @@ void MainWindow::buildUi() {
     durSpin_->setDecimals(1);
     durSpin_->setValue(1.0);
     durSpin_->setSuffix(" s");
+    autoBtn_ = new QPushButton("AUTO");
+    autoBtn_->setObjectName("auto");
+    autoBtn_->setCheckable(true);
+    autoBtn_->setToolTip("AUTO bật: bấm một Scene = chuyển thẳng lên Program bằng hiệu ứng đang chọn (không qua Preview).\nTắt (mặc định): bấm Scene chỉ đưa vào Preview.");
+    tbar_ = new QSlider(Qt::Horizontal);
+    tbar_->setObjectName("tbar");
+    tbar_->setRange(0, 1000);
+    tbar_->setFixedWidth(220);
+    tbar_->setToolTip("T-bar: kéo tay để chuyển Preview → Program. Kéo hết = hoàn tất, kéo về 0 = huỷ.");
     blackAll_ = new QPushButton("BLACK ALL");
     blackAll_->setObjectName("blackAll");
     blackAll_->setCheckable(true);
@@ -112,7 +122,10 @@ void MainWindow::buildUi() {
     ftb_->setObjectName("ftb");
     ftb_->setCheckable(true);
     ftb_->setToolTip("Fade-To-Black: làm mờ dần Program của kênh đang chọn về đen (bấm lại để trở lại)");
-    for (QWidget* w : std::initializer_list<QWidget*>{cutB, takeB, transCombo_, durSpin_}) bar->addWidget(w);
+    for (QWidget* w : std::initializer_list<QWidget*>{cutB, takeB, autoBtn_, transCombo_, durSpin_}) bar->addWidget(w);
+    bar->addSpacing(12);
+    bar->addWidget(new QLabel("T-bar"));
+    bar->addWidget(tbar_);
     bar->addStretch();
     bar->addWidget(blackAll_);
     bar->addWidget(ftb_);
@@ -124,6 +137,13 @@ void MainWindow::buildUi() {
     connect(blackAll_, &QPushButton::clicked, this, [this](bool on) { setBlackAll(on); });
     connect(ftb_, &QPushButton::clicked, this, [this] { toggleFtb(); });
     connect(chanCombo_, &QComboBox::currentIndexChanged, this, [this] { rebuildSceneList(); });
+    connect(tbar_, &QSlider::valueChanged, this, [this](int v) {
+        tbarMovedMs_ = QDateTime::currentMSecsSinceEpoch();
+        auto ch = project_.channels[channelIdx()];
+        const auto tt = TransitionType(transCombo_->currentData().toInt());
+        const float t = float(v) / 1000.0f;
+        engine_.post([ch, tt, t](double) { ch->setManual(tt, t); });
+    });
 
     // Phim tat theo dac ta: Space = TAKE, Enter = CUT, B = BLACK ALL, 1-9 = chon Preview
     new QShortcut(Qt::Key_Space, this, [this] { take(); });
@@ -152,7 +172,13 @@ void MainWindow::buildDocks() {
     connect(sceneList_, &QListWidget::itemClicked, this, [this](QListWidgetItem* it) {
         auto ch = project_.channels[channelIdx()];
         const int idx = sceneList_->row(it);
-        engine_.post([ch, idx](double) { ch->setPreview(idx); });
+        if (autoBtn_->isChecked()) {                       // AUTO: chon scene = chuyen thang len Program
+            const auto tt = TransitionType(transCombo_->currentData().toInt());
+            const double d = durSpin_->value();
+            engine_.post([ch, idx, tt, d](double now) { ch->setPreview(idx); ch->startTransition(tt, d, now); });
+        } else {
+            engine_.post([ch, idx](double) { ch->setPreview(idx); });
+        }
     });
     connect(sceneList_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* it) {
         auto ch = project_.channels[channelIdx()];
@@ -196,7 +222,7 @@ void MainWindow::buildDocks() {
     // Inspector
     auto* inspDock = new QDockWidget("Inspector", this);
     inspDock->setObjectName("dockInspector");
-    inspector_ = new InspectorPanel(project_, engine_);
+    inspector_ = new InspectorPanel(project_, engine_, &undo_);
     inspDock->setWidget(inspector_);
     addDockWidget(Qt::RightDockWidgetArea, inspDock);
     resizeDocks({inspDock}, {430}, Qt::Horizontal);
@@ -262,6 +288,14 @@ void MainWindow::buildMenus() {
     file->addAction("Thoát", QKeySequence::Quit, this, [this] { close(); });
     rebuildRecentMenu();
 
+    auto* edit = menuBar()->addMenu("&Edit");
+    QAction* undoA = undo_.createUndoAction(this, "Hoàn tác");
+    undoA->setShortcut(QKeySequence::Undo);
+    QAction* redoA = undo_.createRedoAction(this, "Làm lại");
+    redoA->setShortcuts({QKeySequence::Redo, QKeySequence(Qt::CTRL | Qt::Key_Y)});
+    edit->addAction(undoA);
+    edit->addAction(redoA);
+
     auto* view = menuBar()->addMenu("&View");
     for (QDockWidget* d : findChildren<QDockWidget*>()) view->addAction(d->toggleViewAction());
     view->addSeparator();
@@ -323,6 +357,11 @@ void MainWindow::refresh() {
             it->setText(QString("%1  %2%3").arg(i + 1, 2, 10, QChar('0')).arg(sceneName(ci, i))
                             .arg(isPg ? "   ● PGM" : isPv ? "   ○ PVW" : ""));
         }
+    }
+    if (!ch.manualActive() && tbar_->value() != 0 && !tbar_->isSliderDown() &&
+        QDateTime::currentMSecsSinceEpoch() - tbarMovedMs_ > 400) {      // T-bar da hoan tat/huy -> ve 0
+        QSignalBlocker bt(tbar_);
+        tbar_->setValue(0);
     }
     QSignalBlocker b1(ftb_), b2(blackAll_);
     ftb_->setChecked(ch.ftbTarget);

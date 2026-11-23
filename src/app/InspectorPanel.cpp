@@ -1,4 +1,5 @@
 #include "InspectorPanel.h"
+#include "ParamEditor.h"
 #include <QAbstractItemModel>
 #include <QCheckBox>
 #include <QComboBox>
@@ -6,6 +7,7 @@
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QLabel>
 #include <QListWidget>
 #include <QPushButton>
 #include <QScrollArea>
@@ -76,6 +78,7 @@ InspectorPanel::InspectorPanel(Project& project, RenderEngine& engine, QUndoStac
     for (const auto& s : project_.scenes) layerCache_.push_back(s->layers);
     for (int i = 0; i < engine_.outputCount(); ++i) outCache_.push_back(engine_.output(i)->config());
     addTab(buildSceneTab(), "Scene / Layer");
+    addTab(buildEffectTab(), "Effect");
     addTab(buildOutputTab(), "Output");
 }
 
@@ -268,6 +271,7 @@ void InspectorPanel::syncProps() {
     const int si = currentScene(), li = currentLayerIdx();
     const bool ok = li >= 0;
     propBox_->setEnabled(ok);
+    if (fxList_) syncEffectList(fxList_->currentRow());
     QSignalBlocker b0(rectSpin_[0]), b1(rectSpin_[1]), b2(rectSpin_[2]), b3(rectSpin_[3]), b4(alphaSpin_), b5(fitCombo_);
     if (!ok) return;
     const Layer& l = layerCache_[si][li];
@@ -300,6 +304,162 @@ void InspectorPanel::pushLayers(int si) {
     auto scene = project_.scenes[si];
     auto layers = layerCache_[si];
     engine_.post([scene, layers](double) { scene->layers = layers; });
+}
+
+
+// ---------------- Effect ----------------
+
+QWidget* InspectorPanel::buildEffectTab() {
+    auto* page = new QWidget;
+    auto* v = new QVBoxLayout(page);
+    fxTitle_ = new QLabel;
+    fxTitle_->setWordWrap(true);
+    v->addWidget(fxTitle_);
+
+    fxList_ = new QListWidget;
+    fxList_->setObjectName("effectList");
+    fxList_->setToolTip("Chuỗi Effect của layer, chạy từ trên xuống. Tick để bật/tắt từng Effect.");
+    v->addWidget(fxList_, 1);
+
+    auto* add = new QHBoxLayout;
+    fxAddCombo_ = new QComboBox;
+    fxAddCombo_->setObjectName("effectAddCombo");
+    auto* addB = new QPushButton("Thêm Effect");
+    addB->setObjectName("effectAdd");
+    add->addWidget(fxAddCombo_, 1);
+    add->addWidget(addB);
+    v->addLayout(add);
+    auto* ops = new QHBoxLayout;
+    auto* upB = new QPushButton("Effect lên"), * downB = new QPushButton("Effect xuống"), * delB = new QPushButton("Gỡ Effect");
+    upB->setObjectName("effectUp"); downB->setObjectName("effectDown"); delB->setObjectName("effectDel");
+    ops->addWidget(upB); ops->addWidget(downB); ops->addWidget(delB);
+    v->addLayout(ops);
+
+    fxNote_ = new QLabel;
+    fxNote_->setWordWrap(true);
+    fxNote_->setStyleSheet("color:#ff8a65");
+    v->addWidget(fxNote_);
+
+    fxParamBox_ = new QGroupBox("Tham số");
+    new QVBoxLayout(fxParamBox_);
+    v->addWidget(fxParamBox_);
+
+    connect(fxList_, &QListWidget::currentRowChanged, this, [this] { syncEffectParams(); });
+    connect(fxList_, &QListWidget::itemChanged, this, [this](QListWidgetItem* it) {
+        const int si = currentScene(), li = currentLayerIdx(), ei = fxList_->row(it);
+        if (li < 0 || ei < 0 || ei >= int(layerCache_[si][li].effects.size())) return;
+        auto after = layerCache_[si];
+        after[li].effects[ei].enabled = it->checkState() == Qt::Checked;
+        editLayers(si, after, after[li].effects[ei].enabled ? "Bật Effect" : "Tắt Effect");
+    });
+    connect(addB, &QPushButton::clicked, this, [this] {
+        const int si = currentScene(), li = currentLayerIdx();
+        const QString id = fxAddCombo_->currentData().toString();
+        auto def = engine_.registry().find(id);
+        if (li < 0 || !def) return;
+        auto after = layerCache_[si];
+        EffectInstance e;
+        e.effectId = id;
+        e.params = defaultParams(*def);
+        after[li].effects.push_back(e);
+        editLayers(si, after, "Thêm Effect");
+        syncEffectList(int(after[li].effects.size()) - 1);
+    });
+    auto move = [this](int dir) {
+        const int si = currentScene(), li = currentLayerIdx(), ei = fxList_->currentRow();
+        if (li < 0 || ei < 0) return;
+        auto after = layerCache_[si];
+        auto& fx = after[li].effects;
+        if (ei + dir < 0 || ei + dir >= int(fx.size())) return;
+        std::swap(fx[ei], fx[ei + dir]);
+        editLayers(si, after, "Đổi thứ tự Effect");
+        syncEffectList(ei + dir);
+    };
+    connect(upB, &QPushButton::clicked, this, [move] { move(-1); });
+    connect(downB, &QPushButton::clicked, this, [move] { move(+1); });
+    connect(delB, &QPushButton::clicked, this, [this] {
+        const int si = currentScene(), li = currentLayerIdx(), ei = fxList_->currentRow();
+        if (li < 0 || ei < 0) return;
+        auto after = layerCache_[si];
+        after[li].effects.erase(after[li].effects.begin() + ei);
+        editLayers(si, after, "Gỡ Effect");
+        syncEffectList(std::min(ei, int(after[li].effects.size()) - 1));
+    });
+    refreshEffectCatalog();
+    syncEffectList(-1);
+    return page;
+}
+
+void InspectorPanel::refreshEffectCatalog() {
+    if (!fxAddCombo_) return;
+    const QString keep = fxAddCombo_->currentData().toString();
+    QSignalBlocker b(fxAddCombo_);
+    fxAddCombo_->clear();
+    for (const auto& d : engine_.registry().all(EffectDef::Effect)) fxAddCombo_->addItem(d->name, d->id);
+    const int k = fxAddCombo_->findData(keep);
+    fxAddCombo_->setCurrentIndex(k >= 0 ? k : 0);
+    syncEffectList(fxList_ ? fxList_->currentRow() : -1);        // ten/tham so co the doi khi plug-in nap lai
+}
+
+void InspectorPanel::syncEffectList(int selectRow) {
+    if (!fxList_) return;
+    const int si = currentScene(), li = currentLayerIdx();
+    const bool has = si >= 0 && si < int(layerCache_.size()) && li >= 0 && li < int(layerCache_[si].size());
+    {
+        QSignalBlocker b(fxList_);
+        fxList_->clear();
+        if (has) {
+            for (const EffectInstance& e : layerCache_[si][li].effects) {
+                auto def = engine_.registry().find(e.effectId);
+                auto* it = new QListWidgetItem(def ? def->name : QString("⚠ thiếu plug-in: %1").arg(e.effectId));
+                it->setFlags(it->flags() | Qt::ItemIsUserCheckable);
+                it->setCheckState(e.enabled ? Qt::Checked : Qt::Unchecked);
+                if (!def) it->setForeground(QColor("#ff8a65"));
+                fxList_->addItem(it);
+            }
+            const int n = fxList_->count();
+            if (n > 0) fxList_->setCurrentRow(selectRow >= 0 && selectRow < n ? selectRow : 0);
+        }
+    }
+    fxTitle_->setText(has ? QString("Effect của layer %1 (chạy từ trên xuống dưới)").arg(li + 1)
+                          : "Chọn một layer ở tab Scene / Layer để thêm Effect.");
+    syncEffectParams();
+}
+
+void InspectorPanel::syncEffectParams() {
+    if (fxParams_) { fxParams_->hide(); fxParams_->deleteLater(); fxParams_ = nullptr; }
+    const int si = currentScene(), li = currentLayerIdx(), ei = fxList_->currentRow();
+    const bool ok = si >= 0 && li >= 0 && ei >= 0 && li < int(layerCache_[si].size()) && ei < int(layerCache_[si][li].effects.size());
+    fxParamBox_->setVisible(ok);
+    fxNote_->clear();
+    if (!ok) return;
+    const EffectInstance inst = layerCache_[si][li].effects[ei];
+    auto def = engine_.registry().find(inst.effectId);
+    if (!def) {
+        fxNote_->setText(QString("Plug-in '%1' không có hoặc đã tắt. Dữ liệu vẫn được giữ trong project; Effect này đang bị bỏ qua.").arg(inst.effectId));
+        fxParamBox_->setVisible(false);
+        return;
+    }
+    updateEffectNote();
+    if (def->params.isEmpty()) { fxParamBox_->setVisible(false); return; }
+    fxParams_ = new ParamEditor(def, inst.params);
+    fxParams_->setObjectName("effectParams");
+    fxParamBox_->layout()->addWidget(fxParams_);
+    connect(fxParams_, &ParamEditor::changed, this, [this](const QVariantMap& vals, int pi) {
+        const int si = currentScene(), li = currentLayerIdx(), ei = fxList_->currentRow();
+        if (li < 0 || ei < 0) return;
+        auto after = layerCache_[si];
+        after[li].effects[ei].params = vals;
+        editLayers(si, after, "Sửa tham số Effect", 3000000 + (si * 100 + li) * 1000 + ei * 50 + pi);
+    });
+}
+
+void InspectorPanel::updateEffectNote() {
+    if (!fxNote_ || !fxList_) return;
+    const int si = currentScene(), li = currentLayerIdx(), ei = fxList_->currentRow();
+    if (si < 0 || li < 0 || ei < 0 || li >= int(layerCache_[si].size()) || ei >= int(layerCache_[si][li].effects.size())) return;
+    const QString err = engine_.registry().compileError(layerCache_[si][li].effects[ei].effectId);
+    fxNote_->setText(err.isEmpty() ? QString() : "Shader lỗi, Effect này đang bị bỏ qua:\n" + err);
 }
 
 // ---------------- Output ----------------

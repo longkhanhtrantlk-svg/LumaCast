@@ -19,6 +19,9 @@ public:
     virtual TexRef acquire(GL& gl) = 0;     // khung hinh moi nhat, dang texture GL
     // Anh thu nho cho UI (Media Pool). Goi tu thread bat ky; rong neu chua co hinh.
     virtual QImage snapshot(int maxWidth = 160) const { Q_UNUSED(maxWidth); return {}; }
+    // Phat lai tu dau (Stinger). Mac dinh khong lam gi. Goi tu render thread.
+    virtual void restart() {}
+    virtual double durationSeconds() const { return 0; }     // do dai (giay) neu biet, 0 neu khong (dung cho Stinger)
 };
 
 } // namespace lc

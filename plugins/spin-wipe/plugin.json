@@ -1,0 +1,14 @@
+{
+  "id": "lumacast.example.spinwipe",
+  "name": "Quét xoay (spin wipe)",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "type": "transition",
+  "author": "LumaCast",
+  "description": "Hình mới hiện ra theo một cánh quét xoay quanh tâm.",
+  "entry": "spinwipe.frag",
+  "params": [
+    { "name": "clockwise", "label": "Theo chiều kim đồng hồ", "type": "bool", "default": true },
+    { "name": "softness", "label": "Độ mềm", "type": "float", "min": 0.005, "max": 0.3, "default": 0.03 }
+  ]
+}

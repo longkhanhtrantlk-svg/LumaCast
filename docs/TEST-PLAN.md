@@ -6,8 +6,9 @@ Liên quan: `SPEC.md` (tiêu chí nghiệm thu), `PLAN.md` (Definition of Done),
 | Tầng | Công cụ | Chạy ở đâu | Số kiểm tra |
 |---|---|---|---|
 | Tự động — render/lõi | `lumacast_tests` | Linux (GPU phần mềm llvmpipe), Windows | 60 |
-| Tự động — giao diện | `lumacast_ui_tests` | Linux (xvfb), Windows | 49 |
+| Tự động — giao diện | `lumacast_ui_tests` | Linux (xvfb), Windows | 72 |
 | Tự động — độ tin cậy | `lumacast_m3c_tests` | Linux (xvfb), Windows | 28 |
+| Tự động — Effect/Transition/plug-in | `lumacast_effects_tests` | Linux (xvfb), Windows | 65 |
 | Thử tay trên phần cứng thật | Checklist mục 3 | Windows, màn LED/bộ gửi tín hiệu thật | theo bảng |
 | Benchmark hiệu năng | Mục 4 | Windows, máy mục tiêu | theo bảng |
 
@@ -58,6 +59,10 @@ Trạng thái: **Đạt** · **Lỗi** · **Chưa thử**. Cập nhật cột n�
 | T-SOAK | Chạy liên tục ≥ 1 giờ có chuyển cảnh định kỳ | Không crash, khung rơi < 0,1 %, bộ nhớ ổn định | Chưa thử |
 | T-LOSS | Rút cáp/tắt một màn LED khi đang chạy (2 màn trở lên) | Output đó báo "MẤT MÀN HÌNH", **cửa sổ không nhảy sang màn khác**; Output còn lại không ảnh hưởng; cắm lại thì hình tự về đúng màn; có dòng trong log | **Chưa thử** (đã có test tự động cho logic) |
 | T-PAT | Bấm "Mẫu" ở một Output, rồi "Mẫu thử tất cả Output" | Hiện lưới/thanh màu/thước điểm ảnh/toạ độ 4 góc đúng độ phân giải thật; viền đỏ sát mép màn LED; tắt thì về Program | Chưa thử |
+| T-FX | Thêm Effect (làm mờ, chỉnh màu, glow…) vào một Layer đang chạy video; chỉnh tham số bằng chuột | Hình trên Program và trên màn Output đổi theo, mượt (FPS không tụt rõ); tắt/gỡ thì trở lại | Chưa thử |
+| T-TRX | Thử TAKE với Push (4 hướng), Slide, Zoom, Luma wipe (5 mẫu), plug-in Quét xoay; đổi easing và thời lượng | Hiệu ứng đúng hướng/kiểu, chạy hết rồi Program/Preview hoán đổi | Chưa thử |
+| T-STG | Nhập một video có kênh alpha (ví dụ .mov ProRes 4444 hoặc WebM VP9 alpha), chọn Stinger, TAKE | Video chạy đè từ đầu, đổi cảnh ở điểm cắt, tự kết thúc; lần TAKE sau lại phát từ đầu | **Chưa thử** (mới có test với nguồn tổng hợp) |
+| T-PLG | Chép plug-in mẫu vào `%AppData%\LumaCast\plugins`, sửa file `.frag` khi đang chạy; thử plug-in cố tình sai | Tự nạp lại sau ~0,3 s; sai thì Effect bị bỏ qua, có lỗi trong dock Plug-in/tab Effect/log, ứng dụng không sập | Chưa thử |
 | T-LOG | Mở `%AppData%\LumaCast\logs\lumacast.log` sau một phiên chạy | Có dòng khởi động, GPU, sự kiện Output; thanh trạng thái hiện p50/p99 | Chưa thử |
 
 ## 4. Benchmark hiệu năng
@@ -69,7 +74,7 @@ Mỗi cấu hình đo 5 phút và ghi: FPS trung bình, số khung rơi, thời 
 | B2: 4 Output 1080p, cùng Channel | Video 1080p60 | 60 fps, rơi < 0,1 % |
 | B3: 2 Output 4K + 2 Output 1080p | Video 4K30, test pattern | 60 fps, rơi < 0,1 % |
 | B4: 4 Output 4K | Video 4K | Ghi nhận giới hạn thật (có thể chưa đạt khi chưa có giải mã phần cứng) |
-| B5: B2 + Effect chuỗi (sau M4a) | Video 1080p60 | Ghi chi phí mỗi Effect |
+| B5: B2 + chuỗi Effect (blur 64 px, glow, chỉnh màu) trên 1–4 Layer | Video 1080p60 | Ghi chi phí mỗi Effect (p99 thời gian khung); blur/glow dùng 32 mẫu nên đáng chú ý ở 4K |
 
 Phần cứng đã đo: AMD Radeon (model chưa ghi), 2 Output cửa sổ, 60 fps. **Cần ghi đủ tên GPU, driver, phiên bản Windows cho mỗi lần đo.**
 

@@ -1,5 +1,6 @@
 #pragma once
 #include "core/Scene.h"
+#include "core/Transition.h"
 #include "render/Compositor.h"
 #include <atomic>
 
@@ -18,11 +19,15 @@ public:
     bool inTransition() const { return active_; }
     // T-bar: dieu khien tien do chuyen bang tay (0..1). t<=0 huy (khong doi scene), t>=1 hoan tat (Program <-> Preview).
     // Bi bo qua khi dang chay transition tu dong. Render thread (qua post).
-    void setManual(TransitionType type, float t);
+    void setManual(const TransitionSpec& spec, float t);
+    void setManual(TransitionType type, float t) { TransitionSpec s; s.type = type; setManual(s, t); }
     bool manualActive() const { return manual_; }
     void setPreview(int idx);
     void cut();
-    void startTransition(TransitionType type, double seconds, double now);
+    void startTransition(const TransitionSpec& spec, double now);
+    void startTransition(TransitionType type, double seconds, double now) {
+        TransitionSpec s; s.type = type; s.duration = seconds; startTransition(s, now);
+    }
 
     // Fade-To-Black: dua toan bo Program ve den (bam lan nua de tro lai). Render thread (qua post).
     std::atomic<bool> ftbTarget{false};
@@ -43,8 +48,8 @@ private:
     bool active_ = false;
     std::atomic<bool> manual_{false};
     float manualT_ = 0;
-    TransitionType type_ = TransitionType::Fade;
-    double start_ = 0, duration_ = 1;
+    TransitionSpec spec_;
+    double start_ = 0;
 };
 
 } // namespace lc

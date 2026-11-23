@@ -1,7 +1,10 @@
 #pragma once
 #include "render/Engine.h"
 #include "render/OutputSupervisor.h"
+#include "render/PluginManager.h"
+#include "core/Transition.h"
 #include <QMainWindow>
+#include <QMap>
 #include <QTimer>
 #include <QUndoStack>
 
@@ -15,6 +18,7 @@ class QPushButton;
 class QSlider;
 class QToolButton;
 
+
 namespace lc {
 
 class InspectorPanel;
@@ -24,7 +28,9 @@ class MonitorWidget;
 // Outputs (Black/Freeze/trang thai), Inspector. Moi thao tac di qua RenderEngine::post().
 class MainWindow : public QMainWindow {
 public:
-    MainWindow(Project& project, RenderEngine& engine);
+    MainWindow(Project& project, RenderEngine& engine, QStringList pluginDirs = PluginManager::defaultDirs());
+    PluginManager& plugins() { return pm_; }
+    TransitionSpec currentSpec() const;          // hieu ung chuyen dang chon tren thanh chuyen
 
     void setAskOnClose(bool ask) { askOnClose_ = ask; }
     void saveProject(bool saveAs);
@@ -43,6 +49,10 @@ private:
     void buildUi();
     void buildMenus();
     void buildDocks();
+    void rebuildTransitionCombo();
+    void rebuildPluginList();
+    void onTransitionChanged();
+    void editTransitionParams();
     void refresh();
     void refreshSlow();
     void onProjectChanged();
@@ -64,6 +74,7 @@ private:
     Project& project_;
     RenderEngine& engine_;
     OutputSupervisor sup_;             // theo doi mat man hinh / sai man hinh
+    PluginManager pm_;                 // plug-in shader (Effect/Transition)
     QUndoStack undo_;                  // phai khai bao truoc inspector_
     InspectorPanel* inspector_ = nullptr;
     MonitorWidget* preview_ = nullptr;
@@ -71,6 +82,12 @@ private:
     QComboBox* chanCombo_ = nullptr;
     QComboBox* transCombo_ = nullptr;
     QDoubleSpinBox* durSpin_ = nullptr;
+    QComboBox* easingCombo_ = nullptr;
+    QPushButton* paramsBtn_ = nullptr;
+    QComboBox* stingerCombo_ = nullptr;
+    QDoubleSpinBox* cutSpin_ = nullptr;
+    QListWidget* pluginList_ = nullptr;
+    QMap<QString, QVariantMap> transParams_;      // tham so da chinh cua tung transition plug-in
     QPushButton* blackAll_ = nullptr;
     QPushButton* ftb_ = nullptr;
     QPushButton* autoBtn_ = nullptr;

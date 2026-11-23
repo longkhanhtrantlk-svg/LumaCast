@@ -55,7 +55,9 @@ TexRef FFmpegSource::acquire(GL& gl) {
         tex_.upload(gl, f->rgba.data(), f->w, f->h);
         uploaded_ = f->seq;
         rotation_ = f->rotation;
+        waitFirst_ = false;
     }
+    if (waitFirst_) return {};
     return {tex_.id(), tex_.w(), tex_.h(), rotation_};
 }
 
@@ -69,6 +71,15 @@ QImage FFmpegSource::snapshot(int maxWidth) const {
     QImage img(f->rgba.data(), f->w, f->h, f->w * 4, QImage::Format_RGBA8888);   // f giu bo nho song
     img = img.scaledToWidth(std::min(maxWidth, f->w), Qt::SmoothTransformation);   // scaled* tao ban sao
     return f->rotation ? img.transformed(QTransform().rotate(f->rotation)) : img;
+}
+
+void FFmpegSource::restart() {
+    {
+        std::lock_guard lk(m_);
+        latest_.reset();
+    }
+    waitFirst_ = true;
+    restartReq_ = true;
 }
 
 void FFmpegSource::run() {
@@ -101,6 +112,7 @@ void FFmpegSource::run() {
         return cleanup();
     }
     AVStream* st = fmt->streams[vs];
+    if (fmt->duration > 0) duration_ = double(fmt->duration) / AV_TIME_BASE;
     const AVCodec* codec = avcodec_find_decoder(st->codecpar->codec_id);
     cc = codec ? avcodec_alloc_context3(codec) : nullptr;
     if (!cc || avcodec_parameters_to_context(cc, st->codecpar) < 0) {
@@ -139,9 +151,9 @@ void FFmpegSource::run() {
             if (now - due > std::chrono::milliseconds(200)) {      // tre qua -> dong bo lai
                 base = now; basePts = pts;
             }
-            while (!stop_ && (now = Clock::now()) < due)
+            while (!stop_ && !restartReq_ && (now = Clock::now()) < due)
                 std::this_thread::sleep_for(std::min<Clock::duration>(due - now, std::chrono::milliseconds(4)));
-            if (stop_) break;
+            if (stop_ || restartReq_) break;
 
             sws = sws_getCachedContext(sws, fr->width, fr->height, AVPixelFormat(fr->format), fr->width,
                                        fr->height, AV_PIX_FMT_RGBA, SWS_BILINEAR, nullptr, nullptr, nullptr);
@@ -164,6 +176,12 @@ void FFmpegSource::run() {
     };
 
     while (!stop_) {
+        if (restartReq_.exchange(false)) {                 // phat lai tu dau (Stinger)
+            av_seek_frame(fmt, vs, 0, AVSEEK_FLAG_BACKWARD);
+            avcodec_flush_buffers(cc);
+            haveBase = false;
+            continue;
+        }
         const int r = av_read_frame(fmt, pkt);
         if (r < 0) {                                   // het file
             avcodec_send_packet(cc, nullptr);          // xa not frame con ket trong decoder

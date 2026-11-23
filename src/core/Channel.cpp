@@ -16,12 +16,13 @@ void Channel::finish() {
     manual_ = false;
 }
 
-void Channel::setManual(TransitionType type, float t) {
+void Channel::setManual(const TransitionSpec& spec, float t) {
     if (active_ && !manual_) return;                          // dang chay transition tu dong
     if (!sceneAt(preview) || !sceneAt(program)) return;
     if (t <= 0.0f) { active_ = false; manual_ = false; return; }   // keo ve 0 = huy
     if (t >= 1.0f) { finish(); return; }                           // keo het = hoan tat
-    type_ = type == TransitionType::Cut ? TransitionType::Fade : type;
+    spec_ = spec;
+    if (spec_.type == TransitionType::Cut || spec_.type == TransitionType::Stinger) spec_.type = TransitionType::Fade;   // T-bar khong ho tro Stinger
     manualT_ = t;
     manual_ = true;
     active_ = true;
@@ -31,10 +32,16 @@ void Channel::cut() {
     if (sceneAt(preview)) finish();
 }
 
-void Channel::startTransition(TransitionType type, double seconds, double now) {
+void Channel::startTransition(const TransitionSpec& spec, double now) {
     if (active_ || !sceneAt(preview)) return;
-    if (type == TransitionType::Cut || seconds <= 0 || !sceneAt(program)) { finish(); return; }
-    type_ = type; duration_ = seconds; start_ = now; active_ = true;
+    if (spec.type == TransitionType::Cut || spec.duration <= 0 || !sceneAt(program)) { finish(); return; }
+    spec_ = spec;
+    if (spec_.type == TransitionType::Stinger) {
+        if (!spec_.stinger) spec_.type = TransitionType::Fade;           // thieu video stinger -> Fade
+        else spec_.stinger->restart();
+    }
+    start_ = now;
+    active_ = true;
 }
 
 RenderTarget* Channel::render(Compositor& comp, TargetPool& pool, double now) {
@@ -62,9 +69,16 @@ RenderTarget* Channel::renderPreview(Compositor& comp, TargetPool& pool) {
 
 RenderTarget* Channel::renderProgram(Compositor& comp, TargetPool& pool, double now) {
     if (active_) {
-        double t = manual_ ? double(manualT_) : (now - start_) / duration_;
+        double t = manual_ ? double(manualT_) : (now - start_) / spec_.duration;
         if (!manual_ && t >= 1.0) finish();
-        else {
+        else if (spec_.type == TransitionType::Stinger) {
+            // Cat canh cung (khong pha tron) o cutPoint, video stinger (co alpha) chay de len tren
+            Scene* s = t < spec_.cutPoint ? sceneAt(program) : sceneAt(preview);
+            RenderTarget* tg = pool.acquire(s->size.width(), s->size.height());
+            comp.renderScene(*s, *tg);
+            comp.drawOverlay(*spec_.stinger, *tg);
+            return tg;
+        } else {
             Scene* a = sceneAt(program);
             Scene* b = sceneAt(preview);
             RenderTarget* ta = pool.acquire(a->size.width(), a->size.height());
@@ -72,8 +86,8 @@ RenderTarget* Channel::renderProgram(Compositor& comp, TargetPool& pool, double 
             RenderTarget* tb = pool.acquire(b->size.width(), b->size.height());
             comp.renderScene(*b, *tb);
             RenderTarget* dst = pool.acquire(size.width(), size.height());
-            const float e = manual_ ? float(t) : float(t * t * (3 - 2 * t));   // T-bar: truc tiep; tu dong: ease in-out
-            comp.renderTransition(*ta, *tb, type_, e, *dst);
+            const float e = manual_ ? float(t) : float(applyEasing(spec_.easing, t));   // T-bar: truc tiep; tu dong: theo easing
+            comp.renderTransition(*ta, *tb, spec_, e, *dst);
             return dst;
         }
     }

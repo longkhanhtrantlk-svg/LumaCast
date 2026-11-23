@@ -33,7 +33,7 @@ Wall + luu/mo:
 
 ## 5. Test fullscreen nhieu man hinh LED
     build\lumacast.exe -o 1920x1080@0 -o 3840x2160@1 -o 1920x1080@2/2 --fullscreen -m clip.mp4 --scale fit
-`WxH@man_hinh/kenh`: `@N` la chi so man hinh Windows (0 = man chinh), `/K` la kenh. Chi so vuot so man hinh se dung man cuoi.
+`WxH@man_hinh/kenh`: `@N` la chi so man hinh Windows (0 = man chinh), `/K` la kenh. Chi so vuot so man hinh dang co thi Output do KHONG hien (bao "MAT MAN HINH" trong bang Outputs va log) - khong bao gio roi sang man khac. Ten man hinh duoc ghi nho khi chay lan dau va luu vao project.
 Esc tren cua so output thoat fullscreen. Neu nham man hinh, mo Windows Settings > Display de xem so thu tu.
 
 ## 6. Bao loi

@@ -1,5 +1,6 @@
 #pragma once
 #include "render/Engine.h"
+#include "render/OutputSupervisor.h"
 #include <QMainWindow>
 #include <QTimer>
 #include <QUndoStack>
@@ -37,7 +38,7 @@ protected:
     void closeEvent(QCloseEvent* e) override;
 
 private:
-    struct OutRow { QLabel* dot; QLabel* info; QToolButton* black; QToolButton* freeze; uint64_t lastPresented = 0; };
+    struct OutRow { QLabel* dot; QLabel* info; QToolButton* black; QToolButton* freeze; QToolButton* pattern; uint64_t lastPresented = 0; };
 
     void buildUi();
     void buildMenus();
@@ -62,6 +63,7 @@ private:
 
     Project& project_;
     RenderEngine& engine_;
+    OutputSupervisor sup_;             // theo doi mat man hinh / sai man hinh
     QUndoStack undo_;                  // phai khai bao truoc inspector_
     InspectorPanel* inspector_ = nullptr;
     MonitorWidget* preview_ = nullptr;
@@ -84,6 +86,7 @@ private:
     QByteArray defaultState_;
     int lastProgram_ = -2, lastPreview_ = -2, lastChannel_ = -1;
     qint64 lastSlowMs_ = 0;
+    bool lastStalled_ = false;
     bool askOnClose_ = true;
 };
 

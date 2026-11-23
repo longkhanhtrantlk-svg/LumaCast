@@ -33,7 +33,7 @@ namespace lc {
 static const QStringList kImageExt = {"png", "jpg", "jpeg", "bmp", "gif", "webp"};
 static const char* kMediaFilter = "Media (*.mp4 *.mov *.mkv *.avi *.webm *.png *.jpg *.jpeg *.bmp *.gif *.webp);;Tất cả (*.*)";
 
-MainWindow::MainWindow(Project& project, RenderEngine& engine) : project_(project), engine_(engine) {
+MainWindow::MainWindow(Project& project, RenderEngine& engine) : project_(project), engine_(engine), sup_(engine) {
     for (const auto& c : project_.channels) {
         std::vector<QString> names;
         for (const auto& s : c->scenes) names.push_back(s->name);
@@ -206,15 +206,28 @@ void MainWindow::buildDocks() {
         r.freeze->setText("Dừng");
         r.freeze->setCheckable(true);
         r.freeze->setToolTip("Dừng hình: giữ nguyên khung hình cuối trên màn hình này");
+        r.pattern = new QToolButton;
+        r.pattern->setText("Mẫu");
+        r.pattern->setCheckable(true);
+        r.pattern->setToolTip("Mẫu thử: hiện lưới, thanh màu, thước điểm ảnh và toạ độ 4 góc đúng độ phân giải thật của màn hình này");
         row->addWidget(r.dot);
         row->addWidget(r.info, 1);
         row->addWidget(r.black);
         row->addWidget(r.freeze);
+        row->addWidget(r.pattern);
         ov->addLayout(row);
         connect(r.black, &QToolButton::toggled, this, [sink](bool on) { sink->black = on; });
         connect(r.freeze, &QToolButton::toggled, this, [sink](bool on) { sink->freeze = on; });
+        connect(r.pattern, &QToolButton::toggled, this, [sink](bool on) { sink->testPattern = on; });
         outRows_.push_back(r);
     }
+    auto* allPattern = new QPushButton("Mẫu thử tất cả Output");
+    allPattern->setObjectName("allPattern");
+    allPattern->setCheckable(true);
+    ov->addWidget(allPattern);
+    connect(allPattern, &QPushButton::clicked, this, [this](bool on) {
+        for (int i = 0; i < engine_.outputCount(); ++i) engine_.output(i)->testPattern = on;
+    });
     ov->addStretch();
     outDock->setWidget(outW);
     addDockWidget(Qt::RightDockWidgetArea, outDock);
@@ -378,8 +391,8 @@ void MainWindow::refreshSlow() {
     for (int i = 0; i < engine_.outputCount(); ++i) {
         OutputSink* sink = engine_.output(i);
         OutRow& r = outRows_[i];
-        auto* win = dynamic_cast<OutputWindow*>(sink);
-        const bool exposed = win && win->isExposed();
+        const OutputHealth hl = sup_.health(i);
+        const bool exposed = hl == OutputHealth::Ok;
         const uint64_t pr = sink->presented;
         const double fps = dt > 0 ? double(pr - r.lastPresented) / dt : 0;
         r.lastPresented = pr;
@@ -387,17 +400,30 @@ void MainWindow::refreshSlow() {
         const char* col = !exposed ? colors::kProgram : sink->black ? "#8a90a2" : sink->freeze ? colors::kWarn : colors::kPreview;
         r.dot->setStyleSheet(QString("color:%1;font-size:16px").arg(col));
         const OutputConfig& c = sink->config();
+        QString extra;
+        if (!exposed) extra = " · " + sup_.text(i);
+        else if (sink->testPattern) extra = " · MẪU THỬ";
+        else if (sink->freeze) extra = " · DỪNG HÌNH";
         r.info->setText(QString("<b>%1</b><br><small>%2x%3 · kênh %4 · %5 fps%6</small>")
                             .arg(c.name).arg(c.size.width()).arg(c.size.height()).arg(c.channel + 1)
-                            .arg(fps, 0, 'f', 0).arg(!exposed ? " · KHÔNG HIỂN THỊ" : sink->freeze ? " · DỪNG HÌNH" : ""));
-        QSignalBlocker bb(r.black), bf(r.freeze);
+                            .arg(fps, 0, 'f', 0).arg(extra));
+        QSignalBlocker bb(r.black), bf(r.freeze), bp(r.pattern);
         r.black->setChecked(sink->black);
         r.freeze->setChecked(sink->freeze);
+        r.pattern->setChecked(sink->testPattern);
     }
-    statusLabel_->setText(QString("%1  |  GPU: %2  |  FPS: %3  |  Rơi khung: %4  |  Output: %5/%6")
-                              .arg(engine_.error().isEmpty() ? "System Ready" : "LỖI: " + engine_.error())
+    const bool stalled = engine_.stalled();
+    if (stalled != lastStalled_) {
+        lastStalled_ = stalled;
+        if (stalled) qCritical() << "WATCHDOG: render thread khong phan hoi - man hinh giu khung hinh cuoi";
+        else qInfo() << "WATCHDOG: render thread hoat dong tro lai";
+    }
+    statusLabel_->setStyleSheet(stalled ? "color:#ff4d4d;font-weight:bold" : QString());
+    statusLabel_->setText(QString("%1  |  GPU: %2  |  FPS: %3  |  Khung p50/p99: %7/%8 ms  |  Rơi khung: %4  |  Output: %5/%6")
+                              .arg(stalled ? "⚠ RENDER THREAD KHÔNG PHẢN HỒI" : engine_.error().isEmpty() ? "System Ready" : "LỖI: " + engine_.error())
                               .arg(engine_.gpuName().isEmpty() ? "-" : engine_.gpuName())
-                              .arg(engine_.fps(), 0, 'f', 1).arg(engine_.droppedFrames()).arg(ready).arg(engine_.outputCount()));
+                              .arg(engine_.fps(), 0, 'f', 1).arg(engine_.droppedFrames()).arg(ready).arg(engine_.outputCount())
+                              .arg(engine_.frameP50(), 0, 'f', 1).arg(engine_.frameP99(), 0, 'f', 1));
     // anh thu nho cua nguon dong (video) cap nhat cham
     static int tick = 0;
     if (++tick % 4 == 0)

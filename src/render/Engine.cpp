@@ -1,4 +1,5 @@
 #include "Engine.h"
+#include "render/FrameStats.h"
 #include "render/OutputWindow.h"
 #include <QElapsedTimer>
 #include <QGuiApplication>
@@ -22,6 +23,15 @@ RenderEngine::~RenderEngine() { stopEngine(); }
 double RenderEngine::now() const {
     static const auto origin = Clock::now();
     return std::chrono::duration<double>(Clock::now() - origin).count();
+}
+
+static int64_t steadyNs() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch()).count();
+}
+
+bool RenderEngine::stalled() const {
+    if (!isRunning() || heartbeatNs_ == 0) return false;
+    return steadyNs() - heartbeatNs_ > int64_t(stallMs_) * 1000000;
 }
 
 QString RenderEngine::error() const { return error_; }
@@ -57,7 +67,9 @@ void RenderEngine::startEngine() {
     for (const OutputConfig& cfg : project_.outputs) {
         auto w = std::make_unique<OutputWindow>(cfg);
         if (cfg.fullscreen) {
-            w->showFullScreen();
+            if (w->canShow()) w->showFullScreen();
+            else qWarning().noquote() << QString("Output '%1': man hinh '%2' (so %3) khong ton tai - KHONG hien hinh de tranh len nham man hinh khac")
+                                              .arg(cfg.name, cfg.screenName).arg(cfg.screenIndex);
         } else {
             // Cua so thu nghiem: thu nho neu lon hon man hinh (giu ti le), xep hang ngang, luon nam trong man hinh.
             QSize sz = cfg.size;
@@ -109,6 +121,11 @@ void RenderEngine::run() {
     const int monitorEvery = std::max(1, int(project_.fps / 15.0));
     int monitorTick = 0;
 
+    FrameStats stats;
+    auto statsMark = Clock::now();
+    heartbeatNs_ = steadyNs();
+    qInfo().noquote() << "Engine bat dau: GPU" << gpuName() << "| output:" << int(project_.outputs.size())
+                      << "| kenh:" << int(project_.channels.size()) << "| fps:" << project_.fps;
     const auto period = std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(1.0 / project_.fps));
     auto next = Clock::now();
     int frames = 0;
@@ -116,6 +133,8 @@ void RenderEngine::run() {
     std::vector<RenderTarget*> chanOut(project_.channels.size(), nullptr);
 
     while (!stop_) {
+        const auto frameStart = Clock::now();
+        heartbeatNs_ = steadyNs();
         // 1) lenh tu UI
         std::vector<std::function<void(double)>> cmds;
         {
@@ -148,6 +167,14 @@ void RenderEngine::run() {
         for (auto& sink : sinks_) {
             const int ch = sink->config().channel;
             sink->present(ctx, comp, (ch >= 0 && ch < int(chanOut.size())) ? chanOut[ch] : nullptr);
+        }
+
+        stats.add(std::chrono::duration<double, std::milli>(Clock::now() - frameStart).count());
+        if (Clock::now() - statsMark >= std::chrono::seconds(1)) {
+            p50_ = stats.percentile(0.50);
+            p99_ = stats.percentile(0.99);
+            maxMs_ = stats.max();
+            statsMark = Clock::now();
         }
 
         // 4) nhip: ngu gan het roi quay tron 1ms cuoi cho chinh xac

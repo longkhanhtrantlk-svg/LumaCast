@@ -1,6 +1,7 @@
 #include "StaticSources.h"
 #include <QFileInfo>
 #include <QImageReader>
+#include <QFontMetrics>
 #include <QPainter>
 
 namespace lc {
@@ -54,6 +55,32 @@ QImage makeTestPattern(int w, int h, const QString& label) {
     p.drawText(QRect(0, bh + m - 14, w - m, 40), Qt::AlignRight, "TR");
     p.drawText(m, h - bh - m, "BL");
     p.drawText(QRect(0, h - bh - m - 26, w - m, 40), Qt::AlignRight, "BR");
+    p.end();
+    return img;
+}
+
+QImage makeOutputTestPattern(int w, int h, const QString& label) {
+    QImage img = makeTestPattern(w, h, label);
+    QPainter p(&img);
+    QFont f = p.font();
+    f.setPixelSize(std::max(10, h / 60));
+    p.setFont(f);
+    p.setPen(QColor(255, 220, 0));
+    // thuoc do moi 100 diem anh doc theo duong ngang va doc o giua
+    for (int x = 100; x < w; x += 100) {
+        p.drawLine(x, h / 2 - 8, x, h / 2 + 8);
+        p.drawText(x + 3, h / 2 + 8 + f.pixelSize(), QString::number(x));
+    }
+    for (int y = 100; y < h; y += 100) {
+        p.drawLine(w / 2 - 8, y, w / 2 + 8, y);
+        p.drawText(w / 2 + 12, y + f.pixelSize() / 3, QString::number(y));
+    }
+    // toa do diem anh o 4 goc
+    p.drawText(8, f.pixelSize() + 4, "(0,0)");
+    const QString tr = QString("(%1,0)").arg(w - 1), bl = QString("(0,%1)").arg(h - 1), br = QString("(%1,%2)").arg(w - 1).arg(h - 1);
+    p.drawText(w - 8 - QFontMetrics(f).horizontalAdvance(tr), f.pixelSize() + 4, tr);
+    p.drawText(8, h - 8, bl);
+    p.drawText(w - 8 - QFontMetrics(f).horizontalAdvance(br), h - 8, br);
     p.end();
     return img;
 }

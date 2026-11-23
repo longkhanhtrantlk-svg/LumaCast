@@ -1,4 +1,6 @@
 #pragma once
+#include "render/GlHelpers.h"
+#include "render/OutputHealth.h"
 #include "render/OutputSink.h"
 #include <QWindow>
 #include <atomic>
@@ -12,10 +14,19 @@ public:
     const OutputConfig& config() const override { return cfg_; }
     OutputConfig& mutableConfig() override { return cfg_; }
     void present(QOpenGLContext& ctx, Compositor& comp, RenderTarget* src) override;
+
+    // --- UI thread ---
+    bool isFullscreenOutput() const { return ident_.fullscreen; }
+    bool canShow() const;                 // man hinh da cau hinh con ton tai (hoac la cua so thuong)
+    bool applyScreen();                   // dua cua so len DUNG man hinh va hien; false neu man hinh khong con
+    OutputHealth health() const;
 protected:
     void keyPressEvent(QKeyEvent* e) override;   // Esc thoat fullscreen cua so thu nghiem
 private:
-    OutputConfig cfg_;
+    OutputConfig cfg_;             // render thread co the sua qua mutableConfig()
+    const OutputConfig ident_;     // dinh danh man hinh, bat bien -> UI thread doc an toan
+    GlTexture testTex_;
+    QSize testSize_;
 };
 
 } // namespace lc

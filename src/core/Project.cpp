@@ -149,6 +149,7 @@ bool saveProject(const Project& p, const QString& path, QString* err) {
         o["name"] = c.name;
         o["channel"] = c.channel;
         o["screen"] = c.screenIndex;
+        if (!c.screenName.isEmpty()) o["screenName"] = c.screenName;
         o["fullscreen"] = c.fullscreen;
         o["width"] = c.size.width();
         o["height"] = c.size.height();
@@ -255,6 +256,7 @@ bool loadProject(Project& out, const QString& path, QString* err) {
         if (c.channel < 0 || c.channel >= int(p.channels.size()))
             return fail(QString("Output '%1': kenh %2 khong ton tai").arg(c.name).arg(c.channel + 1));
         c.screenIndex = o["screen"].toInt(-1);
+        c.screenName = o["screenName"].toString();
         c.fullscreen = o["fullscreen"].toBool(false);
         c.size = QSize(o["width"].toInt(1920), o["height"].toInt(1080));
         c.scale = parseScale(o["scale"].toString());

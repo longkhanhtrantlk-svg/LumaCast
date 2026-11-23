@@ -276,3 +276,11 @@ các chỉnh sửa liên tiếp cùng một trường gộp bằng `mergeWith` t
 về 0 = huỷ, CUT giữa chừng hoàn tất ngay. AUTO là công tắc giao diện: bật thì bấm Scene = đặt Preview + `startTransition`.
 
 **Pacing.** Một render thread, nhịp `fps` chủ (ngủ gần hết rồi quay vòng 1 ms cuối); khung hoàn tất sau hạn chót được đếm là rơi (`droppedFrames`).
+
+**Độ tin cậy (M3c).**
+- *Nhận diện màn hình:* `OutputConfig.screenName` (`QScreen::name()`) ưu tiên hơn `screenIndex` vì chỉ số đổi khi rút một màn giữa chừng (`resolveScreenIndex`). Màn không còn → Output **không hiển thị**, tuyệt đối không dùng màn khác.
+- *Giám sát:* `OutputSupervisor` (UI thread, 500 ms + tín hiệu `screenAdded/Removed`) tính `OutputHealth` (Ok/NoScreen/Hidden/WrongScreen); mất màn thì ẩn cửa sổ, màn quay lại hoặc cửa sổ bị Qt dời thì `applyScreen()`; ghi log mỗi lần đổi.
+- *Watchdog:* render thread cập nhật `heartbeat` mỗi khung; `stalled()` đúng khi quá ngưỡng (mặc định 2 s). Khi treo, cửa sổ giữ hình cuối vì không có `swapBuffers`; giao diện báo đỏ và ghi log.
+- *Thống kê khung:* `FrameStats` (vòng đệm 300 mẫu) cho p50/p99/max thời gian render, cập nhật mỗi giây.
+- *Mẫu thử theo Output:* `makeOutputTestPattern` vẽ đúng độ phân giải cửa sổ, bỏ qua scale/xoay/crop/hiệu chỉnh; ưu tiên hiển thị: Đen > Mẫu thử > Dừng hình > Program.
+- *Log:* `core/Log` cài `qInstallMessageHandler`, ghi file xoay vòng (2 MB × 3).

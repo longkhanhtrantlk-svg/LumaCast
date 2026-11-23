@@ -324,6 +324,61 @@ int main(int argc, char** argv) {
         }
     }
 
+
+    // --- Video xoay (display matrix, vd video doc quay bang dien thoai) ---
+    {
+        QTemporaryDir dir;
+        auto sh = [&](const QString& cmd) { return std::system(cmd.toLocal8Bit().constData()); };
+        const QString base = dir.filePath("base.mp4");
+        // 320x240: nua trai do, nua phai xanh la
+        const int rc = sh("ffmpeg -y -loglevel error -f lavfi -i \"color=c=red:s=320x240:d=1:r=25,"
+                          "drawbox=x=160:y=0:w=160:h=240:color=green:t=fill\" -pix_fmt yuv420p -c:v mpeg4 \"" + base + "\"");
+        if (rc != 0) {
+            std::cout << "skip: khong co ffmpeg de tao video xoay\n";
+        } else {
+            for (int deg : {90, 180, 270}) {
+                const QString rot = dir.filePath(QString("rot%1.mp4").arg(deg));
+                const QString ref = dir.filePath(QString("ref%1.png").arg(deg));
+                sh(QString("ffmpeg -y -loglevel error -display_rotation %1 -i \"%2\" -c copy \"%3\"").arg(deg).arg(base, rot));
+                sh(QString("ffmpeg -y -loglevel error -i \"%1\" -frames:v 1 \"%2\"").arg(rot, ref));   // ffmpeg tu xoay dung
+                QImage refImg(ref);
+                FFmpegSource v(rot);
+                TexRef tex;
+                for (int i = 0; i < 300 && !tex.id; ++i) { tex = v.acquire(gl); if (!tex.id) QThread::msleep(10); }
+                CHECK(!refImg.isNull() && tex.id && tex.rotation != 0, QString("Video xoay %1: doc duoc co xoay").arg(deg).toStdString());
+                if (refImg.isNull() || !tex.id) continue;
+
+                pool.beginFrame();
+                auto sc = std::make_shared<Scene>(); sc->size = refImg.size();
+                sc->layers.push_back({std::shared_ptr<Source>(&v, [](Source*) {}), {0, 0, 1, 1}, 1.0f, LayerFit::Stretch});
+                auto* t = pool.acquire(refImg.width(), refImg.height());
+                comp.renderScene(*sc, *t);
+                bool all = true;
+                for (int qy : {1, 3}) for (int qx : {1, 3}) {
+                    const int x = refImg.width() * qx / 4, y = refImg.height() * qy / 4;
+                    const QColor e = refImg.pixelColor(x, y);
+                    all = all && near(readPx(gl, *t, x, y), e.red(), e.green(), e.blue(), 30);
+                }
+                CHECK(all, QString("Video xoay %1: 4 diem khop voi hinh ffmpeg tu xoay").arg(deg).toStdString());
+            }
+
+            // Video doc (xoay 90) trong Scene ngang 160x90 voi Fit: giua la video, hai ben la nen
+            FFmpegSource v(dir.filePath("rot90.mp4"));
+            TexRef tex;
+            for (int i = 0; i < 300 && !tex.id; ++i) { tex = v.acquire(gl); if (!tex.id) QThread::msleep(10); }
+            if (tex.id) {
+                pool.beginFrame();
+                auto sc = std::make_shared<Scene>(); sc->size = {160, 90}; sc->background = Qt::blue;
+                sc->layers.push_back({std::shared_ptr<Source>(&v, [](Source*) {}), {0, 0, 1, 1}, 1.0f, LayerFit::Fit});
+                auto* t = pool.acquire(160, 90);
+                comp.renderScene(*sc, *t);
+                CHECK(near(readPx(gl, *t, 5, 45), 0, 0, 255) && near(readPx(gl, *t, 154, 45), 0, 0, 255) &&
+                          !near(readPx(gl, *t, 80, 45), 0, 0, 255, 60),
+                      "Video doc Fit trong Scene ngang: vien xanh hai ben, video o giua (khong bi ep ngang)");
+            }
+        }
+    }
+
     pool.clear();
     comp.shutdown();
     std::cout << (g_fail ? "THAT BAI " : "TAT CA DAT ") << g_fail << " loi\n";

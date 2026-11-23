@@ -129,21 +129,27 @@ void Compositor::renderScene(const Scene& scene, RenderTarget& dst) {
         if (!tex.id || tex.w <= 0 || tex.h <= 0) continue;
 
         double px = l.rect.x() * W, py = l.rect.y() * H, pw = l.rect.width() * W, ph = l.rect.height() * H;
-        const double sa = double(tex.w) / tex.h, ra = pw / ph;
+        // Video dien thoai: texture luu ngang nhung hien thi xoay 90/270 -> ti le hieu dung bi hoan doi.
+        const bool sideways = (tex.rotation / 90) % 2 != 0;
+        const double sa = sideways ? double(tex.h) / tex.w : double(tex.w) / tex.h, ra = pw / ph;
         // uv: day anh (v=1) o day quad, dinh anh (v=0) o dinh quad.
         double u0 = 0, u1 = 1, vTop = 0, vBot = 1;
         if (l.fit == LayerFit::Fit) {
             if (sa > ra) { const double nh = pw / sa; py += (ph - nh) / 2; ph = nh; }
             else         { const double nw = ph * sa; px += (pw - nw) / 2; pw = nw; }
         } else if (l.fit == LayerFit::Fill) {
-            if (sa > ra) { const double f = ra / sa; u0 = (1 - f) / 2; u1 = u0 + f; }
-            else         { const double f = sa / ra; vTop = (1 - f) / 2; vBot = vTop + f; }
+            // phan cat tinh trong khong gian DA XOAY (fu, fv); doi ve khong gian texture goc truoc khi xoay
+            double fu = 1, fv = 1;
+            if (sa > ra) fu = ra / sa; else fv = sa / ra;
+            const double cu = sideways ? fv : fu, cv = sideways ? fu : fv;
+            u0 = (1 - cu) / 2; u1 = u0 + cu;
+            vTop = (1 - cv) / 2; vBot = vTop + cv;
         }
         const QVector4D clip(float((px + pw / 2) / W * 2 - 1), float(1 - (py + ph / 2) / H * 2),
                              float(pw / W), float(ph / H));
         gl_.glBindTexture(GL_TEXTURE_2D, tex.id);
         blit_->setUniformValue("uOpacity", l.opacity);
-        drawQuad(*blit_, clip, QVector4D(float(u0), float(vBot), float(u1), float(vTop)), 0);
+        drawQuad(*blit_, clip, QVector4D(float(u0), float(vBot), float(u1), float(vTop)), float(tex.rotation));
     }
     gl_.glDisable(GL_BLEND);
 }

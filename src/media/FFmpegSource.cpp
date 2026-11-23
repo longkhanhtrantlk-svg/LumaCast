@@ -1,16 +1,29 @@
 #include "FFmpegSource.h"
 #include <QFileInfo>
 #include <chrono>
+#include <cmath>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <libavutil/display.h>
 #include <libswscale/swscale.h>
 }
 
 namespace lc {
 
 using Clock = std::chrono::steady_clock;
+
+// Display matrix (video quay doc bang dien thoai luu hinh ngang + co xoay) -> do xoay theo chieu kim dong ho.
+// av_display_rotation_get tra goc nguoc chieu kim dong ho can xoay de HIEN THI dung.
+static int rotationFromMatrix(const uint8_t* data, size_t size) {
+    if (!data || size < 9 * sizeof(int32_t)) return 0;
+    const double a = av_display_rotation_get(reinterpret_cast<const int32_t*>(data));
+    if (std::isnan(a)) return 0;
+    int cw = int(std::lround(-a));
+    cw = ((cw % 360) + 360) % 360;
+    return ((cw + 45) / 90 * 90) % 360;                  // chi ho tro boi so cua 90
+}
 
 FFmpegSource::FFmpegSource(QString path, bool loop)
     : path_(std::move(path)), name_(QFileInfo(path_).fileName()), loop_(loop) {
@@ -41,8 +54,9 @@ TexRef FFmpegSource::acquire(GL& gl) {
     if (f) {
         tex_.upload(gl, f->rgba.data(), f->w, f->h);
         uploaded_ = f->seq;
+        rotation_ = f->rotation;
     }
-    return {tex_.id(), tex_.w(), tex_.h()};
+    return {tex_.id(), tex_.w(), tex_.h(), rotation_};
 }
 
 void FFmpegSource::run() {
@@ -88,6 +102,11 @@ void FFmpegSource::run() {
         return cleanup();
     }
 
+    int streamRotation = 0;
+    if (const AVPacketSideData* sd = av_packet_side_data_get(st->codecpar->coded_side_data,
+                                                             st->codecpar->nb_coded_side_data, AV_PKT_DATA_DISPLAYMATRIX))
+        streamRotation = rotationFromMatrix(sd->data, sd->size);
+
     bool haveBase = false;
     Clock::time_point base;
     double basePts = 0, lastPts = 0;
@@ -117,6 +136,9 @@ void FFmpegSource::run() {
             if (sws) {
                 auto f = std::make_shared<Frame>();
                 f->w = fr->width; f->h = fr->height;
+                f->rotation = streamRotation;
+                if (const AVFrameSideData* fd = av_frame_get_side_data(fr, AV_FRAME_DATA_DISPLAYMATRIX))
+                    f->rotation = rotationFromMatrix(fd->data, fd->size);
                 f->rgba.resize(size_t(f->w) * f->h * 4);
                 uint8_t* dst[4] = {f->rgba.data(), nullptr, nullptr, nullptr};
                 int ls[4] = {f->w * 4, 0, 0, 0};

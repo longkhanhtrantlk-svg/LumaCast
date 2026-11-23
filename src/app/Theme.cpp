@@ -27,7 +27,7 @@ void applyDarkTheme(QApplication& app) {
     app.setStyleSheet(R"(
         QDockWidget { font-weight: 600; }
         QDockWidget::title { background: #232734; padding: 5px 8px; }
-        QPushButton { padding: 6px 12px; border: 1px solid #353b4d; border-radius: 4px; }
+        QPushButton { padding: 6px 12px; background: #272b37; border: 1px solid #4d5570; border-radius: 4px; }
         QPushButton:hover { border-color: #2f7de1; }
         QPushButton:checked { background: #2f7de1; border-color: #2f7de1; }
         QPushButton#cut { font-weight: 700; }

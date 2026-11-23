@@ -272,3 +272,10 @@ module rieng, cam vao truoc buoc `present()`. Ten San pham: **LumaCast** (phu de
 - M3a (UI Live Control): monitor Preview/Program, Scene list, Media Pool, thanh chuyen (CUT/TAKE), BLACK ALL, FTB, Outputs (Black/Freeze/trang thai),
   Inspector (Layer, Output), menu File (Open/Save/Recent), autosave + khoi phuc, layout luu/khoi phuc, xac nhan khi thoat.
 - M3b: Layers panel hoan chinh, Undo/Redo, T-bar, timeline/keyframe (Phase 3 cua tai lieu concept).
+
+## 17. Trang thai M3b
+- Undo/Redo: `QUndoStack` trong MainWindow; moi chinh sua tren Inspector la mot `LayersCmd`/`OutputCmd` (luu truoc/sau), cac chinh sua cung mot truong
+  gop thanh mot buoc (mergeWith theo id). Thao tac live (CUT/TAKE/FTB/Black) KHONG nam trong undo. Nhap media chua hoan tac duoc.
+- T-bar: `Channel::setManual(type, t)` (render thread); tien do truc tiep, khong ease; bi bo qua khi dang chay transition tu dong.
+- AUTO: cong tac UI (khong phai trang thai engine): bat -> bam Scene = Preview + startTransition.
+- Timeline/keyframe tach sang M4: can scene clock + thuoc tinh Layer theo thoi gian (track/keyframe) trong engine, khong chi la UI.

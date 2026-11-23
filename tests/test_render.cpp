@@ -338,6 +338,39 @@ int main(int argc, char** argv) {
               "Source::snapshot cho anh va mau");
     }
 
+
+    // --- T-bar (chuyen bang tay) ---
+    {
+        Channel ch; ch.size = {64, 36};
+        ch.scenes = {colorScene("red", Qt::red), colorScene("blue", Qt::blue)};
+        ch.program = 0; ch.preview = 1;
+        ch.setManual(TransitionType::Fade, 0.25f);
+        pool.beginFrame();
+        auto* t = ch.render(comp, pool, 0.0);
+        CHECK(ch.manualActive() && ch.inTransition() && near(readPx(gl, *t, 5, 5), 191, 0, 64, 6),
+              "T-bar 25%: tien do truc tiep (khong ease) -> do pha 25% xanh");
+        ch.setManual(TransitionType::Fade, 0.75f);
+        pool.beginFrame();
+        t = ch.render(comp, pool, 5.0);                      // thoi gian troi qua khong anh huong
+        CHECK(near(readPx(gl, *t, 5, 5), 64, 0, 191, 6), "T-bar 75%: khong phu thuoc dong ho");
+        ch.startTransition(TransitionType::Fade, 1.0, 5.0);
+        CHECK(ch.manualActive(), "Dang keo T-bar thi transition tu dong bi bo qua");
+        ch.setManual(TransitionType::Fade, 0.0f);
+        pool.beginFrame();
+        t = ch.render(comp, pool, 6.0);
+        CHECK(!ch.inTransition() && !ch.manualActive() && ch.program == 0 && near(readPx(gl, *t, 5, 5), 255, 0, 0),
+              "Keo T-bar ve 0 = huy: Program khong doi");
+        ch.setManual(TransitionType::WipeRight, 0.5f);
+        ch.setManual(TransitionType::WipeRight, 1.0f);
+        pool.beginFrame();
+        t = ch.render(comp, pool, 7.0);
+        CHECK(ch.program == 1 && ch.preview == 0 && !ch.manualActive() && near(readPx(gl, *t, 5, 5), 0, 0, 255),
+              "Keo T-bar het hanh trinh: hoan tat, Program <-> Preview hoan doi");
+        ch.setManual(TransitionType::Fade, 0.5f);
+        ch.cut();
+        CHECK(!ch.manualActive() && !ch.inTransition() && ch.program == 0, "CUT trong luc keo T-bar: hoan tat ngay, khong ket trang thai");
+    }
+
     // --- FFmpeg ---
     {
         const char* path = "/tmp/lumacast_test_red.mp4";

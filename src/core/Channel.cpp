@@ -13,6 +13,18 @@ void Channel::finish() {
     program = v;
     preview = p;
     active_ = false;
+    manual_ = false;
+}
+
+void Channel::setManual(TransitionType type, float t) {
+    if (active_ && !manual_) return;                          // dang chay transition tu dong
+    if (!sceneAt(preview) || !sceneAt(program)) return;
+    if (t <= 0.0f) { active_ = false; manual_ = false; return; }   // keo ve 0 = huy
+    if (t >= 1.0f) { finish(); return; }                           // keo het = hoan tat
+    type_ = type == TransitionType::Cut ? TransitionType::Fade : type;
+    manualT_ = t;
+    manual_ = true;
+    active_ = true;
 }
 
 void Channel::cut() {
@@ -50,8 +62,8 @@ RenderTarget* Channel::renderPreview(Compositor& comp, TargetPool& pool) {
 
 RenderTarget* Channel::renderProgram(Compositor& comp, TargetPool& pool, double now) {
     if (active_) {
-        double t = (now - start_) / duration_;
-        if (t >= 1.0) finish();
+        double t = manual_ ? double(manualT_) : (now - start_) / duration_;
+        if (!manual_ && t >= 1.0) finish();
         else {
             Scene* a = sceneAt(program);
             Scene* b = sceneAt(preview);
@@ -60,7 +72,7 @@ RenderTarget* Channel::renderProgram(Compositor& comp, TargetPool& pool, double 
             RenderTarget* tb = pool.acquire(b->size.width(), b->size.height());
             comp.renderScene(*b, *tb);
             RenderTarget* dst = pool.acquire(size.width(), size.height());
-            const float e = float(t * t * (3 - 2 * t));          // ease in-out
+            const float e = manual_ ? float(t) : float(t * t * (3 - 2 * t));   // T-bar: truc tiep; tu dong: ease in-out
             comp.renderTransition(*ta, *tb, type_, e, *dst);
             return dst;
         }

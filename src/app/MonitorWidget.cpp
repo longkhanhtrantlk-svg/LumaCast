@@ -31,7 +31,7 @@ void MonitorWidget::paintEvent(QPaintEvent*) {
     const QRect area(6, head + 2, width() - 12, height() - head - 8);
     if (img_.isNull()) {
         p.setPen(QColor(0x66, 0x6b, 0x7a));
-        p.drawText(area, Qt::AlignCenter, "Chua co hinh");
+        p.drawText(area, Qt::AlignCenter, "Chưa có hình");
     } else {
         QSize s = img_.size().scaled(area.size(), Qt::KeepAspectRatio);
         QRect r(QPoint(area.center().x() - s.width() / 2, area.center().y() - s.height() / 2), s);

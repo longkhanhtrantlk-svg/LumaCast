@@ -111,7 +111,7 @@ int main(int argc, char** argv) {
     CHECK(!engine.output(0)->black && !engine.output(1)->black, "BLACK ALL lan 2: tra hinh");
 
     QToolButton* freeze = nullptr;
-    for (auto* t : w.findChildren<QToolButton*>()) if (t->text() == "Dung") { freeze = t; break; }
+    for (auto* t : w.findChildren<QToolButton*>()) if (t->text() == "Dừng") { freeze = t; break; }
     freeze->click();
     pump(200);
     const uint64_t p0 = engine.output(0)->presented, p1 = engine.output(1)->presented;
@@ -139,15 +139,15 @@ int main(int argc, char** argv) {
     alpha->setValue(0.5);
     pump(200);
     CHECK(std::abs(p.scenes[0]->layers[0].opacity - 0.5f) < 1e-4, "Inspector: doi alpha -> Scene.layers[0].opacity = 0.5");
-    button(insp, "Them layer")->click();
+    button(insp, "Thêm layer")->click();
     pump(200);
     CHECK(p.scenes[0]->layers.size() == 2, "Them layer");
     QPushButton* del = nullptr;
-    for (auto* bt : insp->findChildren<QPushButton*>()) if (bt->text() == "Xoa") del = bt;
+    for (auto* bt : insp->findChildren<QPushButton*>()) if (bt->text() == "Xoá") del = bt;
     del->click();
     pump(200);
     CHECK(p.scenes[0]->layers.size() == 1, "Xoa layer vua them");
-    byPrefix(insp, "sang ")->setValue(0.5);
+    byPrefix(insp, "sáng ")->setValue(0.5);
     pump(200);
     CHECK(std::abs(engine.output(0)->config().cal.brightness - 0.5f) < 1e-4, "Inspector: doi 'sang' -> Output.cal.brightness = 0.5");
 

@@ -47,7 +47,7 @@ QWidget* InspectorPanel::buildSceneTab() {
 
     auto* add = new QHBoxLayout;
     addSrcCombo_ = new QComboBox;
-    auto* addB = new QPushButton("Them layer");
+    auto* addB = new QPushButton("Thêm layer");
     add->addWidget(addSrcCombo_, 1);
     add->addWidget(addB);
     v->addLayout(add);
@@ -100,7 +100,7 @@ void InspectorPanel::rebuildLayerRows() {
         auto* row = new QGroupBox(QString("%1. %2").arg(li + 1).arg(l.source ? l.source->name() : "?"));
         auto* g = new QGridLayout(row);
 
-        auto* vis = new QCheckBox("Hien");
+        auto* vis = new QCheckBox("Hiện");
         vis->setChecked(l.visible);
         connect(vis, &QCheckBox::toggled, this, [this, si, li](bool b) { layerCache_[si][li].visible = b; pushLayers(si); });
         g->addWidget(vis, 0, 0);
@@ -133,7 +133,7 @@ void InspectorPanel::rebuildLayerRows() {
         });
         g->addWidget(fit, 1, 1);
 
-        auto* up = new QPushButton("Len"), * down = new QPushButton("Xuong"), * del = new QPushButton("Xoa");
+        auto* up = new QPushButton("Lên"), * down = new QPushButton("Xuống"), * del = new QPushButton("Xoá");
         g->addWidget(up, 1, 2);
         g->addWidget(down, 1, 3);
         g->addWidget(del, 1, 4);
@@ -168,7 +168,7 @@ QWidget* InspectorPanel::buildOutputTab() {
     auto* root = new QVBoxLayout(host);
     for (int i = 0; i < engine_.outputCount(); ++i) {
         const OutputConfig& c = outCache_[i];
-        auto* box = new QGroupBox(QString("%1  (%2x%3, kenh %4)").arg(c.name).arg(c.size.width()).arg(c.size.height()).arg(c.channel + 1));
+        auto* box = new QGroupBox(QString("%1  (%2x%3, kênh %4)").arg(c.name).arg(c.size.width()).arg(c.size.height()).arg(c.channel + 1));
         auto* g = new QGridLayout(box);
 
         auto* scale = new QComboBox;
@@ -178,7 +178,7 @@ QWidget* InspectorPanel::buildOutputTab() {
         g->addWidget(scale, 0, 0);
 
         auto* rot = new QComboBox;
-        rot->addItems({"Xoay 0", "Xoay 90", "Xoay 180", "Xoay 270"});
+        rot->addItems({"Xoay 0°", "Xoay 90°", "Xoay 180°", "Xoay 270°"});
         rot->setCurrentIndex(c.rotation / 90);
         connect(rot, &QComboBox::currentIndexChanged, this, [this, i](int k) { outCache_[i].rotation = k * 90; pushOutput(i); });
         g->addWidget(rot, 0, 1);
@@ -199,7 +199,7 @@ QWidget* InspectorPanel::buildOutputTab() {
 
         struct Item { const char* label; double lo, hi, step; float Calibration::*field; };
         const Item items[] = {
-            {"sang", 0, 2, 0.05, &Calibration::brightness}, {"tuong phan", 0, 3, 0.05, &Calibration::contrast},
+            {"sáng", 0, 2, 0.05, &Calibration::brightness}, {"tương phản", 0, 3, 0.05, &Calibration::contrast},
             {"gamma", 0.2, 4, 0.05, &Calibration::gamma}, {"R", 0, 2, 0.02, &Calibration::gainR},
             {"G", 0, 2, 0.02, &Calibration::gainG}, {"B", 0, 2, 0.02, &Calibration::gainB}};
         int col = 0;

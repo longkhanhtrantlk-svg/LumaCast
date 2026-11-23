@@ -30,7 +30,7 @@
 namespace lc {
 
 static const QStringList kImageExt = {"png", "jpg", "jpeg", "bmp", "gif", "webp"};
-static const char* kMediaFilter = "Media (*.mp4 *.mov *.mkv *.avi *.webm *.png *.jpg *.jpeg *.bmp *.gif *.webp);;Tat ca (*.*)";
+static const char* kMediaFilter = "Media (*.mp4 *.mov *.mkv *.avi *.webm *.png *.jpg *.jpeg *.bmp *.gif *.webp);;Tất cả (*.*)";
 
 MainWindow::MainWindow(Project& project, RenderEngine& engine) : project_(project), engine_(engine) {
     for (const auto& c : project_.channels) {
@@ -76,7 +76,7 @@ void MainWindow::buildUi() {
     auto* top = new QHBoxLayout;
     chanCombo_ = new QComboBox;
     for (size_t i = 0; i < project_.channels.size(); ++i)
-        chanCombo_->addItem(QString("Kenh %1: %2").arg(i + 1).arg(project_.channels[i]->name));
+        chanCombo_->addItem(QString("Kênh %1: %2").arg(i + 1).arg(project_.channels[i]->name));
     top->addWidget(chanCombo_);
     top->addStretch();
     chanCombo_->setVisible(project_.channels.size() > 1);
@@ -107,11 +107,11 @@ void MainWindow::buildUi() {
     blackAll_ = new QPushButton("BLACK ALL");
     blackAll_->setObjectName("blackAll");
     blackAll_->setCheckable(true);
-    blackAll_->setToolTip("Dat den TAT CA output (bam lai de tra hinh)");
+    blackAll_->setToolTip("Đặt đen TẤT CẢ output (bấm lại để trả hình)");
     ftb_ = new QPushButton("FTB");
     ftb_->setObjectName("ftb");
     ftb_->setCheckable(true);
-    ftb_->setToolTip("Fade-To-Black: lam mo dan Program cua kenh dang chon ve den (bam lai de tro lai)");
+    ftb_->setToolTip("Fade-To-Black: làm mờ dần Program của kênh đang chọn về đen (bấm lại để trở lại)");
     for (QWidget* w : std::initializer_list<QWidget*>{cutB, takeB, transCombo_, durSpin_}) bar->addWidget(w);
     bar->addStretch();
     bar->addWidget(blackAll_);
@@ -145,6 +145,8 @@ void MainWindow::buildDocks() {
     scenesDock->setObjectName("dockScenes");
     sceneList_ = new QListWidget;
     sceneList_->setObjectName("sceneList");
+    sceneList_->setTextElideMode(Qt::ElideMiddle);
+    sceneList_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scenesDock->setWidget(sceneList_);
     addDockWidget(Qt::LeftDockWidgetArea, scenesDock);
     connect(sceneList_, &QListWidget::itemClicked, this, [this](QListWidgetItem* it) {
@@ -169,15 +171,15 @@ void MainWindow::buildDocks() {
         OutRow r;
         auto* row = new QHBoxLayout;
         r.dot = new QLabel("●");
-        r.info = new QLabel(QString("<b>%1</b><br><small>%2x%3 · kenh %4</small>")
+        r.info = new QLabel(QString("<b>%1</b><br><small>%2x%3 · kênh %4</small>")
                                 .arg(c.name).arg(c.size.width()).arg(c.size.height()).arg(c.channel + 1));
         r.black = new QToolButton;
-        r.black->setText("Den");
+        r.black->setText("Đen");
         r.black->setCheckable(true);
         r.freeze = new QToolButton;
-        r.freeze->setText("Dung");
+        r.freeze->setText("Dừng");
         r.freeze->setCheckable(true);
-        r.freeze->setToolTip("Dung hinh: giu nguyen khung hinh cuoi tren man hinh nay");
+        r.freeze->setToolTip("Dừng hình: giữ nguyên khung hình cuối trên màn hình này");
         row->addWidget(r.dot);
         row->addWidget(r.info, 1);
         row->addWidget(r.black);
@@ -205,9 +207,9 @@ void MainWindow::buildDocks() {
     auto* mw = new QWidget;
     auto* mv = new QVBoxLayout(mw);
     auto* mtop = new QHBoxLayout;
-    auto* importB = new QPushButton("Nhap media...");
+    auto* importB = new QPushButton("Nhập media...");
     mtop->addWidget(importB);
-    mtop->addWidget(new QLabel("Nhap doi de tao Scene tu nguon"));
+    mtop->addWidget(new QLabel("Nhấp đúp để tạo Scene từ nguồn"));
     mtop->addStretch();
     mv->addLayout(mtop);
     mediaList_ = new QListWidget;
@@ -217,11 +219,12 @@ void MainWindow::buildDocks() {
     mediaList_->setResizeMode(QListView::Adjust);
     mediaList_->setMovement(QListView::Static);
     mediaList_->setWordWrap(true);
+    mediaList_->setTextElideMode(Qt::ElideMiddle);
     mv->addWidget(mediaList_);
     mediaDock->setWidget(mw);
     addDockWidget(Qt::BottomDockWidgetArea, mediaDock);
     connect(importB, &QPushButton::clicked, this, [this] {
-        for (const QString& f : QFileDialog::getOpenFileNames(this, "Nhap media", QString(), kMediaFilter)) addMediaFile(f);
+        for (const QString& f : QFileDialog::getOpenFileNames(this, "Nhập media", QString(), kMediaFilter)) addMediaFile(f);
     });
     connect(mediaList_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* it) {
         const int k = it->data(Qt::UserRole).toInt();
@@ -245,31 +248,31 @@ void MainWindow::buildDocks() {
 
 void MainWindow::buildMenus() {
     auto* file = menuBar()->addMenu("&File");
-    auto* openA = file->addAction("Mo project...", QKeySequence::Open, this, [this] { openProject(); });
+    auto* openA = file->addAction("Mở project...", QKeySequence::Open, this, [this] { openProject(); });
     Q_UNUSED(openA);
-    recentMenu_ = file->addMenu("Gan day");
+    recentMenu_ = file->addMenu("Gần đây");
     file->addSeparator();
-    file->addAction("Luu", QKeySequence::Save, this, [this] { saveProject(false); });
-    file->addAction("Luu thanh...", QKeySequence::SaveAs, this, [this] { saveProject(true); });
+    file->addAction("Lưu", QKeySequence::Save, this, [this] { saveProject(false); });
+    file->addAction("Lưu thành...", QKeySequence::SaveAs, this, [this] { saveProject(true); });
     file->addSeparator();
-    file->addAction("Nhap media...", this, [this] {
-        for (const QString& f : QFileDialog::getOpenFileNames(this, "Nhap media", QString(), kMediaFilter)) addMediaFile(f);
+    file->addAction("Nhập media...", this, [this] {
+        for (const QString& f : QFileDialog::getOpenFileNames(this, "Nhập media", QString(), kMediaFilter)) addMediaFile(f);
     });
     file->addSeparator();
-    file->addAction("Thoat", QKeySequence::Quit, this, [this] { close(); });
+    file->addAction("Thoát", QKeySequence::Quit, this, [this] { close(); });
     rebuildRecentMenu();
 
     auto* view = menuBar()->addMenu("&View");
     for (QDockWidget* d : findChildren<QDockWidget*>()) view->addAction(d->toggleViewAction());
     view->addSeparator();
-    view->addAction("Dat lai bo cuc", this, [this] {
+    view->addAction("Đặt lại bố cục", this, [this] {
         restoreState(defaultState_);
         for (QDockWidget* d : findChildren<QDockWidget*>()) d->show();
     });
 
     auto* help = menuBar()->addMenu("&Help");
-    help->addAction("Gioi thieu", this, [this] {
-        QMessageBox::about(this, "LumaCast", "<b>LumaCast</b> — LED Display Controller<br>Phien ban M3a");
+    help->addAction("Giới thiệu", this, [this] {
+        QMessageBox::about(this, "LumaCast", "<b>LumaCast</b> — LED Display Controller<br>Phiên bản M3a");
     });
 }
 
@@ -307,7 +310,7 @@ void MainWindow::refresh() {
     program_->setImage(mf.program);
     preview_->setImage(mf.preview);
     const int pg = ch.program, pv = ch.preview;
-    program_->setSceneName(sceneName(ci, pg) + (ch.inTransition() ? "  (dang chuyen)" : ""));
+    program_->setSceneName(sceneName(ci, pg) + (ch.inTransition() ? "  (đang chuyển)" : ""));
     preview_->setSceneName(sceneName(ci, pv));
     program_->setOnAir(ch.ftbAmount < 1.0f);
 
@@ -345,15 +348,15 @@ void MainWindow::refreshSlow() {
         const char* col = !exposed ? colors::kProgram : sink->black ? "#8a90a2" : sink->freeze ? colors::kWarn : colors::kPreview;
         r.dot->setStyleSheet(QString("color:%1;font-size:16px").arg(col));
         const OutputConfig& c = sink->config();
-        r.info->setText(QString("<b>%1</b><br><small>%2x%3 · kenh %4 · %5 fps%6</small>")
+        r.info->setText(QString("<b>%1</b><br><small>%2x%3 · kênh %4 · %5 fps%6</small>")
                             .arg(c.name).arg(c.size.width()).arg(c.size.height()).arg(c.channel + 1)
-                            .arg(fps, 0, 'f', 0).arg(!exposed ? " · KHONG HIEN" : sink->freeze ? " · DUNG HINH" : ""));
+                            .arg(fps, 0, 'f', 0).arg(!exposed ? " · KHÔNG HIỂN THỊ" : sink->freeze ? " · DỪNG HÌNH" : ""));
         QSignalBlocker bb(r.black), bf(r.freeze);
         r.black->setChecked(sink->black);
         r.freeze->setChecked(sink->freeze);
     }
-    statusLabel_->setText(QString("%1  |  GPU: %2  |  FPS: %3  |  Roi khung: %4  |  Output: %5/%6")
-                              .arg(engine_.error().isEmpty() ? "System Ready" : "LOI: " + engine_.error())
+    statusLabel_->setText(QString("%1  |  GPU: %2  |  FPS: %3  |  Rơi khung: %4  |  Output: %5/%6")
+                              .arg(engine_.error().isEmpty() ? "System Ready" : "LỖI: " + engine_.error())
                               .arg(engine_.gpuName().isEmpty() ? "-" : engine_.gpuName())
                               .arg(engine_.fps(), 0, 'f', 1).arg(engine_.droppedFrames()).arg(ready).arg(engine_.outputCount()));
     // anh thu nho cua nguon dong (video) cap nhat cham
@@ -407,7 +410,7 @@ bool MainWindow::addMediaFile(const QString& path) {
     d.type = kImageExt.contains(QFileInfo(path).suffix().toLower()) ? "image" : "video";
     QString err;
     auto src = createSource(d, &err);
-    if (!src) { showMessage("Khong nhap duoc: " + err); return false; }
+    if (!src) { showMessage("Không nhập được: " + err); return false; }
     d.source = src;
     auto scene = std::make_shared<Scene>();
     scene->name = src->name();
@@ -447,7 +450,7 @@ void MainWindow::autosaveNow() {
 void MainWindow::saveProject(bool saveAs) {
     QString path = project_.filePath;
     if (path.isEmpty() || saveAs) {
-        path = QFileDialog::getSaveFileName(this, "Luu project", path.isEmpty() ? "project.lumacast.json" : path,
+        path = QFileDialog::getSaveFileName(this, "Lưu project", path.isEmpty() ? "project.lumacast.json" : path,
                                             "LumaCast project (*.json)");
         if (path.isEmpty()) return;
     }
@@ -457,14 +460,14 @@ void MainWindow::saveProject(bool saveAs) {
         QString err;
         const bool ok = lc::saveProject(project_, path, &err);
         QMetaObject::invokeMethod(this, [this, ok, err, path] {
-            showMessage(ok ? "Da luu: " + path : "Loi luu: " + err);
+            showMessage(ok ? "Đã lưu: " + path : "Lỗi lưu: " + err);
             if (ok) { addRecent(path); updateTitle(); QFile::remove(path + ".autosave"); }
         }, Qt::QueuedConnection);
     });
 }
 
 void MainWindow::updateTitle() {
-    setWindowTitle(QString("LumaCast — %1").arg(project_.filePath.isEmpty() ? "Chua dat ten" : QFileInfo(project_.filePath).fileName()));
+    setWindowTitle(QString("LumaCast — %1").arg(project_.filePath.isEmpty() ? "Chưa đặt tên" : QFileInfo(project_.filePath).fileName()));
 }
 
 void MainWindow::addRecent(const QString& path) {
@@ -485,18 +488,18 @@ void MainWindow::rebuildRecentMenu() {
 }
 
 void MainWindow::openProject() {
-    const QString p = QFileDialog::getOpenFileName(this, "Mo project", QString(), "LumaCast project (*.json)");
+    const QString p = QFileDialog::getOpenFileName(this, "Mở project", QString(), "LumaCast project (*.json)");
     if (!p.isEmpty()) launchProject(p);
 }
 
 // Mo project khac = khoi dong lai voi project do (engine/output dung lai tu dau, don gian va chac chan).
 void MainWindow::launchProject(const QString& path) {
-    if (QMessageBox::question(this, "Mo project",
-                              "Mo project nay se DONG project hien tai va tat cac output.\nTiep tuc?",
+    if (QMessageBox::question(this, "Mở project",
+                              "Mở project này sẽ ĐÓNG project hiện tại và tắt các output.\nTiếp tục?",
                               QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
         return;
     if (!QProcess::startDetached(QCoreApplication::applicationFilePath(), {"--project", path})) {
-        showMessage("Khong khoi dong duoc LumaCast moi");
+        showMessage("Không khởi động được LumaCast mới");
         return;
     }
     askOnClose_ = false;
@@ -505,7 +508,7 @@ void MainWindow::launchProject(const QString& path) {
 
 void MainWindow::closeEvent(QCloseEvent* e) {
     if (askOnClose_ &&
-        QMessageBox::question(this, "Thoat LumaCast", "Thoat se tat tat ca output.\nBan chac chan?",
+        QMessageBox::question(this, "Thoát LumaCast", "Thoát sẽ tắt tất cả output.\nBạn chắc chắn?",
                               QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) {
         e->ignore();
         return;

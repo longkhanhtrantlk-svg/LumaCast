@@ -2,6 +2,7 @@
 #include "render/OutputWindow.h"
 #include <QElapsedTimer>
 #include <QGuiApplication>
+#include <QScreen>
 #include <chrono>
 #include <thread>
 #ifdef _WIN32
@@ -51,16 +52,23 @@ void RenderEngine::startEngine() {
     surface_->setFormat(QSurfaceFormat::defaultFormat());
     surface_->create();
     // Che do cua so (phat trien): xep cac output thanh hang ngang duoi bang dieu khien, xuong dong khi het cho.
-    int x = 20, y = 500, rowH = 0;
+    const QRect avail = QGuiApplication::primaryScreen()->availableGeometry();
+    int x = avail.left() + 20, y = avail.top() + 420, rowH = 0;
     for (const OutputConfig& cfg : project_.outputs) {
         auto w = std::make_unique<OutputWindow>(cfg);
         if (cfg.fullscreen) {
             w->showFullScreen();
         } else {
-            if (x + cfg.size.width() > 1800 && x > 20) { x = 20; y += rowH + 30; rowH = 0; }
-            w->setPosition(x, y);
-            x += cfg.size.width() + 12;
-            rowH = std::max(rowH, cfg.size.height());
+            // Cua so thu nghiem: thu nho neu lon hon man hinh (giu ti le), xep hang ngang, luon nam trong man hinh.
+            QSize sz = cfg.size;
+            const QSize maxSz(int(avail.width() * 0.6), int(avail.height() * 0.5));
+            if (sz.width() > maxSz.width() || sz.height() > maxSz.height()) sz = sz.scaled(maxSz, Qt::KeepAspectRatio);
+            w->resize(sz);
+            if (x + sz.width() > avail.right() && x > avail.left() + 20) { x = avail.left() + 20; y += rowH + 30; rowH = 0; }
+            const int py = std::min(y, std::max(avail.top(), avail.bottom() - sz.height() - 40));
+            w->setPosition(std::min(x, std::max(avail.left(), avail.right() - sz.width())), py);
+            x += sz.width() + 12;
+            rowH = std::max(rowH, sz.height());
             w->show();
         }
         sinks_.push_back(std::move(w));

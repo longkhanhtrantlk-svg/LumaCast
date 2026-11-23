@@ -66,8 +66,8 @@ int main(int argc, char** argv) {
         // Khoi phuc: neu ban autosave moi hon file project (vd mat dien giua show) thi hoi nguoi dung.
         const QFileInfo main(toLoad), autosave(toLoad + ".autosave");
         if (autosave.exists() && (!main.exists() || autosave.lastModified() > main.lastModified()) &&
-            QMessageBox::question(nullptr, "Khoi phuc project",
-                                  QString("Tim thay ban tu dong luu moi hon:\n%1\n(%2)\n\nKhoi phuc ban nay?")
+            QMessageBox::question(nullptr, "Khôi phục project",
+                                  QString("Tìm thấy bản tự động lưu mới hơn:\n%1\n(%2)\n\nKhôi phục bản này?")
                                       .arg(autosave.fileName(), autosave.lastModified().toString("dd/MM/yyyy HH:mm:ss")),
                                   QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes) == QMessageBox::Yes)
             toLoad = autosave.filePath();

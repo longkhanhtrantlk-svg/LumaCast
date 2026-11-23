@@ -80,10 +80,10 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | OUT-06 | LUT 3D, giới hạn độ sáng | P2 | ⬜ | — |
 | OUT-07 | **Đen** theo từng Output và BLACK ALL; Đen luôn thắng Dừng hình | P0 | ✅ | Test tự động |
 | OUT-08 | **Dừng hình** theo từng Output (giữ khung cuối), Output khác vẫn chạy | P0 | 🟡 | Test tự động trên Linux; **chưa xác nhận trên Windows** (T-FRZ) |
-| OUT-09 | Toàn màn hình đúng màn hình đã chọn, không xé hình | P0 | 🟡 | **Chưa thử trên màn LED thật** (T-FS) |
+| OUT-09 | Toàn màn hình đúng màn hình đã chọn, không xé hình; **không bao giờ hiện lên màn khác** (nhận diện màn theo tên, chỉ số vượt quá số màn = không hiển thị) | P0 | 🟡 | Test tự động logic + ẩn cửa sổ; **chưa thử trên màn LED thật** (T-FS) |
 | OUT-10 | Trạng thái từng Output: hiển thị/không hiển thị, FPS thật, Đen/Dừng | P0 | ✅ | Test tự động |
-| OUT-11 | Test pattern riêng theo Output (lưới, đếm điểm ảnh, nhận diện màn bằng số) | P1 | 🟡 | Có Scene test pattern; chưa có chế độ gắn theo Output |
-| OUT-12 | Phát hiện mất thiết bị/mất màn và báo Output nào bị ảnh hưởng | P0 | ⬜ | M3c |
+| OUT-11 | Test pattern riêng theo Output (lưới, thanh màu, thước điểm ảnh, toạ độ 4 góc, tên màn), bật từng Output hoặc tất cả | P1 | ✅ | Test tự động (nội dung cửa sổ thật); thử tay T-PAT |
+| OUT-12 | Phát hiện mất màn/sai màn/cửa sổ không hiển thị, báo đúng Output (giao diện + log), ẩn cửa sổ khi mất màn, tự hiện lại đúng màn khi màn quay lại | P0 | 🟡 | Test tự động (logic, ẩn cửa sổ); **chưa thử rút màn thật** (T-LOSS) |
 | OUT-13 | Output dạng khác: NDI ra, ghi file, DMX/Art-Net | P1 | ⬜ | Qua `OutputSink` |
 
 ### 3.5 Project (PRJ)
@@ -105,7 +105,7 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | UI-02 | Danh sách Scene (đánh dấu PGM/PVW), Media Pool có ảnh thu nhỏ, Outputs, Inspector | P0 | ✅ | Test tự động |
 | UI-03 | Phím tắt: Space = TAKE, Enter = CUT, B = BLACK ALL, 1–9 chọn Preview, Ctrl+S/O/Z | P0 | ✅ | Thử tay T-KEY |
 | UI-04 | Giao diện tối; bố cục dock lưu/khôi phục; hỏi xác nhận khi thoát | P0 | ✅ | Thử tay |
-| UI-05 | Thanh trạng thái: GPU, FPS, khung rơi, số Output hiển thị | P0 | ✅ | Test tự động |
+| UI-05 | Thanh trạng thái: GPU, FPS, p50/p99 thời gian khung, khung rơi, số Output hiển thị, cảnh báo treo | P0 | ✅ | Test tự động |
 | UI-06 | Multiview nhiều Channel dạng lưới; chế độ Operator tối giản | P1 | ⬜ | — |
 | UI-07 | Phím tắt tuỳ chỉnh; khoá thao tác khi On Air (operator lock) | P1 | ⬜ | — |
 | UI-08 | Quản lý Output/canvas bằng giao diện (kéo-thả màn hình, wizard tạo project) | P1 | ⬜ | Hiện chỉnh qua Inspector và dòng lệnh |
@@ -126,7 +126,9 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | AUD-02 | Âm lượng, đồng bộ hình–tiếng theo đồng hồ âm thanh, crossfade theo transition, meter | P1 | ⬜ | M5a |
 | CTL-01 | Điều khiển ngoài: HTTP/WebSocket, OSC, MIDI (chọn Scene, TAKE/CUT, Đen, đặt tham số) | P1 | ⬜ | M5c |
 | OPS-01 | Tự khởi động cùng Windows, tự mở lại project gần nhất, ghi log | P1 | ⬜ | M5c |
-| OPS-02 | Watchdog: render thread treo thì cảnh báo và giữ hình cuối | P0 | ⬜ | M3c |
+| OPS-02 | Watchdog: render thread treo (> 2 s) thì cảnh báo trên giao diện + log; màn hình giữ hình cuối | P0 | 🟡 | Test tự động (chặn render thread); **chưa tự khởi động lại** |
+| OPS-04 | Ghi log ra file (`%AppData%/LumaCast/logs`, xoay vòng 2 MB × 3) | P0 | ✅ | Test tự động |
+| OPS-05 | Thời gian render mỗi khung p50/p99 trên thanh trạng thái | P1 | ✅ | Test tự động |
 | OPS-03 | Dự phòng (fallback) cấu hình trước cho nguồn mất | P1 | ⬜ | — |
 
 ---
@@ -143,7 +145,7 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | NFR-06 | Độ bền | File hỏng/media thiếu không làm crash | Đáp ứng với project JSON (PRJ-02) |
 | NFR-07 | Tương thích | Windows 10/11 x64; OpenGL 3.3 core; Qt ≥ 6.4 (đã dùng 6.4, 6.8.3); FFmpeg ≥ 6.1 (đã dùng 6.1, 9.1) | Đáp ứng |
 | NFR-08 | Giấy phép phụ thuộc | FFmpeg bản LGPL liên kết động; Qt LGPL liên kết động hoặc giấy phép thương mại | Đáp ứng (vcpkg `ffmpeg` mặc định) |
-| NFR-09 | Kiểm thử | Mọi tính năng mới có test tự động; PR phải qua `ctest` | 109 kiểm tra tự động |
+| NFR-09 | Kiểm thử | Mọi tính năng mới có test tự động; PR phải qua `ctest` | 137 kiểm tra tự động |
 | NFR-10 | Khả năng mở rộng | GPU chỉ chạm qua `Compositor`, `GlHelpers` và upload texture để thay bằng RHI (macOS) | Giữ nguyên tắc |
 
 ---

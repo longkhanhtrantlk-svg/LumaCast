@@ -26,6 +26,11 @@ Windows (muc tieu): Qt 6 + FFmpeg qua vcpkg (`vcpkg install ffmpeg[core,avcodec,
 `-o WxH[@man_hinh][/kenh]` (lap lai cho nhieu output), `--scale fit|fill|stretch|pixel`, `--fps 60`.
 Phim tat (kenh 1): `1..9` chon Preview, `Space` = AUTO, `Enter` = CUT.
 
+## M3c them (do tin cay)
+- Output toan man hinh nhan dien man theo **ten**; mat man -> bao dung Output, cua so KHONG nhay sang man khac, man quay lai thi tu hien lai dung man.
+- Watchdog render thread, thanh trang thai hien p50/p99 thoi gian khung; log ra `%AppData%\LumaCast\logs\lumacast.log` (xoay vong).
+- Nut "Mau" (tung Output) va "Mau thu tat ca Output": luoi, thanh mau, thuoc diem anh, toa do 4 goc dung do phan giai that.
+
 ## M3b them
 - Hoan tac / Lam lai (Ctrl+Z, Ctrl+Shift+Z / Ctrl+Y, menu Edit) cho moi chinh sua Layer va Output; keo lien tuc mot o nhap = mot buoc.
 - Panel Layer: danh sach keo-tha doi thu tu, tick an/hien, thuoc tinh cua layer dang chon, them/xoa.

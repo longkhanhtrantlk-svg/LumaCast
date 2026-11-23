@@ -7,6 +7,7 @@ Liên quan: `SPEC.md` (tiêu chí nghiệm thu), `PLAN.md` (Definition of Done),
 |---|---|---|---|
 | Tự động — render/lõi | `lumacast_tests` | Linux (GPU phần mềm llvmpipe), Windows | 60 |
 | Tự động — giao diện | `lumacast_ui_tests` | Linux (xvfb), Windows | 49 |
+| Tự động — độ tin cậy | `lumacast_m3c_tests` | Linux (xvfb), Windows | 28 |
 | Thử tay trên phần cứng thật | Checklist mục 3 | Windows, màn LED/bộ gửi tín hiệu thật | theo bảng |
 | Benchmark hiệu năng | Mục 4 | Windows, máy mục tiêu | theo bảng |
 
@@ -55,7 +56,9 @@ Trạng thái: **Đạt** · **Lỗi** · **Chưa thử**. Cập nhật cột n�
 | T-CAL | Dùng test chart; chỉnh sáng/gamma/gain từng Output | Màu khớp giữa các màn sau chỉnh | Chưa thử |
 | T-4K | 2 Output 4K + 2 Output 1080p, video 4K | Xem mục 4 | **Chưa thử — NFR-02** |
 | T-SOAK | Chạy liên tục ≥ 1 giờ có chuyển cảnh định kỳ | Không crash, khung rơi < 0,1 %, bộ nhớ ổn định | Chưa thử |
-| T-LOSS | Rút cáp/tắt một màn khi đang chạy | Báo đúng Output bị mất; các Output còn lại không ảnh hưởng | Chưa làm (OUT-12) |
+| T-LOSS | Rút cáp/tắt một màn LED khi đang chạy (2 màn trở lên) | Output đó báo "MẤT MÀN HÌNH", **cửa sổ không nhảy sang màn khác**; Output còn lại không ảnh hưởng; cắm lại thì hình tự về đúng màn; có dòng trong log | **Chưa thử** (đã có test tự động cho logic) |
+| T-PAT | Bấm "Mẫu" ở một Output, rồi "Mẫu thử tất cả Output" | Hiện lưới/thanh màu/thước điểm ảnh/toạ độ 4 góc đúng độ phân giải thật; viền đỏ sát mép màn LED; tắt thì về Program | Chưa thử |
+| T-LOG | Mở `%AppData%\LumaCast\logs\lumacast.log` sau một phiên chạy | Có dòng khởi động, GPU, sự kiện Output; thanh trạng thái hiện p50/p99 | Chưa thử |
 
 ## 4. Benchmark hiệu năng
 Mỗi cấu hình đo 5 phút và ghi: FPS trung bình, số khung rơi, thời gian khung p50/p99, GPU %, VRAM, CPU %.

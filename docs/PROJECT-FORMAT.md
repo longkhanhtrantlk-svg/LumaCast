@@ -70,7 +70,8 @@ Mã nguồn tham chiếu: `src/core/Project.cpp` (`saveProject`, `loadProject`).
 |---|---|---|---|
 | `name` | chuỗi | `"Output N"` | |
 | `channel` | số nguyên | 0 | chỉ số `channels[]`; sai là lỗi nạp |
-| `screen` | số nguyên | -1 | chỉ số màn hình hệ điều hành (khi toàn màn hình) |
+| `screen` | số nguyên | -1 | chỉ số màn hình hệ điều hành (khi toàn màn hình); chỉ dùng khi không có `screenName`; chỉ số vượt quá số màn = Output **không hiển thị** |
+| `screenName` | chuỗi | (rỗng) | tên màn hình (`QScreen::name()`, ví dụ `\\.\DISPLAY2`), **ưu tiên hơn `screen`**; tự ghi nhớ khi Output khởi động toàn màn hình. Không còn màn đó = không hiển thị |
 | `fullscreen` | bool | false | |
 | `width`, `height` | số nguyên | 1920, 1080 | kích thước khi chạy ở chế độ cửa sổ |
 | `scale` | chuỗi | `fit` | `fit` · `fill` · `stretch` · `pixel` |

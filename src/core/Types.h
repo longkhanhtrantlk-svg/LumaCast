@@ -35,6 +35,7 @@ struct OutputConfig {
     QString name;
     int channel = 0;            // Channel cap hinh cho output nay
     int screenIndex = -1;       // chi so man hinh he dieu hanh (khi fullscreen)
+    QString screenName;         // ten man hinh (QScreen::name); neu co thi UU TIEN hon screenIndex, vi chi so doi khi rut man
     bool fullscreen = false;
     QSize size{1920, 1080};     // kich thuoc cua so khi o che do cua so
     ScaleMode scale = ScaleMode::Fit;

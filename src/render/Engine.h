@@ -28,6 +28,13 @@ public:
     QString error() const;
     QString gpuName() const;
     uint64_t droppedFrames() const { return dropped_; }
+    // Thoi gian render moi khung (ms), cap nhat moi giay tren cua so ~300 khung gan nhat.
+    double frameP50() const { return p50_; }
+    double frameP99() const { return p99_; }
+    double frameMax() const { return maxMs_; }
+    // Watchdog: render thread khong bao nhip (heartbeat) qua nguong -> treo. Man hinh giu hinh cuoi (khong swap).
+    bool stalled() const;
+    void setStallThresholdMs(int ms) { stallMs_ = ms; }
     // Anh monitor (cap nhat ~15 lan/giay) cua Program/Preview cua mot Channel.
     struct MonitorFrame { QImage program, preview; };
     MonitorFrame monitor(int channel) const;
@@ -47,6 +54,9 @@ private:
     std::atomic<bool> stop_{false};
     QString error_, gpu_;
     std::atomic<uint64_t> dropped_{0};
+    std::atomic<double> p50_{0}, p99_{0}, maxMs_{0};
+    std::atomic<int64_t> heartbeatNs_{0};
+    std::atomic<int> stallMs_{2000};
     mutable std::mutex monitorMutex_;
     std::vector<MonitorFrame> monitors_;
     qint64 t0_ = 0;

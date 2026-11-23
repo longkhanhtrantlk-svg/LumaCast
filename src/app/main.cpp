@@ -1,10 +1,12 @@
 #include "MainWindow.h"
+#include "core/Log.h"
 #include "Theme.h"
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QRegularExpression>
+#include <QStandardPaths>
 #include <QSurfaceFormat>
 
 using namespace lc;
@@ -44,6 +46,8 @@ int main(int argc, char** argv) {
 
     QApplication app(argc, argv);
     app.setApplicationName("LumaCast");
+    initLogging(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/logs");
+    qInfo() << "LumaCast khoi dong";
     applyDarkTheme(app);
     QCommandLineParser cli;
     cli.setApplicationDescription("LumaCast - LED Display Controller");
@@ -150,7 +154,9 @@ int main(int argc, char** argv) {
     MainWindow window(proj, engine);
     window.show();
     const int rc = app.exec();
+    qInfo() << "LumaCast thoat, ma" << rc;
     engine.stopEngine();
     if (!engine.error().isEmpty()) qCritical().noquote() << engine.error();
+    shutdownLogging();
     return rc;
 }

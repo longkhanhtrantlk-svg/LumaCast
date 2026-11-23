@@ -6,6 +6,8 @@
 namespace lc {
 
 QImage makeTestPattern(int w, int h, const QString& label = {});
+// Mau thu cho TUNG man hinh LED: ket cau makeTestPattern + thuoc do moi 100 diem anh va toa do 4 goc, de kiem tra mapping/cat/xoay.
+QImage makeOutputTestPattern(int w, int h, const QString& label);
 
 class ImageSource : public Source {
 public:

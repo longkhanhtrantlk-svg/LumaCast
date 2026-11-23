@@ -9,8 +9,9 @@
 | M2 | Project JSON, hiệu chỉnh màu, video wall, nhiều Layer, video dọc | ✅ xong | #1 |
 | M3a | Giao diện Live Control: monitor, Scene list, Media Pool, Outputs, Inspector, FTB, Đen/Dừng, tự lưu | ✅ xong | #1 |
 | M3b | Hoàn tác/làm lại, T-bar, AUTO, panel Layer kéo-thả | ✅ xong | #2 |
+| M3c | Độ tin cậy: log, watchdog, mất màn, mẫu thử theo Output, thống kê khung | 🟡 phần mã xong; còn thử trên phần cứng thật | (nhánh `m3c`) |
 
-Quy mô mã: khoảng 3.800 dòng C++ · 109 kiểm tra tự động · build được trên Linux và Windows (MSVC 2022, Qt 6.8.3, FFmpeg 9.1).
+Quy mô mã: khoảng 4.500 dòng C++ · 137 kiểm tra tự động · build được trên Linux và Windows (MSVC 2022, Qt 6.8.3, FFmpeg 9.1).
 
 **Chưa được xác nhận trên phần cứng thật** (rủi ro đã biết, xem mục 5): nút Dừng hình trên Windows; fullscreen đúng màn LED;
 4 Output 4K; chạy liên tục nhiều giờ.
@@ -30,12 +31,13 @@ Kích cỡ: **S** vài ngày · **M** 1–2 tuần · **L** vài tuần (ước 
 
 ### M3c — Nghiệm thu thật và độ tin cậy (đề xuất làm **trước** M4) · Kích cỡ: M
 *Mục tiêu:* biến các điều "chưa xác nhận" thành đã kiểm chứng, và thêm bảo vệ cơ bản trước khi thêm tính năng.
-- [ ] Chạy checklist Windows T-FRZ, T-FS, T-4K, T-SOAK (xem `TEST-PLAN.md`), ghi kết quả vào `SPEC.md`.
+- [ ] **Cần phần cứng thật:** chạy checklist Windows T-FRZ, T-FS, T-LOSS, T-4K, T-SOAK (xem `TEST-PLAN.md`), ghi kết quả vào `SPEC.md`.
 - [ ] Sửa lỗi phát hiện được (ví dụ cơ chế Dừng hình nếu không đúng trên Windows).
-- [ ] OUT-12: phát hiện mất thiết bị/mất màn, báo Output nào bị ảnh hưởng, cố gắng tạo lại cửa sổ.
-- [ ] OPS-02: watchdog render thread (cảnh báo, giữ hình cuối, ghi log).
-- [ ] OUT-11: chế độ test pattern gắn theo Output (lưới, đếm điểm ảnh, số nhận diện màn).
-- [ ] Ghi log ra file (có xoay vòng) và đo thời gian khung (p50/p99) hiển thị ở thanh trạng thái.
+- [x] OUT-12: phát hiện mất màn/sai màn, báo đúng Output, ẩn cửa sổ khi mất màn (không nhảy sang màn khác), tự hiện lại đúng màn. Nhận diện màn theo **tên** (`screenName`).
+- [x] OPS-02: watchdog render thread (cảnh báo giao diện + log; màn hình giữ hình cuối). *Chưa làm:* tự khởi động lại.
+- [x] OUT-11: test pattern gắn theo Output (nút "Mẫu", "Mẫu thử tất cả Output").
+- [x] OPS-04/05: log ra file có xoay vòng; thời gian khung p50/p99 trên thanh trạng thái.
+- [x] Sửa lỗi an toàn: chỉ số màn vượt quá số màn trước đây dùng màn cuối (có thể đẩy hình LED lên màn operator); nay không hiển thị và báo lỗi.
 - **Nghiệm thu:** 4 Output chạy ≥ 1 giờ, khung rơi < 0,1 %; rút một màn thì cảnh báo đúng Output; checklist Windows không còn mục "chưa thử" ở nhóm P0.
 - **Phụ thuộc:** máy Windows có nhiều màn hình, tốt nhất có màn LED/bộ gửi tín hiệu thật.
 

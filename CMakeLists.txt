@@ -25,11 +25,15 @@ endif()
 add_library(lumacast_core STATIC
   src/core/Channel.cpp
   src/core/Project.cpp
+  src/core/Log.cpp
   src/render/GlHelpers.cpp
   src/render/Compositor.cpp
   src/render/Engine.h
   src/render/Engine.cpp
   src/render/OutputWindow.cpp
+  src/render/OutputHealth.cpp
+  src/render/OutputSupervisor.h
+  src/render/OutputSupervisor.cpp
   src/media/StaticSources.cpp
   src/media/FFmpegSource.cpp
 )
@@ -60,3 +64,7 @@ add_test(NAME render COMMAND lumacast_tests)
 add_executable(lumacast_ui_tests tests/test_ui.cpp)
 target_link_libraries(lumacast_ui_tests PRIVATE lumacast_ui)
 add_test(NAME ui COMMAND lumacast_ui_tests)
+
+add_executable(lumacast_m3c_tests tests/test_m3c.cpp)
+target_link_libraries(lumacast_m3c_tests PRIVATE lumacast_ui)
+add_test(NAME reliability COMMAND lumacast_m3c_tests)

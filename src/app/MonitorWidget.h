@@ -7,6 +7,7 @@ namespace lc {
 
 // Khung xem Preview (vien xanh la) hoac Program (vien do + nhan ON AIR).
 class MonitorWidget : public QWidget {
+    Q_OBJECT
 public:
     MonitorWidget(const QString& title, const QColor& color, bool program, QWidget* parent = nullptr);
     void setImage(const QImage& img);

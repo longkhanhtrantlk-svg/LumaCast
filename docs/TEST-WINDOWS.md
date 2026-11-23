@@ -38,3 +38,15 @@ Esc tren cua so output thoat fullscreen. Neu nham man hinh, mo Windows Settings 
 
 ## 6. Bao loi
 Gui: ban build (commit), lenh da chay, thong bao loi, driver GPU. Neu build loi, dan nguyen van 20 dong loi dau tien.
+
+## 7. Loi thuong gap
+**vcpkg: `Unable to find a valid Visual Studio instance` / `Could not locate a complete Visual Studio instance`**
+Chua co bo bien dich C++. Cai (hoac Modify) Visual Studio / Build Tools voi workload *Desktop development with C++* (kem Windows SDK):
+
+    winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+
+Kiem tra da nhan chua (phai in ra mot duong dan):
+
+    & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+
+Mo cua so PowerShell moi roi chay lai `vcpkg install ffmpeg:x64-windows` (lan dau 10-30 phut).

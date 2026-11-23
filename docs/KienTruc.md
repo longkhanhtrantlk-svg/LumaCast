@@ -263,3 +263,12 @@ module rieng, cam vao truoc buoc `present()`. Ten San pham: **LumaCast** (phu de
 - Hieu chinh mau o shader Output cuoi: `out = pow(clamp(((c-0.5)*contrast+0.5)*brightness*gain), 1/gamma)`.
 - Wall = nhieu Output cung 1 Channel, moi cai crop 1 o cua canvas (`makeWall`). Chua bu khe/bezel.
 - Mo hinh luong: moi sua doi tu UI di qua `RenderEngine::post()`, UI giu ban sao Layer/Output (cache) de khong doc du lieu render thread dang ghi.
+
+## 16. Quyet dinh san pham (23/11/2026)
+- Ten san pham: **LumaCast** (mo ta: "LED Display Controller"). Tai lieu "LED Control Studio Product Concept v1.0" la dac ta UI/UX tham chieu.
+- Nen tang: **Windows truoc**. **macOS can nhung chua phai luc nay.** Giu OpenGL 3.3; `Compositor` + `GlHelpers` + phan upload texture cua nguon la
+  ranh gioi GPU duy nhat (~600 dong) -> khi lam macOS se thay bang RHI (QRhi/Metal) o day, khong dong vao UI hay loi.
+- UI: Qt Widgets (dock panel), giao dien toi. Khong dung Qt Quick.
+- M3a (UI Live Control): monitor Preview/Program, Scene list, Media Pool, thanh chuyen (CUT/TAKE), BLACK ALL, FTB, Outputs (Black/Freeze/trang thai),
+  Inspector (Layer, Output), menu File (Open/Save/Recent), autosave + khoi phuc, layout luu/khoi phuc, xac nhan khi thoat.
+- M3b: Layers panel hoan chinh, Undo/Redo, T-bar, timeline/keyframe (Phase 3 cua tai lieu concept).

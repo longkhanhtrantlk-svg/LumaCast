@@ -25,7 +25,7 @@ Luồng vMix-style: chọn Scene vào **Preview** → bấm Cut/Fade/Transition 
 ## 2. Sơ đồ tổng thể
 
 ```
- ┌──────────────────────────── UI (Qt Widgets)   ────────────────────────────┐
+ ┌──────────────────────────── UI (Qt Widgets)     ────────────────────────────┐
  │ Multiview · Scene editor · Transition bar · Output setup · Plugin manager   │
  └───────────────▲───────────────────────────────────────┬─────────────────────┘
                  │ signals / models                      │ lệnh (lock-free queue)

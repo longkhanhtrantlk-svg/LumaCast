@@ -6,9 +6,21 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGL)
-find_package(PkgConfig REQUIRED)
-# Windows: cai FFmpeg qua vcpkg (ffmpeg[core,avcodec,avformat,swscale]) -- ban LGPL, lien ket dong.
-pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET libavformat libavcodec libswscale libavutil)
+# FFmpeg: Linux/macOS dung pkg-config; Windows dung vcpkg (`vcpkg install ffmpeg:x64-windows`, ban LGPL, lien ket dong).
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+  pkg_check_modules(FFMPEG QUIET IMPORTED_TARGET libavformat libavcodec libswscale libavutil)
+endif()
+if(TARGET PkgConfig::FFMPEG)
+  set(LC_FFMPEG PkgConfig::FFMPEG)
+else()
+  find_package(FFMPEG REQUIRED)
+  add_library(lc_ffmpeg INTERFACE)
+  target_include_directories(lc_ffmpeg INTERFACE ${FFMPEG_INCLUDE_DIRS})
+  target_link_directories(lc_ffmpeg INTERFACE ${FFMPEG_LIBRARY_DIRS})
+  target_link_libraries(lc_ffmpeg INTERFACE ${FFMPEG_LIBRARIES})
+  set(LC_FFMPEG lc_ffmpeg)
+endif()
 
 add_library(lumacast_core STATIC
   src/core/Channel.cpp
@@ -22,7 +34,7 @@ add_library(lumacast_core STATIC
   src/media/FFmpegSource.cpp
 )
 target_include_directories(lumacast_core PUBLIC src)
-target_link_libraries(lumacast_core PUBLIC Qt6::Core Qt6::Gui Qt6::OpenGL PkgConfig::FFMPEG)
+target_link_libraries(lumacast_core PUBLIC Qt6::Core Qt6::Gui Qt6::OpenGL ${LC_FFMPEG})
 if(WIN32)
   target_link_libraries(lumacast_core PUBLIC winmm)   # timeBeginPeriod(1) cho nhip 60fps chinh xac
 endif()

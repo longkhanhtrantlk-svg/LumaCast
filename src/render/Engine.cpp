@@ -5,6 +5,7 @@
 #include <chrono>
 #include <thread>
 #ifdef _WIN32
+#define NOMINMAX
 #include <windows.h>
 #include <timeapi.h>
 #endif

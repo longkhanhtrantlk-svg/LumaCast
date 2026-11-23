@@ -1,5 +1,7 @@
 #include "Compositor.h"
 #include <QMatrix2x2>
+#include <QDebug>
+#include <QVector2D>
 #include <QVector3D>
 #include <QVector4D>
 #include <QtMath>
@@ -97,6 +99,7 @@ bool Compositor::init() {
 }
 
 void Compositor::shutdown() {
+    fxCache_.clear();
     blit_.reset();
     out_.reset();
     trans_.reset();
@@ -124,17 +127,29 @@ void Compositor::clear(RenderTarget& dst, const QColor& c) {
 
 void Compositor::renderScene(const Scene& scene, RenderTarget& dst) {
     clear(dst, scene.background);
-    gl_.glEnable(GL_BLEND);
-    gl_.glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-    blit_->bind();
-    blit_->setUniformValue("uTex", 0);
-    gl_.glActiveTexture(GL_TEXTURE0);
 
     const double W = dst.w, H = dst.h;
     for (const Layer& l : scene.layers) {
         if (!l.visible || !l.source) continue;
-        const TexRef tex = l.source->acquire(gl_);
+        TexRef tex = l.source->acquire(gl_);
         if (!tex.id || tex.w <= 0 || tex.h <= 0) continue;
+
+        // Effect cua Layer chay TRUOC (tren texture nguon), ket qua nam trong FBO (goc duoi-trai)
+        bool bottomUp = false;
+        if (!l.effects.empty() && registry_ && pool_) {
+            if (RenderTarget* fx = applyLayerEffects(l, tex)) {
+                tex = TexRef{fx->tex, fx->w, fx->h, tex.rotation};
+                bottomUp = true;
+            }
+        }
+        // (dat lai trang thai ve vao Scene vi Effect da doi FBO/program/blend)
+        gl_.glBindFramebuffer(GL_FRAMEBUFFER, dst.fbo);
+        gl_.glViewport(0, 0, dst.w, dst.h);
+        gl_.glEnable(GL_BLEND);
+        gl_.glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        blit_->bind();
+        blit_->setUniformValue("uTex", 0);
+        gl_.glActiveTexture(GL_TEXTURE0);
 
         double px = l.rect.x() * W, py = l.rect.y() * H, pw = l.rect.width() * W, ph = l.rect.height() * H;
         // Video dien thoai: texture luu ngang nhung hien thi xoay 90/270 -> ti le hieu dung bi hoan doi.
@@ -153,6 +168,7 @@ void Compositor::renderScene(const Scene& scene, RenderTarget& dst) {
             u0 = (1 - cu) / 2; u1 = u0 + cu;
             vTop = (1 - cv) / 2; vBot = vTop + cv;
         }
+        if (bottomUp) { vTop = 1 - vTop; vBot = 1 - vBot; }          // FBO goc duoi-trai: khong lat doc
         const QVector4D clip(float((px + pw / 2) / W * 2 - 1), float(1 - (py + ph / 2) / H * 2),
                              float(pw / W), float(ph / H));
         gl_.glBindTexture(GL_TEXTURE_2D, tex.id);
@@ -185,6 +201,115 @@ void Compositor::renderTransition(const RenderTarget& a, const RenderTarget& b, 
     trans_->setUniformValue("uMode", mode);
     drawQuad(*trans_, QVector4D(0, 0, 1, 1), QVector4D(0, 0, 1, 1), 0);
     gl_.glActiveTexture(GL_TEXTURE0);
+}
+
+// ---------------- Effect / Transition shader ----------------
+
+QOpenGLShaderProgram* Compositor::effectProgram(const EffectDef& d) {
+    const QString key = QString("%1#%2").arg(d.id).arg(d.revision);
+    auto it = fxCache_.find(key);
+    if (it != fxCache_.end()) return it->second.get();
+    for (auto i = fxCache_.begin(); i != fxCache_.end();)                 // bo ban bien dich cu cua cung id (revision khac)
+        i = i->first.startsWith(d.id + "#") ? fxCache_.erase(i) : std::next(i);
+
+    auto prog = std::make_unique<QOpenGLShaderProgram>();
+    const bool ok = prog->addShaderFromSourceCode(QOpenGLShader::Vertex, kVert) &&
+                    prog->addShaderFromSourceCode(QOpenGLShader::Fragment, buildFragmentSource(d).toUtf8()) && prog->link();
+    if (!ok) {
+        const QString log = prog->log().isEmpty() ? QString("bien dich that bai") : prog->log();
+        if (registry_) registry_->setCompileError(d.id, d.revision, log);
+        qWarning().noquote() << QString("Shader '%1' loi, tat Effect nay:").arg(d.id) << log;
+        fxCache_[key] = nullptr;
+        return nullptr;
+    }
+    if (registry_) registry_->setCompileError(d.id, d.revision, QString());
+    return (fxCache_[key] = std::move(prog)).get();
+}
+
+void Compositor::setParamUniforms(QOpenGLShaderProgram& prog, const EffectDef& d, const QVariantMap& values) {
+    for (const ParamDef& p : d.params) {
+        const QVariant v = sanitizeParam(p, values.contains(p.name) ? values.value(p.name) : p.def);
+        const QByteArray n = p.name.toUtf8();
+        switch (p.type) {
+        case ParamDef::Float: prog.setUniformValue(n.constData(), float(v.toDouble())); break;
+        case ParamDef::Int: case ParamDef::Choice: prog.setUniformValue(n.constData(), GLint(v.toInt())); break;
+        case ParamDef::Bool: prog.setUniformValue(n.constData(), GLint(v.toBool() ? 1 : 0)); break;
+        case ParamDef::Color: { const QColor c = v.value<QColor>(); prog.setUniformValue(n.constData(), QVector4D(c.redF(), c.greenF(), c.blueF(), c.alphaF())); break; }
+        case ParamDef::Point: { const QPointF q = v.toPointF(); prog.setUniformValue(n.constData(), QVector2D(float(q.x()), float(q.y()))); break; }
+        }
+    }
+}
+
+RenderTarget* Compositor::applyLayerEffects(const Layer& l, const TexRef& tex) {
+    GLuint in = tex.id;
+    bool topDown = true;                                   // texture nguon luu tu tren xuong; FBO thi goc duoi-trai
+    RenderTarget* last = nullptr;
+    for (const EffectInstance& inst : l.effects) {
+        if (!inst.enabled) continue;
+        auto def = registry_->find(inst.effectId);
+        if (!def || def->kind != EffectDef::Effect) continue;          // plug-in thieu/da tat: bo qua, giu du lieu
+        QOpenGLShaderProgram* prog = effectProgram(*def);
+        if (!prog) continue;                                            // shader loi: bo qua Effect nay
+        RenderTarget* out = pool_->acquire(tex.w, tex.h);               // khac `in` vi `in` (neu la FBO truoc) dang busy
+        gl_.glBindFramebuffer(GL_FRAMEBUFFER, out->fbo);
+        gl_.glViewport(0, 0, out->w, out->h);
+        gl_.glDisable(GL_BLEND);
+        prog->bind();
+        gl_.glActiveTexture(GL_TEXTURE0);
+        gl_.glBindTexture(GL_TEXTURE_2D, in);
+        prog->setUniformValue("uInput", 0);
+        prog->setUniformValue("uSize", QVector2D(float(out->w), float(out->h)));
+        prog->setUniformValue("uTime", float(time_));
+        setParamUniforms(*prog, *def, inst.params);
+        drawQuad(*prog, QVector4D(0, 0, 1, 1), topDown ? QVector4D(0, 1, 1, 0) : QVector4D(0, 0, 1, 1), 0);
+        in = out->tex;
+        topDown = false;
+        last = out;
+    }
+    return last;
+}
+
+void Compositor::renderTransition(const RenderTarget& a, const RenderTarget& b, const TransitionSpec& spec, float t,
+                                  RenderTarget& dst) {
+    if (spec.type == TransitionType::Plugin && registry_) {
+        auto def = registry_->find(spec.pluginId);
+        QOpenGLShaderProgram* prog = def && def->kind == EffectDef::Transition ? effectProgram(*def) : nullptr;
+        if (prog) {
+            gl_.glBindFramebuffer(GL_FRAMEBUFFER, dst.fbo);
+            gl_.glViewport(0, 0, dst.w, dst.h);
+            gl_.glDisable(GL_BLEND);
+            prog->bind();
+            gl_.glActiveTexture(GL_TEXTURE0); gl_.glBindTexture(GL_TEXTURE_2D, a.tex);
+            gl_.glActiveTexture(GL_TEXTURE1); gl_.glBindTexture(GL_TEXTURE_2D, b.tex);
+            prog->setUniformValue("uFrom", 0);
+            prog->setUniformValue("uTo", 1);
+            prog->setUniformValue("uProgress", t);
+            prog->setUniformValue("uSize", QVector2D(float(dst.w), float(dst.h)));
+            prog->setUniformValue("uTime", float(time_));
+            setParamUniforms(*prog, *def, spec.params);
+            drawQuad(*prog, QVector4D(0, 0, 1, 1), QVector4D(0, 0, 1, 1), 0);
+            gl_.glActiveTexture(GL_TEXTURE0);
+            return;
+        }
+    }
+    const bool special = spec.type == TransitionType::Plugin || spec.type == TransitionType::Stinger;
+    renderTransition(a, b, special ? TransitionType::Fade : spec.type, t, dst);
+}
+
+void Compositor::drawOverlay(Source& src, RenderTarget& dst) {
+    const TexRef tex = src.acquire(gl_);
+    if (!tex.id) return;
+    gl_.glBindFramebuffer(GL_FRAMEBUFFER, dst.fbo);
+    gl_.glViewport(0, 0, dst.w, dst.h);
+    gl_.glEnable(GL_BLEND);
+    gl_.glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    blit_->bind();
+    blit_->setUniformValue("uTex", 0);
+    blit_->setUniformValue("uOpacity", 1.0f);
+    gl_.glActiveTexture(GL_TEXTURE0);
+    gl_.glBindTexture(GL_TEXTURE_2D, tex.id);
+    drawQuad(*blit_, QVector4D(0, 0, 1, 1), QVector4D(0, 1, 1, 0), float(tex.rotation));
+    gl_.glDisable(GL_BLEND);
 }
 
 QImage Compositor::thumbnail(TargetPool& pool, const RenderTarget& src, int maxW) {

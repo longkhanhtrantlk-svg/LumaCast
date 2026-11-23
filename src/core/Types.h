@@ -7,7 +7,7 @@ namespace lc {
 
 enum class ScaleMode { Fit, Fill, Stretch, Pixel };   // Pixel = 1:1, can giua
 enum class LayerFit  { Stretch, Fit, Fill };
-enum class TransitionType { Cut, Fade, DipToBlack, WipeLeft, WipeRight, WipeUp, WipeDown };
+enum class TransitionType { Cut, Fade, DipToBlack, WipeLeft, WipeRight, WipeUp, WipeDown, Plugin, Stinger };
 
 inline const char* transitionName(TransitionType t) {
     switch (t) {
@@ -18,6 +18,8 @@ inline const char* transitionName(TransitionType t) {
     case TransitionType::WipeRight: return "Wipe right";
     case TransitionType::WipeUp: return "Wipe up";
     case TransitionType::WipeDown: return "Wipe down";
+    case TransitionType::Plugin: return "Plug-in";
+    case TransitionType::Stinger: return "Stinger";
     }
     return "?";
 }

@@ -64,6 +64,23 @@ std::vector<OutputConfig> makeWall(int channel, int cols, int rows, QSize cell, 
 
 // ---------- JSON ----------
 
+// Tham so Effect <-> JSON (khong can biet dinh nghia, de van giu du lieu khi plug-in bi thieu)
+static QJsonValue paramToJson(const QVariant& v) {
+    switch (v.typeId()) {
+    case QMetaType::Bool: return v.toBool();
+    case QMetaType::QColor: return v.value<QColor>().name(QColor::HexArgb);
+    case QMetaType::QPointF: return QJsonArray{v.toPointF().x(), v.toPointF().y()};
+    case QMetaType::Int: return v.toInt();
+    default: return v.toDouble();
+    }
+}
+static QVariant paramFromJson(const QJsonValue& j) {
+    if (j.isBool()) return j.toBool();
+    if (j.isString()) { const QColor c(j.toString()); return c.isValid() ? QVariant::fromValue(c) : QVariant(j.toString()); }
+    if (j.isArray() && j.toArray().size() == 2) return QPointF(j.toArray()[0].toDouble(), j.toArray()[1].toDouble());
+    return j.toDouble();
+}
+
 static const char* scaleStr(ScaleMode m) {
     switch (m) {
     case ScaleMode::Fit: return "fit";
@@ -120,6 +137,19 @@ bool saveProject(const Project& p, const QString& path, QString* err) {
             lo["opacity"] = double(l.opacity);
             lo["fit"] = fitStr(l.fit);
             lo["visible"] = l.visible;
+            if (!l.effects.empty()) {
+                QJsonArray fx;
+                for (const EffectInstance& e : l.effects) {
+                    QJsonObject eo;
+                    eo["id"] = e.effectId;
+                    eo["enabled"] = e.enabled;
+                    QJsonObject po;
+                    for (auto it = e.params.begin(); it != e.params.end(); ++it) po[it.key()] = paramToJson(it.value());
+                    eo["params"] = po;
+                    fx.append(eo);
+                }
+                lo["effects"] = fx;
+            }
             layers.append(lo);
         }
         o["layers"] = layers;
@@ -225,6 +255,16 @@ bool loadProject(Project& out, const QString& path, QString* err) {
             l.opacity = float(lo["opacity"].toDouble(1));
             l.fit = parseFit(lo["fit"].toString());
             l.visible = lo["visible"].toBool(true);
+            for (const QJsonValue& ev : lo["effects"].toArray()) {
+                const QJsonObject eo = ev.toObject();
+                EffectInstance e;
+                e.effectId = eo["id"].toString();
+                if (e.effectId.isEmpty()) continue;
+                e.enabled = eo["enabled"].toBool(true);
+                const QJsonObject po = eo["params"].toObject();
+                for (auto it = po.begin(); it != po.end(); ++it) e.params[it.key()] = paramFromJson(it.value());
+                l.effects.push_back(e);
+            }
             s->layers.push_back(l);
         }
         p.scenes.push_back(s);

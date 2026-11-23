@@ -16,7 +16,7 @@ namespace lc {
 
 using Clock = std::chrono::steady_clock;
 
-RenderEngine::RenderEngine(Project& p, QObject* parent) : QThread(parent), project_(p) {}
+RenderEngine::RenderEngine(Project& p, QObject* parent) : QThread(parent), project_(p) { ownRegistry_.loadBuiltins(); }
 
 RenderEngine::~RenderEngine() { stopEngine(); }
 
@@ -113,6 +113,7 @@ void RenderEngine::run() {
         return;
     }
     TargetPool pool(comp.gl());
+    comp.setEffectContext(registry_, &pool);
     {
         std::lock_guard lk(monitorMutex_);
         gpu_ = QString::fromUtf8(reinterpret_cast<const char*>(comp.gl().glGetString(GL_RENDERER)));
@@ -147,6 +148,7 @@ void RenderEngine::run() {
         // 2) render tat ca Channel vao FBO
         ctx.makeCurrent(surface_.get());
         pool.beginFrame();
+        comp.setTime(t);
         for (size_t i = 0; i < project_.channels.size(); ++i)
             chanOut[i] = project_.channels[i]->render(comp, pool, t);
 

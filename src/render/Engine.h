@@ -1,5 +1,6 @@
 #pragma once
 #include "core/Project.h"
+#include "render/EffectRegistry.h"
 #include "render/OutputSink.h"
 #include <QImage>
 #include <QOffscreenSurface>
@@ -40,6 +41,8 @@ public:
     MonitorFrame monitor(int channel) const;
     // Render thread (goi trong post): chep cau hinh Output hien tai ve Project de luu file.
     void syncOutputsToProject();
+    // Kho Effect/Transition dung chung (UI nap plug-in vao day; render thread bien dich + dung).
+    EffectRegistry& registry() { return *registry_; }
 
 protected:
     void run() override;
@@ -48,6 +51,8 @@ private:
     Project& project_;
     std::vector<std::unique_ptr<OutputSink>> sinks_;
     std::unique_ptr<QOffscreenSurface> surface_;
+    EffectRegistry ownRegistry_;
+    EffectRegistry* registry_ = &ownRegistry_;
     std::mutex mutex_;
     std::vector<std::function<void(double)>> commands_;
     std::atomic<double> fps_{0};

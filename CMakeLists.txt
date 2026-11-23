@@ -32,6 +32,11 @@ add_library(lumacast_core STATIC
   src/render/Engine.cpp
   src/render/OutputWindow.cpp
   src/render/OutputHealth.cpp
+  src/render/EffectDef.cpp
+  src/render/BuiltinEffects.cpp
+  src/render/EffectRegistry.cpp
+  src/render/PluginManager.h
+  src/render/PluginManager.cpp
   src/render/OutputSupervisor.h
   src/render/OutputSupervisor.cpp
   src/media/StaticSources.cpp
@@ -54,6 +59,9 @@ target_link_libraries(lumacast_ui PUBLIC lumacast_core Qt6::Widgets)
 
 add_executable(lumacast src/app/main.cpp)
 target_link_libraries(lumacast PRIVATE lumacast_ui)
+# plug-in mau (xem docs/PLUGIN-SDK.md) di kem file thuc thi: <exe>/plugins/
+add_custom_command(TARGET lumacast POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/plugins $<TARGET_FILE_DIR:lumacast>/plugins)
 
 add_executable(lumacast_tests tests/test_render.cpp)
 target_link_libraries(lumacast_tests PRIVATE lumacast_core)
@@ -68,3 +76,8 @@ add_test(NAME ui COMMAND lumacast_ui_tests)
 add_executable(lumacast_m3c_tests tests/test_m3c.cpp)
 target_link_libraries(lumacast_m3c_tests PRIVATE lumacast_ui)
 add_test(NAME reliability COMMAND lumacast_m3c_tests)
+
+add_executable(lumacast_effects_tests tests/test_effects.cpp)
+target_link_libraries(lumacast_effects_tests PRIVATE lumacast_core)
+target_compile_definitions(lumacast_effects_tests PRIVATE LUMACAST_PLUGINS_DIR="${CMAKE_SOURCE_DIR}/plugins")
+add_test(NAME effects COMMAND lumacast_effects_tests)

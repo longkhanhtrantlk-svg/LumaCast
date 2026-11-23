@@ -1,0 +1,13 @@
+{
+  "id": "lumacast.example.mirror",
+  "name": "Phản chiếu (mirror)",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "type": "effect",
+  "author": "LumaCast",
+  "description": "Lật đối xứng hình qua trục ngang, dọc hoặc cả hai.",
+  "entry": "mirror.frag",
+  "params": [
+    { "name": "mode", "label": "Kiểu", "type": "choice", "choices": ["Ngang (trái = phải)", "Dọc (trên = dưới)", "Bốn góc"], "default": 0 }
+  ]
+}

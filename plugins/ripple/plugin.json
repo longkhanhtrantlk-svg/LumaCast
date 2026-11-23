@@ -1,0 +1,17 @@
+{
+  "id": "lumacast.example.ripple",
+  "name": "Gợn sóng (ripple)",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "type": "effect",
+  "author": "LumaCast",
+  "description": "Làm méo hình thành những gợn sóng lan ra từ một điểm, chuyển động theo thời gian.",
+  "entry": "ripple.frag",
+  "params": [
+    { "name": "center", "label": "Tâm", "type": "point", "default": [0.5, 0.5] },
+    { "name": "amplitude", "label": "Biên độ", "type": "float", "min": 0, "max": 0.1, "default": 0.02 },
+    { "name": "frequency", "label": "Tần số", "type": "float", "min": 1, "max": 60, "default": 20 },
+    { "name": "speed", "label": "Tốc độ", "type": "float", "min": 0, "max": 10, "default": 2 },
+    { "name": "animate", "label": "Chuyển động", "type": "bool", "default": true }
+  ]
+}

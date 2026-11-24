@@ -1,4 +1,5 @@
 #pragma once
+#include "control/ControlService.h"
 #include "render/Engine.h"
 #include "render/OutputSupervisor.h"
 #include "render/PluginManager.h"
@@ -41,6 +42,9 @@ public:
     InspectorPanel* inspector() const { return inspector_; }
     TimelineWidget* timeline() const { return timeline_; }
     QUndoStack* undoStack() { return &undo_; }
+    ControlService& control() { return *ctl_; }
+    ControlApi& controlApi() { return *ctlApi_; }
+    void openSettings();                           // hop thoai Cai dat van hanh (dieu khien ngoai...)
 
 protected:
     void closeEvent(QCloseEvent* e) override;
@@ -108,6 +112,12 @@ private:
     qint64 lastSlowMs_ = 0;
     bool lastStalled_ = false;
     bool askOnClose_ = true;
+    bool locked_ = false;
+    ControlApi* ctlApi_ = nullptr;
+    ControlService* ctl_ = nullptr;
+    QLabel* ctlLabel_ = nullptr;
+    QAction* settingsAct_ = nullptr;
+    void updateControlStatus();
 };
 
 } // namespace lc

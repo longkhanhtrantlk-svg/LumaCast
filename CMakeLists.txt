@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGL)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGL Network)
 # FFmpeg: Linux/macOS dung pkg-config; Windows dung vcpkg (`vcpkg install ffmpeg:x64-windows`, ban LGPL, lien ket dong).
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
@@ -43,9 +43,14 @@ add_library(lumacast_core STATIC
   src/render/OutputSupervisor.cpp
   src/media/StaticSources.cpp
   src/media/FFmpegSource.cpp
+  src/control/HttpServer.h src/control/HttpServer.cpp
+  src/control/Osc.h src/control/Osc.cpp
+  src/control/ControlApi.h src/control/ControlApi.cpp
+  src/control/ControlPage.h src/control/ControlPage.cpp
+  src/control/ControlService.h src/control/ControlService.cpp
 )
 target_include_directories(lumacast_core PUBLIC src)
-target_link_libraries(lumacast_core PUBLIC Qt6::Core Qt6::Gui Qt6::OpenGL ${LC_FFMPEG})
+target_link_libraries(lumacast_core PUBLIC Qt6::Core Qt6::Gui Qt6::OpenGL Qt6::Network ${LC_FFMPEG})
 if(WIN32)
   target_link_libraries(lumacast_core PUBLIC winmm)   # timeBeginPeriod(1) cho nhip 60fps chinh xac
 endif()
@@ -56,6 +61,7 @@ add_library(lumacast_ui STATIC
   src/app/InspectorPanel.h src/app/InspectorPanel.cpp
   src/app/ParamEditor.h src/app/ParamEditor.cpp
   src/app/TimelineWidget.h src/app/TimelineWidget.cpp
+  src/app/SettingsDialog.h src/app/SettingsDialog.cpp
   src/app/MainWindow.h src/app/MainWindow.cpp
 )
 target_include_directories(lumacast_ui PUBLIC src src/app)
@@ -89,3 +95,11 @@ add_test(NAME effects COMMAND lumacast_effects_tests)
 add_executable(lumacast_anim_tests tests/test_anim.cpp)
 target_link_libraries(lumacast_anim_tests PRIVATE lumacast_core)
 add_test(NAME animation COMMAND lumacast_anim_tests)
+
+add_executable(lumacast_control_tests tests/test_control.cpp)
+target_link_libraries(lumacast_control_tests PRIVATE lumacast_ui)
+add_test(NAME control COMMAND lumacast_control_tests)
+
+add_executable(lumacast_m5c_tests tests/test_m5c.cpp)
+target_link_libraries(lumacast_m5c_tests PRIVATE lumacast_ui)
+add_test(NAME ops COMMAND lumacast_m5c_tests)

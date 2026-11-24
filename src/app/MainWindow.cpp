@@ -2,6 +2,7 @@
 #include "InspectorPanel.h"
 #include "MonitorWidget.h"
 #include "ParamEditor.h"
+#include "SettingsDialog.h"
 #include "TimelineWidget.h"
 #include "render/OutputWindow.h"
 #include "Theme.h"
@@ -48,6 +49,13 @@ MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList plugi
     }
     buildUi();
     buildDocks();
+    ctlApi_ = new ControlApi(project_, engine_, &sup_, this);
+    ctlApi_->setLockProvider([this] { return locked_; });
+    ctl_ = new ControlService(*ctlApi_, this);
+    ctlLabel_ = new QLabel;
+    ctlLabel_->setObjectName("ctlLabel");
+    statusBar()->addPermanentWidget(ctlLabel_);
+    connect(ctl_, &ControlService::statusChanged, this, [this] { updateControlStatus(); });
     buildMenus();
     defaultState_ = saveState();
     QSettings st("LumaCast", "LumaCast");
@@ -64,6 +72,27 @@ MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList plugi
     autosaveTimer_.start(60 * 1000);
     refresh();
     refreshSlow();
+    {
+        QSettings cst("LumaCast", "LumaCast");
+        const ControlSettings cs = ControlSettings::load(cst);
+        if (cs.httpEnabled || cs.oscEnabled) {
+            const QString e = ctl_->apply(cs);
+            if (!e.isEmpty()) showMessage("Điều khiển ngoài: " + e.section('\n', 0, 0));
+        }
+    }
+    updateControlStatus();
+}
+
+void MainWindow::updateControlStatus() {
+    QStringList parts;
+    if (ctl_->httpRunning()) parts << QString("HTTP :%1%2").arg(ctl_->httpPort()).arg(ctl_->settings().httpLan ? " (LAN)" : "");
+    if (ctl_->oscRunning()) parts << QString("OSC :%1%2").arg(ctl_->oscPort()).arg(ctl_->settings().oscLan ? " (LAN)" : "");
+    ctlLabel_->setText(parts.isEmpty() ? QString() : "Điều khiển ngoài: " + parts.join(" · "));
+}
+
+void MainWindow::openSettings() {
+    SettingsDialog dlg(*ctl_, this);
+    dlg.exec();
 }
 
 int MainWindow::channelIdx() const { return std::max(0, chanCombo_->currentIndex()); }
@@ -417,6 +446,9 @@ void MainWindow::buildMenus() {
         for (QDockWidget* d : findChildren<QDockWidget*>()) d->show();
     });
 
+    auto* settings = menuBar()->addMenu("&Cài đặt");
+    settingsAct_ = settings->addAction("Cài đặt vận hành…", this, [this] { openSettings(); });
+
     auto* help = menuBar()->addMenu("&Help");
     help->addAction("Giới thiệu", this, [this] {
         QMessageBox::about(this, "LumaCast", "<b>LumaCast</b> — LED Display Controller<br>Phiên bản M3a");
@@ -648,6 +680,7 @@ void MainWindow::onProjectChanged() {
     rebuildSceneList();
     rebuildMediaList();
     inspector_->refreshFromProject();
+    ctlApi_->refreshProject();
 }
 
 // ---------------- media ----------------

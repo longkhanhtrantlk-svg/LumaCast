@@ -70,6 +70,7 @@ int main(int argc, char** argv) {
     cli.addOption({"fullscreen", "Output chay toan man hinh (moi output mot man hinh)."});
     cli.addOption({"scale", "fit | fill | stretch | pixel (mac dinh fit).", "mode", "fit"});
     cli.addOption({"fps", "Nhip master (mac dinh 60).", "n", "60"});
+    cli.addOption({"no-audio", "Khong mo thiet bi am thanh (dong ho hinh chay theo dong ho tuong)."});
     cli.process(app);
 
     Project proj;
@@ -181,6 +182,11 @@ int main(int argc, char** argv) {
 
     RenderEngine engine(proj);
     engine.startEngine();
+    if (!cli.isSet("no-audio")) {
+        QString aerr;
+        engine.audio().start(proj.audioDevice, &aerr);
+        if (!aerr.isEmpty()) qWarning().noquote() << "Âm thanh:" << aerr;
+    }
     MainWindow window(proj, engine);
     window.show();
     if (!startupNotice.isEmpty()) { qWarning().noquote() << startupNotice; window.showStartupNotice(startupNotice); }

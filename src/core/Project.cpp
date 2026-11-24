@@ -109,6 +109,7 @@ bool saveProject(const Project& p, const QString& path, QString* err) {
     root["app"] = "LumaCast";
     root["version"] = 1;
     root["fps"] = p.fps;
+    if (!p.audioDevice.isEmpty()) root["audio"] = QJsonObject{{"device", p.audioDevice}};     // tuy chon (M5a); khong tang version
 
     QJsonArray srcs;
     for (const SourceDef& d : p.sources) {
@@ -145,6 +146,7 @@ bool saveProject(const Project& p, const QString& path, QString* err) {
             if (l.rotation != 0.0f) lo["rotation"] = double(l.rotation);
             if (l.crop != QRectF(0, 0, 1, 1)) lo["crop"] = QJsonArray{l.crop.x(), l.crop.y(), l.crop.width(), l.crop.height()};
             if (l.blend != BlendMode::Normal) lo["blend"] = blendId(l.blend);
+            if (std::abs(l.volume - 1.0f) > 1e-4f) lo["volume"] = double(l.volume);
             if (!l.tracks.empty()) {
                 QJsonArray tracks;
                 for (const Track& tr : l.tracks) {
@@ -190,6 +192,8 @@ bool saveProject(const Project& p, const QString& path, QString* err) {
         o["scenes"] = idx;
         o["program"] = c->program.load();
         o["preview"] = c->preview.load();
+        if (std::abs(c->volume.load() - 1.0f) > 1e-4f) o["volume"] = double(c->volume.load());
+        if (c->mute.load()) o["mute"] = true;
         chans.append(o);
     }
     root["channels"] = chans;
@@ -239,6 +243,7 @@ bool loadProject(Project& out, const QString& path, QString* err) {
     const QDir base = QFileInfo(path).absoluteDir();
     Project p;
     p.fps = root["fps"].toDouble(60.0);
+    p.audioDevice = root["audio"].toObject()["device"].toString();
     if (p.fps < 1 || p.fps > 240) return fail("fps khong hop le");
     p.filePath = path;
 
@@ -290,6 +295,8 @@ bool loadProject(Project& out, const QString& path, QString* err) {
                     const QRectF c(cr[0].toDouble(), cr[1].toDouble(), cr[2].toDouble(), cr[3].toDouble());
                     if (c.width() > 0 && c.height() > 0) l.crop = c;
                 }
+                const double vol = lo["volume"].toDouble(1.0);
+                l.volume = std::isfinite(vol) ? float(std::clamp(vol, 0.0, 2.0)) : 1.0f;
                 const QString bl = lo["blend"].toString();
                 l.blend = bl == "add" ? BlendMode::Add : bl == "multiply" ? BlendMode::Multiply : bl == "screen" ? BlendMode::Screen : BlendMode::Normal;
                 for (const QJsonValue& tv : lo["tracks"].toArray()) {
@@ -336,6 +343,11 @@ bool loadProject(Project& out, const QString& path, QString* err) {
             c->scenes.push_back(p.scenes[i]);
         }
         const int n = int(c->scenes.size());
+        {
+            const double vol = o["volume"].toDouble(1.0);
+            c->volume = std::isfinite(vol) ? float(std::clamp(vol, 0.0, 2.0)) : 1.0f;
+            c->mute = o["mute"].toBool(false);
+        }
         const int pg = o["program"].toInt(0), pv = o["preview"].toInt(1);
         c->program = (pg >= 0 && pg < n) ? pg : (n > 0 ? 0 : -1);
         c->preview = (pv >= 0 && pv < n && pv != c->program) ? pv : (n > 1 ? (c->program == 0 ? 1 : 0) : -1);

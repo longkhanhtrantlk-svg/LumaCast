@@ -96,6 +96,7 @@ private:
     QDoubleSpinBox* cropSpin_[4] = {};
     QComboBox* fitCombo_ = nullptr;
     QComboBox* blendCombo_ = nullptr;
+    QDoubleSpinBox* volumeSpin_ = nullptr;           // am luong nguon trong Layer (%)
 
     // tab Effect
     QLabel* fxTitle_ = nullptr;

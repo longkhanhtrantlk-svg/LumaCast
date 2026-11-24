@@ -8,8 +8,12 @@
 
 namespace lc {
 
-// Giai ma video bang FFmpeg tren thread rieng, phat theo PTS, tu lap lai.
+// Giai ma video + am thanh bang FFmpeg tren MOT thread rieng, tu lap lai.
 // M1: giai ma + doi YUV->RGBA tren CPU. (M6: hw decode + doi mau bang shader.)
+// M5a: am thanh (swresample -> float32 stereo 48 kHz) vao AudioStream. Khi mixer dang rut am thanh cua nguon nay, HINH CHAY THEO
+// DONG HO AM THANH (heardPosition); neu khong (khong co tieng, chua mo thiet bi, mixer khong lay, am thanh dung > 250 ms) thi chay theo
+// dong ho tuong. Lap lai khong cat tieng: am thanh duoc noi lien, moc thoi gian cua hinh duoc tinh lai tu mau am thanh dau tien cua vong moi
+// (khong tich luy lech giua do dai hinh va tieng).
 class FFmpegSource : public Source {
 public:
     explicit FFmpegSource(QString path, bool loop = true);
@@ -20,6 +24,12 @@ public:
     double durationSeconds() const override { return duration_; }
     void restart() override;                    // seek ve 0; cho den khi co khung moi thi acquire() tra ve rong (khong hien khung cu)
     QString error() const;     // rong neu khong loi
+    AudioStream* audio() override { return hasAudio_ ? audio_.get() : nullptr; }
+    bool hasAudio() const { return hasAudio_; }
+    // Chan doan dong bo (test): moc "dong thoi gian lien tuc" (giay) cua khung hinh vua dua len, va do tre (ms) so voi dong ho dang theo.
+    double presentedTime() const { return presentedCont_; }
+    double lastLatenessMs() const { return lateMs_; }
+    bool followingAudioClock() const { return followAudio_; }
 
 private:
     struct Frame {
@@ -44,6 +54,10 @@ private:
     std::atomic<double> duration_{0};
     std::atomic<bool> restartReq_{false};
     std::atomic<bool> waitFirst_{false};
+    std::unique_ptr<AudioStream> audio_;
+    std::atomic<bool> hasAudio_{false};
+    std::atomic<double> presentedCont_{-1}, lateMs_{0};
+    std::atomic<bool> followAudio_{false};
     GlTexture tex_;
 };
 

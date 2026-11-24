@@ -203,14 +203,15 @@ lumacast/
  │   ├─ render/           Compositor (toàn bộ GL), GlHelpers (FBO/texture), Engine (thread render, monitor),
  │   │                    OutputSink (giao diện đích), OutputWindow (cửa sổ LED)
  │   ├─ control/          (M5c) HttpServer (HTTP/1.1 + SSE), Osc (bộ phân tích/dựng gói), ControlApi (lệnh + trạng thái + định tuyến), ControlService (bật/tắt theo cài đặt), trang web điều khiển
-│   ├─ media/            Source (giao diện), StaticSources (ảnh/màu/test pattern), FFmpegSource (video)
+│   ├─ audio/            (M5a) AudioStream (ring lock-free + đồng hồ âm thanh), AudioDevice (giao diện + backend Null), AudioWasapi (Windows), AudioMixer (thread mixer, bus/Channel, meter), AudioPlan (dựng kế hoạch trộn từ Project)
+│   ├─ media/            Source (giao diện), StaticSources (ảnh/màu/test pattern), FFmpegSource (video + âm thanh)
  │   └─ app/              main (CLI), MainWindow, InspectorPanel (Layer/Output + undo), MonitorWidget, Theme
  └─ tests/                test_render.cpp (lõi/engine), test_ui.cpp (giao diện)
 ```
 **Dự kiến thêm:** `plugin/` (Host, Loader, ManifestParser), `sdk/` (header C ABI + plug-in mẫu), MIDI trong `control/`,
-`audio/` (mixer, WASAPI), `shaders/` (GLSL tách khỏi mã).
+`shaders/` (GLSL tách khỏi mã), backend CoreAudio cho macOS.
 
-**Thư viện đang dùng:** Qt 6 (Core, Gui, Widgets, OpenGL, **Network** — chỉ để dùng `QTcpServer`/`QUdpSocket`; **không** dùng Qt WebSockets, máy Windows của dự án chỉ có Qt Base), FFmpeg (avformat, avcodec, swscale, avutil). **Dự kiến:** NDI SDK, thư viện âm thanh.
+**Thư viện đang dùng:** Qt 6 (Core, Gui, Widgets, OpenGL, **Network** — chỉ để dùng `QTcpServer`/`QUdpSocket`; **không** dùng Qt WebSockets, máy Windows của dự án chỉ có Qt Base), FFmpeg (avformat, avcodec, swscale, **swresample**, avutil); âm thanh ra thiết bị chỉ dùng Win32/COM (WASAPI), **không** dùng Qt Multimedia. **Dự kiến:** NDI SDK.
 **Build:** C++20, CMake ≥ 3.21, Ninja; Windows: MSVC 2022 + vcpkg (FFmpeg) + Qt 6.x (đã dùng 6.4 và 6.8.3).
 
 ---
@@ -239,17 +240,26 @@ Xem **`PLAN.md`** (mốc M3c, M4a/b, M5a/b/c, M6, M7 kèm nhiệm vụ, nghiệm
 | GPU | OpenGL 3.3 core; `Compositor` + `GlHelpers` + phần upload texture của nguồn là ranh giới GPU duy nhất (~600 dòng) để thay bằng RHI (QRhi/Metal) sau |
 | UI | Qt Widgets (dock), giao diện tối; **không dùng Qt Quick** (Qt Widgets chín hơn cho bàn điều khiển dày đặc, ghép ảnh thu nhỏ đơn giản, ít rủi ro) |
 | Output | Mục tiêu 4 Output; độ phân giải chuẩn 1920×1080 và 3840×2160; có scale cho vừa màn LED |
-| Âm thanh | Có, bật/tắt theo từng Channel (mục 13); làm ở M5a |
+| Âm thanh | Có, bật/tắt theo từng Channel (mục 13); **đã làm ở M5a** |
 | NDI / Camera | Có; làm ở M5b |
 | Giấy phép | Dùng cá nhân; nếu bán có gói Cơ bản và Thương mại (SPEC mục 5). Lõi đóng, SDK plug-in mở (đề xuất); FFmpeg LGPL, Qt LGPL liên kết động — **chờ xác nhận** |
 
-## 13. Âm thanh (thiết kế, chưa triển khai)
-- Mỗi Channel có **Audio bus** riêng: công tắc Mute/On, âm lượng, (tuỳ chọn) trễ bù đồng bộ hình.
-- Mỗi Source có âm thanh riêng (file, NDI, capture); Layer/Scene quyết định nguồn nào vào bus. Transition crossfade âm thanh theo tiến độ của Program cũ/mới.
-- Mỗi Channel chọn **thiết bị âm thanh đầu ra** (WASAPI, shared hoặc exclusive cho độ trễ thấp); có thể gộp nhiều Channel vào một thiết bị.
-- Đồng hồ chủ là **đồng hồ âm thanh**; hình đồng bộ theo PTS để tránh lệch tiếng.
-- Mixer thread riêng (resample, mix, limiter) tách khỏi render thread; meter mức âm hiển thị trên UI.
-- Với NDI/capture: bù trôi đồng hồ bằng resample thích ứng.
+## 13. Âm thanh (M5a, `src/audio/`)
+**Đường đi.** `FFmpegSource` (một thread giải mã cho cả hình lẫn tiếng) → swresample đổi sang **float32 xen kẽ, stereo, 48 kHz** (định dạng chung của mọi bus; mono được nhân đôi −3 dB, đa kênh hạ về stereo theo ma trận mặc định của swresample) → `AudioStream` của nguồn (ring lock-free 2 s) → **`AudioMixer`** (thread riêng, khối 10 ms) → ring đầu ra (`targetLatencyMs` mặc định 40 ms) → callback của `AudioDevice`. Callback của thiết bị **chỉ rút từ ring**: không cấp phát, không khoá mutex. Thread mixer có thể lấy một mutex rất ngắn (đổi con trỏ kế hoạch, một lần mỗi khối khi có thay đổi) và không cấp phát ở trạng thái ổn định (vector dùng lại).
+
+**Kế hoạch trộn (`AudioPlan`).** Mixer không biết gì về Scene/Transition. **Mỗi khung hình**, render thread (sau khi các Channel đã render) gọi `buildAudioPlan(project, now)` và chỉ đẩy cho mixer khi kế hoạch **đổi** (`AudioPlan::sameAs`). Mỗi mục = (nguồn, Channel, hệ số). Hệ số = trọng số Scene (`Channel::audioWeights`) × âm lượng Layer × âm lượng Channel × (không mute) × (1 − FTB), Layer ẩn = 0. Vì tính trên render thread từ **cùng trạng thái transition** mà hình dùng, crossfade âm thanh đi đúng tiến độ hình kể cả easing và T-bar; không có logic transition thứ hai để lệch. Mute/âm lượng/FTB do UI/HTTP/OSC đặt qua `RenderEngine::post()` lên `Channel::mute/volume` (atomic) — đúng quy tắc "mọi thay đổi đi qua render thread". Quy tắc trọng số: Fade/Wipe/Push/Plugin: nội suy **tuyến tính** theo `easing` (tổng hệ số = 1, nên cùng một nguồn ở hai Scene không bị to lên; nếu hai nguồn khác nhau thì giữa chừng thấp hơn khoảng 3–6 dB — chọn tuyến tính thay vì công suất đều để cùng-nguồn không nhô); Dip: Program về 0 ở nửa đầu, Preview lên ở nửa sau; Stinger: cắt cứng ở `cutPoint`, tiếng của chính video stinger đi vào bus trong lúc chạy. Preview bình thường **không ra tiếng**.
+
+**Mọi nguồn trong mọi Scene của Channel đều có mặt trong kế hoạch (hệ số 0 nếu chưa lên sóng)** để mixer rút đều và đồng hồ âm thanh của nó chạy đúng; nguồn xuất hiện ở nhiều Channel/Scene chỉ bị rút **một lần** mỗi khối rồi cộng vào các bus. Mute = hệ số 0 chứ không phải ngừng rút, nên bật lại không lệch hình–tiếng. Hệ số được đổi **tuyến tính theo từng mẫu** trong khối (nguồn mới vào kế hoạch tăng từ 0), nên không có tiếng "lách" khi bấm mute hay khi kế hoạch đổi mỗi khung.
+
+**Đồng bộ: hình theo tiếng.** `AudioStream::heardPosition()` = vị trí mẫu mixer đã rút − độ trễ (ring đầu ra + bộ đệm thiết bị) — là vị trí **đang được nghe**. Luồng giải mã dùng nó làm đồng hồ chủ cho hình **khi mixer đang rút nguồn đó** (`consumerActive`, 250 ms) và âm thanh còn chạy; ngược lại (không có tiếng, chưa mở thiết bị, nguồn không nằm trong kế hoạch, underrun > 250 ms) rơi về **đồng hồ tường tích phân** (liên tục, không nhảy). Khung hình được giải mã vào hàng chờ (`pend`, ≤ 6 khung; 30 khi âm thanh sắp cạn) và chỉ đưa lên khi `cont ≤ đồng hồ`; khung đến hạn dồn thì bỏ khung cũ. *Dòng thời gian liên tục:* hình có `cont = pts + vOffset`, `vOffset` đặt ở **mẫu âm thanh đầu tiên của mỗi đoạn** (đầu file/sau `restart`/sau mỗi vòng lặp) = vị trí mẫu đó trên đồng hồ − pts của nó. Nhờ vậy độ lệch hình–tiếng vốn có trong file được giữ nguyên và **độ dài hình ≠ độ dài tiếng không cộng dồn qua các vòng lặp** (một clip 10 s hình/10,02 s tiếng lặp 30 phút sẽ lệch 3,6 s nếu mỗi vòng dùng một mốc cố định). Lặp là **nối liền**: không flush ring ở cuối file. Nếu không ai rút (nguồn không nằm trong Scene nào / mixer tắt) thì nguồn chỉ giữ ~100 ms tiếng mới nhất để lúc mixer bắt đầu không phát lại tiếng cũ.
+
+**`restart()` và `SceneClock`.** `Source::restart()` (Stinger) gọi `AudioStream::holdUntilFlush()` ngay (mixer im lặng tức thì, không phát nốt tiếng cũ) rồi thread giải mã seek về 0, flush decoder/swr/ring và mở lại. `SceneClock` (đồng hồ keyframe) **độc lập** với đồng hồ nguồn video — video/tiếng luôn tự chạy và lặp theo file (giống hành vi hình từ M1), nên `play/pause/seek` của timeline không đụng tiếng; `restartOnAir` chỉ đặt lại keyframe.
+
+**Thiết bị (`AudioDevice`).** Giao diện nhỏ: `start(renderFn)`, `stop()`, `name()`, `latencySeconds()`; `listAudioDevices()`/`createAudioDevice(id)` chọn backend. *WASAPI* (`AudioWasapi.cpp`, chỉ Windows): shared mode, event-driven, yêu cầu float32 stereo 48 kHz với `AUTOCONVERTPCM | SRC_DEFAULT_QUALITY` (Windows tự đổi tần số/số kênh cho thiết bị thật nên không cần resampler riêng), MMCSS "Pro Audio", thử mở lại mỗi giây nếu thiết bị bị rút; GUID ghi thẳng trong mã (không cần `.lib` chứa IID). *Null*: thread tiêu thụ theo đồng hồ thật — dùng cho test và nền tảng chưa có backend. Thiết bị hỏng → mixer **tự dùng Null** (đồng hồ hình vẫn chạy). Chọn thiết bị lưu trong project (`audio.device`); một thiết bị ra chung cho mọi Channel (mỗi Channel một thiết bị riêng: chưa làm). `RenderEngine` sở hữu `AudioMixer`; thiết bị do `main` mở (`--no-audio` để bỏ) hoặc do dock *Âm thanh*, nên test không có engine-âm-thanh trừ khi tự mở.
+
+**UI.** Dock *Âm thanh* (`AudioPanel`): mỗi Channel một dải (nút Tắt tiếng, thanh 0–150%, `LevelMeter` peak+RMS theo dB −60…0, vàng ≥ −12, đỏ ≥ −3) + meter master + chọn thiết bị. Tắt tiếng/âm lượng là **điều khiển live** nên còn dùng được khi Khoá vận hành; chọn thiết bị là thao tác sửa nên bị khoá. UI chỉ đọc meter (atomic) và trạng thái atomic của `Channel`, tự đồng bộ khi giá trị bị đổi từ HTTP/OSC.
+
+**Giới hạn đã biết.** Chưa có: NDI/camera làm nguồn tiếng, bù trôi đồng hồ bằng resample thích ứng (cần cho nguồn trực tiếp; file thì hình theo tiếng nên không cần), WASAPI exclusive, mỗi Channel một thiết bị, âm lượng theo keyframe, limiter thật (hiện cắt cứng ±1 và đếm `clippedBlocks`), CoreAudio. Tối đa 32 bus (`kMaxAudioChannels`).
 
 ## 14. Mở rộng ngoài LED
 Lõi (Source/Scene/Channel/Compositor) không phụ thuộc LED. Đích đến là giao diện `OutputSink` (`src/render/OutputSink.h`): hiện có `OutputWindow`

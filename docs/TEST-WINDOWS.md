@@ -20,7 +20,7 @@
 
 ## 3. Test tu dong
     ctest --test-dir build --output-on-failure
-Ky vong: 2/2 pass. Neu fail o "Khong co OpenGL 3.3": cap nhat driver GPU (khong dung may ao/Remote Desktop).
+Ky vong: tat ca test pass (9 bo: render, ui, reliability, effects, animation, control, ops, audio, audio_engine). Neu fail o "Khong co OpenGL 3.3": cap nhat driver GPU (khong dung may ao/Remote Desktop).
 
 ## 4. Test thu cong (che do cua so, 1 man hinh la du)
     build\lumacast.exe -o 960x540 -o 540x960 -m clip.mp4
@@ -35,6 +35,14 @@ Wall + luu/mo:
     build\lumacast.exe -o 1920x1080@0 -o 3840x2160@1 -o 1920x1080@2/2 --fullscreen -m clip.mp4 --scale fit
 `WxH@man_hinh/kenh`: `@N` la chi so man hinh Windows (0 = man chinh), `/K` la kenh. Chi so vuot so man hinh dang co thi Output do KHONG hien (bao "MAT MAN HINH" trong bang Outputs va log) - khong bao gio roi sang man khac. Ten man hinh duoc ghi nho khi chay lan dau va luu vao project.
 Esc tren cua so output thoat fullscreen. Neu nham man hinh, mo Windows Settings > Display de xem so thu tu.
+
+## 5b. Test am thanh (M5a) - can loa/tai nghe
+Build can FFmpeg co **swresample** (`vcpkg install ffmpeg:x64-windows` da gom san). Chay `lumacast.exe -m clip_co_tieng.mp4 -m clip2.mp4`:
+1. Dock **Am thanh**: chon thiet bi ra, nghe tieng; *Tat tieng* tung Channel; keo thanh am luong; meter nhay theo tieng.
+2. TAKE Fade/Dip, keo T-bar: tieng chuyen dung nhu hinh, khong ro/vo.
+3. Cho clip co tieng chay lap >= 30 phut, so tieng/hinh (xem T-AUD-SYNC trong `TEST-PLAN.md`).
+4. Rut tai nghe / doi thiet bi mac dinh khi dang chay (T-AUD-HOT). `curl http://127.0.0.1:8088/api/audio` (neu bat HTTP) cho `underruns`.
+Neu khong co tieng: kiem tra dong "Am thanh:" trong `%AppData%\LumaCast\logs\lumacast.log` (thiet bi hong thi LumaCast tu dung backend Null va hinh van chay).
 
 ## 6. Bao loi
 Gui: ban build (commit), lenh da chay, thong bao loi, driver GPU. Neu build loi, dan nguyen van 20 dong loi dau tien.

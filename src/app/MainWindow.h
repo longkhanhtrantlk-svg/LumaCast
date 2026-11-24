@@ -23,6 +23,7 @@ class QUndoCommand;
 
 namespace lc {
 
+class AudioPanel;
 class InspectorPanel;
 class LockButton;
 class TimelineWidget;
@@ -53,6 +54,7 @@ public:
     bool addMediaFile(const QString& path);        // them nguon + Scene tu file; false neu loi
     QString autosavePath() const;
     InspectorPanel* inspector() const { return inspector_; }
+    AudioPanel* audioPanel() const { return audioPanel_; }
     TimelineWidget* timeline() const { return timeline_; }
     QUndoStack* undoStack() { return &undo_; }
     ControlService& control() { return *ctl_; }
@@ -100,6 +102,7 @@ private:
     PluginManager pm_;                 // plug-in shader (Effect/Transition)
     QUndoStack undo_;                  // phai khai bao truoc inspector_
     InspectorPanel* inspector_ = nullptr;
+    AudioPanel* audioPanel_ = nullptr;
     TimelineWidget* timeline_ = nullptr;
     MonitorWidget* preview_ = nullptr;
     MonitorWidget* program_ = nullptr;

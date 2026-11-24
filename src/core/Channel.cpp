@@ -46,6 +46,29 @@ void Channel::startTransition(const TransitionSpec& spec, double now) {
     enterScene(sceneAt(preview), now);            // Scene moi bat dau chay hoat hoa ngay khi bat dau chuyen
 }
 
+void Channel::audioWeights(double now, std::vector<float>& w, std::shared_ptr<Source>& stinger) const {
+    w.assign(scenes.size(), 0.0f);
+    stinger.reset();
+    const int pg = program, pv = preview;
+    auto set = [&](int i, float v) { if (i >= 0 && i < int(w.size())) w[size_t(i)] += v; };
+    if (!active_ || !sceneAt(pv)) { set(pg, 1.0f); return; }
+    double t = manual_ ? double(manualT_) : (now - start_) / std::max(1e-6, spec_.duration);
+    t = std::clamp(t, 0.0, 1.0);
+    if (spec_.type == TransitionType::Stinger) {
+        set(t < spec_.cutPoint ? pg : pv, 1.0f);
+        stinger = spec_.stinger;
+        return;
+    }
+    const double e = manual_ ? t : applyEasing(spec_.easing, t);
+    if (spec_.type == TransitionType::DipToBlack) {
+        set(pg, float(std::clamp(1.0 - 2.0 * e, 0.0, 1.0)));
+        set(pv, float(std::clamp(2.0 * e - 1.0, 0.0, 1.0)));
+    } else {
+        set(pg, float(1.0 - e));
+        set(pv, float(e));
+    }
+}
+
 RenderTarget* Channel::render(Compositor& comp, TargetPool& pool, double now) {
     RenderTarget* out = renderProgram(comp, pool, now);
     float a = ftbAmount;

@@ -1,6 +1,6 @@
 # LumaCast — Kế hoạch phát triển (PLAN)
 
-**Cập nhật:** sau M5c (nhánh `m5-control`) · Yêu cầu: `SPEC.md` · Thiết kế: `KienTruc.md` · Kiểm thử: `TEST-PLAN.md`
+**Cập nhật:** sau M5a (nhánh `m5a-audio`, xếp chồng trên `m4b` đã gồm M5c) · Yêu cầu: `SPEC.md` · Thiết kế: `KienTruc.md` · Kiểm thử: `TEST-PLAN.md`
 
 ## 1. Hiện trạng
 | Mốc | Nội dung | Trạng thái | PR |
@@ -12,9 +12,10 @@
 | M3c | Độ tin cậy: log, watchdog, mất màn, mẫu thử theo Output, thống kê khung | 🟡 phần mã xong; còn thử trên phần cứng thật | #4 |
 | M4a | Effect trên Layer, Transition mới + Stinger + easing, plug-in shader, Plugin Manager | 🟡 phần mã xong; còn thử trên Windows | #5 |
 | M4b | Xoay/crop/blend Layer, đồng hồ Scene, keyframe, timeline | 🟡 phần mã xong; còn thử trên Windows | (nhánh `m4b`) |
+| M5a | Âm thanh theo Channel: giải mã, mixer thread, WASAPI/Null, mute/âm lượng, crossfade theo transition, hình theo đồng hồ âm thanh, meter | 🟡 phần mã xong, test Linux (backend Null); còn thử WASAPI/đo lệch 30 phút trên Windows | (nhánh `m5a-audio`, **xếp chồng trên `m4b`**) |
 | M5c | Điều khiển ngoài (HTTP/SSE, OSC), tự khởi động/mở lại project, khoá vận hành, hoàn tác nhập media, timeline nâng cao | 🟡 phần mã xong, test Linux; còn thử trên Windows | (nhánh `m5-control`, **xếp chồng trên `m4b`**) |
 
-Quy mô mã: khoảng 11.000 dòng C++ (gồm test) · 709 kiểm tra tự động (326 cũ + 383 của M5c) · build được trên Linux và Windows (MSVC 2022, Qt 6.8.3, FFmpeg 9.1).
+Quy mô mã: khoảng 11.000 dòng C++ (gồm test) · 833 kiểm tra tự động (709 cũ + 124 của M5a) · build được trên Linux và Windows (MSVC 2022, Qt 6.8.3, FFmpeg 9.1).
 
 **Chưa được xác nhận trên phần cứng thật** (rủi ro đã biết, xem mục 5): nút Dừng hình trên Windows; fullscreen đúng màn LED;
 4 Output 4K; chạy liên tục nhiều giờ.
@@ -69,9 +70,10 @@ Kích cỡ: **S** vài ngày · **M** 1–2 tuần · **L** vài tuần (ước 
 - **Phụ thuộc:** M4a. **Rủi ro:** thao tác timeline trên Scene đang On Air tác động trực tiếp lên màn hình (đã có cảnh báo; khoá vận hành đã có ở M5c).
 
 ### M5a — Âm thanh theo Channel · Kích cỡ: L
-- [ ] Giải mã âm thanh FFmpeg, mixer thread riêng, bus mỗi Channel, WASAPI ra thiết bị chọn được (AUD-01).
-- [ ] Mute/bật mỗi Channel, âm lượng, crossfade theo transition, đồng bộ hình theo đồng hồ âm thanh, meter (AUD-02).
-- **Nghiệm thu:** bật/tắt tiếng từng Channel; lệch hình–tiếng < 40 ms sau 30 phút; không vỡ tiếng khi chuyển cảnh.
+- [x] Giải mã âm thanh FFmpeg (swresample → float32 stereo 48 kHz), mixer thread riêng, bus mỗi Channel, `AudioDevice` trừu tượng với WASAPI (Windows) + Null (test/Linux), chọn thiết bị ra và lưu trong project (AUD-01).
+- [x] Mute/bật mỗi Channel, âm lượng Channel + Layer, crossfade theo transition (kể cả T-bar), đồng bộ hình theo đồng hồ âm thanh, meter, lệnh HTTP/OSC (AUD-02).
+- [ ] **Chưa làm / chưa thử:** thử WASAPI thật + nghe bằng tai; đo lệch hình–tiếng 30 phút; thiết bị đa kênh/rút thiết bị; mỗi Channel một thiết bị riêng; WASAPI exclusive; macOS (CoreAudio); nhập file chỉ có âm thanh; chuẩn LUFS/true-peak; âm thanh theo timeline (keyframe âm lượng).
+- **Nghiệm thu:** bật/tắt tiếng từng Channel; lệch hình–tiếng < 40 ms sau 30 phút; không vỡ tiếng khi chuyển cảnh. *(Trên Linux/Null đã đo −1…+27 ms qua nhiều vòng lặp và crossfade mượt qua meter; ba tiêu chí trên máy thật xem T-AUD-MUTE, T-AUD-SYNC, T-AUD-XFADE — **chưa thử**.)*
 
 ### M5b — NDI và camera · Kích cỡ: M–L
 - [ ] NDI vào (SRC-06) và NDI ra như một `OutputSink`; camera/card capture (SRC-07).
@@ -86,7 +88,7 @@ Làm trên nhánh `m5-control`, tách từ `m4b` (PR xếp chồng; chưa merge 
 - [x] **P0-4** Khoá vận hành (UI-07): vô hiệu điều khiển sửa, giữ điều khiển live, mở khoá bằng giữ nút 1 s, hiện trên thanh trạng thái, theo phiên; API tôn trọng (có cơ chế `edit` → 423).
 - [x] **P1-5** Hoàn tác cho nhập media/tạo Scene từ Media Pool và thuộc tính Scene (PRJ-07, một phần).
 - [x] **P1-6** Timeline: zoom/cuộn ngang, chọn nhiều keyframe, kéo nhóm, sao chép/dán (SCN-07).
-- [ ] **Chưa làm / để đợt sau (cố ý loại khỏi đợt A):** **MIDI** (cần API Windows, không test được trên Linux), **âm thanh** (M5a), **NDI** và **camera** (M5b); chế độ Operator tối giản và Multiview (UI-06); đặt tham số Layer/Effect qua API; hoàn tác đổi tên/xoá Scene và thêm/xoá Output (chưa có giao diện); phím tắt tuỳ chỉnh.
+- [ ] **Chưa làm / để đợt sau (cố ý loại khỏi đợt A):** **MIDI** (cần API Windows, không test được trên Linux), **NDI** và **camera** (M5b); chế độ Operator tối giản và Multiview (UI-06); đặt tham số Layer/Effect qua API; hoàn tác đổi tên/xoá Scene và thêm/xoá Output (chưa có giao diện); phím tắt tuỳ chỉnh.
 - **Nghiệm thu:** điều khiển được từ điện thoại/Companion (✅ test socket thật trên Linux; **chưa thử điện thoại/Companion/LAN thật**); thao tác ngoài tuân theo cùng quy tắc an toàn như giao diện (✅ test: Preview không đổi Program, Đen đúng phạm vi, chỉ số sai → 404/400, khoá → 423).
 
 ### M6 — Hiệu năng và phát hành Windows · Kích cỡ: L

@@ -22,6 +22,7 @@ struct Project {
     std::vector<OutputConfig> outputs;
     double fps = 60.0;
     QString filePath;           // file project hien tai (rong = chua luu)
+    QString audioDevice;        // id thiet bi am thanh ra mong muon (rong = mac dinh cua he thong); khong co tren may nay -> dung mac dinh
 
     // Them nguon (tao Source neu def.source rong); tra ve nullptr neu loi.
     std::shared_ptr<Source> addSource(SourceDef def, QString* err = nullptr);

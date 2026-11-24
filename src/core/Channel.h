@@ -29,6 +29,14 @@ public:
         TransitionSpec s; s.type = type; s.duration = seconds; startTransition(s, now);
     }
 
+    // Am thanh cua Channel (bus rieng). Doi qua RenderEngine::post(); mixer chi thay qua ke hoach tron do render thread dung moi khung.
+    std::atomic<float> volume{1.0f};               // 0..2
+    std::atomic<bool> mute{false};
+    // Trong so am thanh cua tung Scene o thoi diem `now` (render thread, sau render()): Program/Preview chuyen theo DUNG tien do
+    // transition (ca T-bar). w.size() == scenes.size(); tong = 1 (Fade/Wipe/Plugin: noi tuyen tinh theo easing; Dip: Program xuong 0 o
+    // nua dau, Preview len o nua sau; Stinger: cat cung o cutPoint). stinger = nguon stinger dang chay (nullptr neu khong).
+    void audioWeights(double now, std::vector<float>& w, std::shared_ptr<Source>& stinger) const;
+
     // Fade-To-Black: dua toan bo Program ve den (bam lan nua de tro lai). Render thread (qua post).
     std::atomic<bool> ftbTarget{false};
     std::atomic<float> ftbAmount{0.0f};      // 0 = binh thuong, 1 = den hoan toan (de UI hien thi)

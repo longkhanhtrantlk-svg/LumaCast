@@ -9,7 +9,7 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGL Network)
 # FFmpeg: Linux/macOS dung pkg-config; Windows dung vcpkg (`vcpkg install ffmpeg:x64-windows`, ban LGPL, lien ket dong).
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
-  pkg_check_modules(FFMPEG QUIET IMPORTED_TARGET libavformat libavcodec libswscale libavutil)
+  pkg_check_modules(FFMPEG QUIET IMPORTED_TARGET libavformat libavcodec libswscale libswresample libavutil)
 endif()
 if(TARGET PkgConfig::FFMPEG)
   set(LC_FFMPEG PkgConfig::FFMPEG)
@@ -19,6 +19,21 @@ else()
   target_include_directories(lc_ffmpeg INTERFACE ${FFMPEG_INCLUDE_DIRS})
   target_link_directories(lc_ffmpeg INTERFACE ${FFMPEG_LIBRARY_DIRS})
   target_link_libraries(lc_ffmpeg INTERFACE ${FFMPEG_LIBRARIES})
+  # swresample (M5a): vcpkg FindFFMPEG thuong da gom san trong FFMPEG_LIBRARIES; neu chua co thi tim rieng (khong can pkg-config).
+  set(_lc_has_swr FALSE)
+  foreach(_l ${FFMPEG_LIBRARIES})
+    if(_l MATCHES "swresample")
+      set(_lc_has_swr TRUE)
+    endif()
+  endforeach()
+  if(NOT _lc_has_swr)
+    find_library(LC_SWRESAMPLE_LIB swresample HINTS ${FFMPEG_LIBRARY_DIRS} ${FFMPEG_LIBDIR} PATH_SUFFIXES lib)
+    if(LC_SWRESAMPLE_LIB)
+      target_link_libraries(lc_ffmpeg INTERFACE ${LC_SWRESAMPLE_LIB})
+    else()
+      target_link_libraries(lc_ffmpeg INTERFACE swresample)   # co ten thu vien, dua vao link_directories o tren
+    endif()
+  endif()
   set(LC_FFMPEG lc_ffmpeg)
 endif()
 
@@ -42,6 +57,11 @@ add_library(lumacast_core STATIC
   src/render/PluginManager.cpp
   src/render/OutputSupervisor.h
   src/render/OutputSupervisor.cpp
+  src/audio/AudioStream.h
+  src/audio/AudioDevice.h src/audio/AudioDevice.cpp
+  src/audio/AudioWasapi.cpp
+  src/audio/AudioMixer.h src/audio/AudioMixer.cpp
+  src/audio/AudioPlan.h src/audio/AudioPlan.cpp
   src/media/StaticSources.cpp
   src/media/FFmpegSource.cpp
   src/control/HttpServer.h src/control/HttpServer.cpp
@@ -53,7 +73,7 @@ add_library(lumacast_core STATIC
 target_include_directories(lumacast_core PUBLIC src)
 target_link_libraries(lumacast_core PUBLIC Qt6::Core Qt6::Gui Qt6::OpenGL Qt6::Network ${LC_FFMPEG})
 if(WIN32)
-  target_link_libraries(lumacast_core PUBLIC winmm)   # timeBeginPeriod(1) cho nhip 60fps chinh xac
+  target_link_libraries(lumacast_core PUBLIC winmm ole32 avrt)   # winmm: timeBeginPeriod(1); ole32 + avrt: WASAPI (COM, MMCSS)
 endif()
 
 add_library(lumacast_ui STATIC
@@ -63,6 +83,7 @@ add_library(lumacast_ui STATIC
   src/app/ParamEditor.h src/app/ParamEditor.cpp
   src/app/TimelineWidget.h src/app/TimelineWidget.cpp
   src/app/LockButton.h src/app/LockButton.cpp
+  src/app/AudioPanel.h src/app/AudioPanel.cpp
   src/app/SettingsDialog.h src/app/SettingsDialog.cpp
   src/app/MainWindow.h src/app/MainWindow.cpp
 )
@@ -107,3 +128,11 @@ target_link_libraries(lumacast_m5c_tests PRIVATE lumacast_ui)
 target_compile_definitions(lumacast_m5c_tests PRIVATE LUMACAST_EXE="$<TARGET_FILE:lumacast>")
 add_dependencies(lumacast_m5c_tests lumacast)
 add_test(NAME ops COMMAND lumacast_m5c_tests)
+
+add_executable(lumacast_audio_tests tests/test_audio.cpp)
+target_link_libraries(lumacast_audio_tests PRIVATE lumacast_core)
+add_test(NAME audio COMMAND lumacast_audio_tests)
+
+add_executable(lumacast_audio_ui_tests tests/test_audio_ui.cpp)
+target_link_libraries(lumacast_audio_ui_tests PRIVATE lumacast_ui)
+add_test(NAME audio_engine COMMAND lumacast_audio_ui_tests)

@@ -26,6 +26,7 @@ struct Layer {
     float rotation = 0;                      // do, theo chieu kim dong ho, quanh tam layer
     QRectF crop{0, 0, 1, 1};                 // vung cua nguon duoc dung, chuan hoa, goc tren-trai, THEO HINH DA XOAY (video dien thoai)
     BlendMode blend = BlendMode::Normal;
+    float volume = 1.0f;                     // am luong cua nguon trong Layer nay (0..2; 1 = nguyen goc). Chi co tac dung neu nguon co am thanh
     std::vector<Track> tracks;               // keyframe theo thoi gian Scene; thuoc tinh co track se bi track ghi de
 
     const Track* track(AnimProp p) const { for (const auto& t : tracks) if (t.prop == p) return &t; return nullptr; }

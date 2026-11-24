@@ -215,6 +215,46 @@ CmdResult ControlApi::ftb(int channel, std::optional<bool> on, double seconds) {
     return CmdResult::success({{"channel", channel}});
 }
 
+CmdResult ControlApi::audioMute(int channel, std::optional<bool> on) {
+    CmdResult err;
+    auto c = chan(channel, err);
+    if (!c) return err;
+    engine_.post([c, on](double) { c->mute = on ? *on : !c->mute.load(); });
+    return CmdResult::success({{"channel", channel}});
+}
+CmdResult ControlApi::audioVolume(int channel, double linear) {
+    CmdResult err;
+    auto c = chan(channel, err);
+    if (!c) return err;
+    if (!std::isfinite(linear) || linear < 0.0 || linear > 2.0) return CmdResult::error(400, "bad_request", "Âm lượng phải trong khoảng 0–2 (1 = nguyên gốc) hoặc -60..+6 dB");
+    const float v = float(linear);
+    engine_.post([c, v](double) { c->volume = v; });
+    return CmdResult::success({{"channel", channel}, {"volume", std::round(linear * 1000) / 1000}});
+}
+CmdResult ControlApi::audioInfo() {
+    AudioMixer& m = engine_.audio();
+    QJsonObject o;
+    o["running"] = m.running();
+    o["device"] = m.deviceName();
+    o["deviceId"] = m.deviceId();
+    o["underruns"] = double(m.outputUnderruns());          // so lan thiet bi doi du lieu ma mixer chua kip dua
+    o["clippedBlocks"] = double(m.clippedBlocks());        // so khoi 10 ms bi cat o master (qua +-1)
+    auto lv = [](const AudioMeter& mt) {
+        auto r2 = [](double x) { return std::round(x * 1000) / 1000; };
+        return QJsonObject{{"peak", QJsonArray{r2(mt.peak[0]), r2(mt.peak[1])}}, {"rms", QJsonArray{r2(mt.rms[0]), r2(mt.rms[1])}}};
+    };
+    QJsonArray chs;
+    for (size_t i = 0; i < channels_.size(); ++i) {
+        QJsonObject c = lv(m.channelMeter(int(i)));
+        c["index"] = int(i + 1);
+        c["volume"] = std::round(double(channels_[i]->volume.load()) * 1000) / 1000;
+        c["mute"] = channels_[i]->mute.load();
+        chs.append(c);
+    }
+    o["channels"] = chs;
+    o["master"] = lv(m.masterMeter());
+    return CmdResult::success(o);
+}
 CmdResult ControlApi::outputFlag(int output, OutFlag f, std::optional<bool> on) {
     if (output < 1 || output > engine_.outputCount())
         return CmdResult::error(404, "output_not_found", QString("Không có Output %1 (có %2 Output)").arg(output).arg(engine_.outputCount()));
@@ -284,6 +324,7 @@ QJsonObject ControlApi::state() {
         o["inTransition"] = c.inTransition();
         o["ftb"] = c.ftbTarget.load();
         o["ftbAmount"] = std::round(double(c.ftbAmount.load()) * 100) / 100;
+        o["audio"] = QJsonObject{{"volume", std::round(double(c.volume.load()) * 100) / 100}, {"mute", c.mute.load()}};
         QJsonArray names;
         for (const auto& s : list) names.append(s->name);
         o["scenes"] = names;
@@ -361,6 +402,24 @@ void ControlApi::buildDefaultRoutes() {
         if (b.contains("duration")) { if (!b["duration"].isDouble()) return CmdResult::error(400, "bad_request", "'duration' phải là số"); d = b["duration"].toDouble(); }
         return ftb(n, on, d);
     });
+    addRoute("POST", "/api/channels/{n}/mute", false, [this, idx](const QStringList& p, const QJsonObject& b) {
+        int n; CmdResult e; std::optional<bool> on;
+        if (!idx(p[0], n, e) || !readOptBool(b, "on", on, e)) return e;
+        return audioMute(n, on);
+    });
+    addRoute("POST", "/api/channels/{n}/volume", false, [this, idx](const QStringList& p, const QJsonObject& b) {
+        int n; CmdResult e;
+        if (!idx(p[0], n, e)) return e;
+        if (b.contains("db")) {
+            if (!b["db"].isDouble()) return CmdResult::error(400, "bad_request", "'db' phải là số");
+            const double db = b["db"].toDouble();
+            if (!std::isfinite(db) || db < -60.0 || db > 6.0) return CmdResult::error(400, "bad_request", "'db' phải trong khoảng -60..+6");
+            return audioVolume(n, db <= -60.0 ? 0.0 : std::pow(10.0, db / 20.0));
+        }
+        if (!b["volume"].isDouble()) return CmdResult::error(400, "bad_request", "Cần trường số 'volume' (0–2) hoặc 'db'");
+        return audioVolume(n, b["volume"].toDouble());
+    });
+    addRoute("GET", "/api/audio", false, [this](const QStringList&, const QJsonObject&) { return audioInfo(); });
     for (const auto& [name, flag] : {std::pair<const char*, OutFlag>{"black", OutFlag::Black}, {"freeze", OutFlag::Freeze}, {"pattern", OutFlag::Pattern}})
         addRoute("POST", QString("/api/outputs/{i}/") + name, false, [this, idx, flag = flag](const QStringList& p, const QJsonObject& b) {
             int n; CmdResult e; std::optional<bool> on;
@@ -525,6 +584,14 @@ CmdResult ControlApi::handleOsc(const OscMessage& m) {
             return setPreview(n, s);
         }
         if (act == "cut") return cut(n);
+        if (act == "mute") {
+            if (!oscBool(m.args.value(0), on, err)) return err;
+            return audioMute(n, on);
+        }
+        if (act == "volume") {
+            if (m.args.isEmpty() || !(m.args[0].typeId() == QMetaType::Double || m.args[0].typeId() == QMetaType::Int)) return bad("volume cần một số (0–2, 1 = nguyên gốc)");
+            return audioVolume(n, m.args[0].toDouble());
+        }
         if (act == "ftb") {
             if (!oscBool(m.args.value(0), on, err)) return err;
             return ftb(n, on);

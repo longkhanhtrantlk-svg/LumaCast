@@ -1,4 +1,5 @@
 #pragma once
+#include "audio/AudioStream.h"
 #include "render/GlHelpers.h"
 #include <QImage>
 #include <QString>
@@ -21,6 +22,8 @@ public:
     virtual QImage snapshot(int maxWidth = 160) const { Q_UNUSED(maxWidth); return {}; }
     // Phat lai tu dau (Stinger). Mac dinh khong lam gi. Goi tu render thread.
     virtual void restart() {}
+    // Luong am thanh cua nguon (float32 stereo 48 kHz); nullptr = im lang (anh, mau, video khong co tieng). Mixer rut tu day.
+    virtual AudioStream* audio() { return nullptr; }
     virtual double durationSeconds() const { return 0; }     // do dai (giay) neu biet, 0 neu khong (dung cho Stinger)
 };
 

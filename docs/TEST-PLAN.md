@@ -12,6 +12,8 @@ Liên quan: `SPEC.md` (tiêu chí nghiệm thu), `PLAN.md` (Definition of Done),
 | Tự động — hoạt hoạ/Layer | `lumacast_anim_tests` | Linux (xvfb), Windows | 67 |
 | Tự động — điều khiển ngoài (HTTP/SSE/OSC, bảo mật) | `lumacast_control_tests` | Linux (xvfb), Windows | 186 |
 | Tự động — vận hành (cài đặt, tự khởi động, mở lại project, khoá, hoàn tác nhập media, timeline) | `lumacast_m5c_tests` | Linux (xvfb), Windows | 197 |
+| Tự động — âm thanh: ring, mixer, trọng số crossfade, kế hoạch trộn, lưu/mở, backend Null + thread, FFmpeg, hình theo đồng hồ âm thanh | `lumacast_audio_tests` | Linux, Windows (không cần GPU) | 80 |
+| Tự động — âm thanh qua engine thật: mute/âm lượng/crossfade/T-bar/FTB qua meter, HTTP + OSC, panel Âm thanh, Inspector, khoá vận hành | `lumacast_audio_ui_tests` | Linux (xvfb), Windows | 44 |
 | Thử tay trên phần cứng thật | Checklist mục 3 | Windows, màn LED/bộ gửi tín hiệu thật | theo bảng |
 | Benchmark hiệu năng | Mục 4 | Windows, máy mục tiêu | theo bảng |
 
@@ -30,10 +32,15 @@ video FFmpeg (khung hình, lặp, xoay 90/180/270 so với FFmpeg tự xoay).
 
 **`lumacast_m5c_tests`**: hộp thoại cài đặt dùng thật trên `MainWindow`, tự khởi động (QSettings giả), tự mở lại project gần nhất (chạy cả tiến trình `lumacast` thật với 5 kịch bản), khoá vận hành (từng điều khiển bị vô hiệu/giữ lại, giữ nút/Space mở khoá), hoàn tác/làm lại nhập media và thuộc tính Scene (kể cả Scene đang On Air), timeline (zoom/cuộn, chuột thật, khung chọn, kéo nhóm, sao chép/dán, khoá).
 
+**`lumacast_audio_tests`** (không cần GPU): `AudioStream` (ring, quay vòng, underrun, flush, giữ im lặng khi restart, đồng hồ), mixer (bus độc lập, mute, đổi hệ số tuyến tính trong khối, nguồn ở hai Channel chỉ rút một lần, giới hạn ±1, meter), trọng số crossfade của `Channel` (Fade/easing/Dip/T-bar/Stinger), kế hoạch trộn từ `Project` (mute, âm lượng, FTB, Layer ẩn, cùng nguồn ở hai Scene), lưu/mở project (mặc định, project cũ, giá trị rác), backend Null + thread mixer (nhịp, độ trễ, đổi thiết bị, giải phóng nguồn), và với `ffmpeg`: giải mã âm thanh 44,1 kHz mono → 48 kHz stereo, video không tiếng, hình theo đồng hồ âm thanh qua nhiều vòng lặp (đo lệch độc lập từ thread test), lặp nối liền không underrun, mute không làm đứng đồng hồ, `restart()`, mixer dừng thì rơi về đồng hồ tường.
+
+**`lumacast_audio_ui_tests`** (engine + `MainWindow` thật, nguồn âm thanh DC để đọc mức qua meter): mức từng bus, mute/âm lượng qua HTTP/OSC (kể cả giá trị sai, kênh không có, khoá vận hành), Fade tuyến tính 0,4→0,2 mượt không tụt, T-bar theo vị trí, Dip về ~0 ở giữa, FTB, nút Tắt tiếng/thanh âm lượng/meter trên UI, đồng bộ ngược khi đổi từ API, chọn thiết bị, khoá vận hành, âm lượng Layer + Hoàn tác.
+
 **`lumacast_ui_tests`** (điều khiển widget như người dùng): engine + cửa sổ chính, monitor, CUT/TAKE/AUTO/T-bar, BLACK ALL, Dừng hình,
 FTB, Inspector (Layer, Output), Hoàn tác/Làm lại (kể cả gộp bước), kéo-thả/ẩn-hiện Layer, nhập media, lưu và tự lưu.
 
 **Giới hạn đã biết:**
+- Âm thanh trên Linux chỉ đi qua backend **Null** (không có tiếng ra loa): mixer, đồng hồ, crossfade, mute, meter, đồng bộ được kiểm tra; **WASAPI thật, nghe bằng tai, độ trễ thật của thiết bị, rút/đổi thiết bị, đo lệch 30 phút chỉ kiểm chứng được bằng thử tay (T-AUD-*)**.
 - Dùng GPU phần mềm trên Linux: không phản ánh hiệu năng và hành vi driver thật (NVIDIA/AMD/Intel).
 - Test video cần lệnh `ffmpeg` để tạo video thử; không có thì tự bỏ qua (thường xảy ra trên Windows nếu `ffmpeg.exe` không nằm trong PATH). Khi đó phần phát video chỉ kiểm chứng bằng thử tay.
 - Chưa có test cho: nhiều Output toàn màn hình, mất thiết bị, chạy dài hạn, kéo chuột thật (T-bar, kéo-thả Layer).
@@ -82,6 +89,12 @@ Trạng thái: **Đạt** · **Lỗi** · **Chưa thử**. Cập nhật cột n�
 | T-REOPEN | Lưu project, tắt, chạy `lumacast.exe` không tham số; xoá/đổi tên file project rồi chạy lại; tắt tuỳ chọn "Tự mở lại" rồi chạy lại; mất điện giả (kill) khi có autosave mới hơn | Tự mở lại đúng project; file mất → chạy bình thường + thông báo ở thanh trạng thái; tắt tuỳ chọn → không tự mở; có bản autosave → hỏi khôi phục | **Chưa thử** |
 | T-LOCK | Bấm "Khoá vận hành" (hoặc Ctrl+L) khi đang On Air; thử sửa Inspector/Timeline/Nhập media/Plug-in/Ctrl+Z/đóng cửa sổ; thử CUT, TAKE, T-bar, FTB, BLACK ALL, Đen/Dừng/Mẫu, chọn Scene, Phát/Tạm dừng timeline; giữ nút 0,5 s rồi nhả, rồi giữ 1 s | Mọi điều khiển sửa bị mờ; điều khiển live vẫn chạy; thanh trạng thái hiện "KHOÁ VẬN HÀNH"; giữ 1 s mới mở khoá | **Chưa thử** |
 | T-UNDO2 | Nhập một ảnh và một video, Ctrl+Z từng bước, Ctrl+Y; thử Ctrl+Z khi Scene vừa nhập đang On Air | Scene biến mất/hiện lại đúng, không treo, Program không đổi; đang On Air thì báo từ chối | **Chưa thử** |
+| T-AUD-DEV | Mở dock *Âm thanh*: danh sách thiết bị có đủ loa/tai nghe/HDMI; chọn từng thiết bị (có lúc là thiết bị đang dùng ở 44,1 kHz hoặc 96 kHz); phát video có tiếng; lưu project, mở lại trên máy có/không có thiết bị đó | Ra đúng thiết bị, không méo/rè; đổi thiết bị giữa chừng không treo, tiếng tiếp tục; máy không có thiết bị đã lưu → dùng mặc định + báo; status hiện "Đang phát: <tên>" | **Chưa thử — AUD-01** |
+| T-AUD-MUTE | Có ≥ 2 Channel với video có tiếng khác nhau. Bấm *Tắt tiếng* từng Channel, kéo thanh âm lượng 0–150%, xem meter; thử `curl .../mute`, `.../volume` và OSC `/lumacast/channel/1/mute 1`; bật Khoá vận hành rồi thử lại | Tắt/bật tiếng đúng Channel, không "cạch" khi đổi; meter đúng và về 0 khi tắt; hình không bị ảnh hưởng; lệnh ngoài chạy kể cả khi khoá | **Chưa thử — AUD-01** |
+| T-AUD-XFADE | Hai Scene video có tiếng khác nhau; TAKE Fade 1–3 s, Dip, Wipe, Push, Stinger có tiếng; kéo T-bar chậm/nhanh qua lại; bật/tắt FTB | Tiếng của Program giảm và Preview tăng đúng tiến độ hình, không vỡ/lách/tụt âm lượng; Dip im ở giữa; T-bar theo ngay vị trí; FTB kéo cả tiếng | **Chưa thử — AUD-02** |
+| T-AUD-SYNC | Video có thể nhìn ra tiếng (clip có tiếng vỗ tay/đèn nháy cùng lúc), phát lặp ≥ 30 phút ở 60 fps, vừa phát vừa chuyển cảnh; quay màn hình + loa bằng điện thoại 240 fps hoặc dùng clip kiểm tra "flash & beep" | Lệch hình–tiếng < 40 ms ở phút 1 và phút 30; lặp không có tiếng ngắt/click; không tụt khung do âm thanh | **Chưa thử — AUD-02 (nghiệm thu M5a)** |
+| T-AUD-HOT | Đang phát: rút tai nghe/đổi thiết bị mặc định của Windows; bật/tắt Bluetooth; đặt thiết bị ở 96 kHz/5.1 | Không crash/treo; hình vẫn chạy (rơi về đồng hồ tường); thiết bị mới/được cắm lại thì tiếng trở lại sau ~1 s hoặc sau khi chọn lại | **Chưa thử** |
+| T-AUD-SOAK | Chạy ≥ 1 giờ với 2–4 Channel có tiếng, nhiều video lặp, chuyển cảnh định kỳ | `GET /api/audio` cho `underruns` không tăng đều, CPU âm thanh thấp, bộ nhớ ổn định, meter không kẹt | **Chưa thử** |
 | T-TLZ | Timeline: Ctrl + lăn chuột để zoom, kéo thanh cuộn; chọn nhiều key (Ctrl+nhấp, kéo khung); kéo nhóm; Ctrl+C/Ctrl+V tại playhead; Delete; Ctrl+Z | Đúng như mô tả, mượt với Scene dài (≥ 1 phút), mỗi thao tác một bước Hoàn tác | **Chưa thử** |
 
 ## 4. Benchmark hiệu năng

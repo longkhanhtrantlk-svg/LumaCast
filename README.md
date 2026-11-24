@@ -15,7 +15,7 @@ Bo dieu khien man hinh LED nhieu kenh / nhieu do phan giai. Xem thiet ke: `docs/
 | `docs/TEST-WINDOWS.md` | Hướng dẫn build và chạy trên Windows |
 
 ## Build
-Linux (de phat trien / chay test): `apt install qt6-base-dev libqt6opengl6-dev libavcodec-dev libavformat-dev libswscale-dev libavutil-dev`
+Linux (de phat trien / chay test): `apt install qt6-base-dev libqt6opengl6-dev libavcodec-dev libavformat-dev libswscale-dev libswresample-dev libavutil-dev`
 Windows (muc tieu): Qt 6 + FFmpeg qua vcpkg (`vcpkg install ffmpeg[core,avcodec,avformat,swscale]` -- ban LGPL), roi:
 
     cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -28,12 +28,19 @@ Windows (muc tieu): Qt 6 + FFmpeg qua vcpkg (`vcpkg install ffmpeg[core,avcodec,
 `-o WxH[@man_hinh][/kenh]` (lap lai cho nhieu output), `--scale fit|fill|stretch|pixel`, `--fps 60`.
 Phim tat (kenh 1): `1..9` chon Preview, `Space` = AUTO, `Enter` = CUT.
 
+## M5a them (am thanh theo Channel)
+- Video co tieng duoc giai ma (FFmpeg + swresample -> float32 stereo 48 kHz); moi Channel mot bus, mixer chay thread rieng. Dock **Am thanh**: nut *Tat tieng*, thanh am luong 0-150%, meter peak/RMS tung Channel + master, chon thiet bi ra (luu trong project). Am luong rieng tung Layer o Inspector (o "tieng").
+- **Crossfade am thanh theo dung tien do transition** (ca T-bar; Dip im o giua; FTB keo ca tieng). **Hinh chay theo dong ho am thanh** khi nguon co tieng; lap noi lien khong cat tieng.
+- Windows: **WASAPI** (shared, event-driven; chi Win32/COM, khong can Qt Multimedia). Linux/macOS: backend **Null** (khong ra loa, dung de chay test; CoreAudio de sau). `--no-audio` de khong mo thiet bi.
+- Dieu khien ngoai: `POST /api/channels/{n}/mute|volume`, `GET /api/audio`, OSC `/lumacast/channel/{n}/mute|volume` (lenh live, van chay khi khoa van hanh).
+- **Chua kiem chung tren Windows that:** WASAPI, nghe bang tai, lech hinh-tieng sau 30 phut (xem `docs/TEST-PLAN.md`: T-AUD-*). Chua co: moi Channel mot thiet bi, file chi co am thanh, LUFS.
+
 ## M5c them (dieu khien ngoai va van hanh)
 - **Dieu khien ngoai** (Cai dat > Cai dat van hanh): HTTP REST + SSE (`GET /` co trang web cho dien thoai) va OSC/UDP. **Mac dinh tat**, chi `127.0.0.1`; nghe LAN phai bat ro va **bat buoc token**. Chi dung Qt Network (khong can Qt WebSockets). Xem `docs/CONTROL-API.md` (endpoint, ma loi, OSC, bao mat, vi du `curl`).
 - **Khoa van hanh** (nut tren thanh tren, Ctrl+L): vo hieu moi dieu khien SUA, giu dieu khien live; mo khoa bang giu nut 1 giay.
 - **Khoi dong cung Windows** va **tu mo lai project gan nhat** (tat duoc); file mat -> chay binh thuong kem thong bao.
 - **Hoan tac** cho nhap media / tao Scene va thuoc tinh Scene. **Timeline**: zoom/cuon ngang, chon nhieu keyframe, keo nhom, Ctrl+C / Ctrl+V.
-- Chua co (de dot sau): MIDI, am thanh, NDI, camera.
+- Chua co (de dot sau): MIDI, NDI, camera.
 
 ## M4b them (hoat hoa)
 - Layer: **xoay**, **cat (crop)** theo hinh da xoay, **blend** Add/Multiply/Screen. O co vien vang = dang co keyframe.

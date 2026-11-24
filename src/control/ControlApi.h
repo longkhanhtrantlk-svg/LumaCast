@@ -55,6 +55,10 @@ public:
     CmdResult cut(int channel);
     CmdResult take(int channel, const QJsonObject& opts);
     CmdResult ftb(int channel, std::optional<bool> on, double seconds = 1.0);
+    // Am thanh (M5a): tat tieng / am luong Channel la lenh LIVE (van chay khi khoa van hanh), qua post() nhu moi lenh khac.
+    CmdResult audioMute(int channel, std::optional<bool> on);                // vang = bat/tat qua lai
+    CmdResult audioVolume(int channel, double linear);                       // 0..2 (1 = nguyen goc)
+    CmdResult audioInfo();                                                   // thiet bi, meter tung Channel va master (khong nam trong state/SSE vi doi lien tuc)
     enum class OutFlag { Black, Freeze, Pattern };
     CmdResult outputFlag(int output, OutFlag f, std::optional<bool> on);
     CmdResult blackAll(std::optional<bool> on);

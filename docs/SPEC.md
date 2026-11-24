@@ -1,6 +1,6 @@
 # LumaCast — Đặc tả yêu cầu (SPEC)
 
-**Phiên bản tài liệu:** 1.1 · **Trạng thái mã:** sau M5c (nhánh `m5-control`, xếp chồng trên `m4b`) · **Nền tảng mục tiêu:** Windows 10/11 x64 (macOS sau)
+**Phiên bản tài liệu:** 1.1 · **Trạng thái mã:** sau M5a (nhánh `m5a-audio`, xếp chồng trên `m4b` đã gồm M5c) · **Nền tảng mục tiêu:** Windows 10/11 x64 (macOS sau)
 
 Tài liệu này trả lời *"phần mềm phải làm gì và thế nào là đạt"*. Thiết kế kỹ thuật nằm ở `KienTruc.md`, lộ trình ở `PLAN.md`,
 định dạng file ở `PROJECT-FORMAT.md`, cách kiểm thử ở `TEST-PLAN.md`.
@@ -122,8 +122,8 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 ### 3.8 Âm thanh, điều khiển ngoài, vận hành (AUD / CTL / OPS)
 | ID | Yêu cầu | Ưu tiên | TT | Nghiệm thu |
 |---|---|---|---|---|
-| AUD-01 | Âm thanh theo Channel, bật/tắt từng Channel, chọn thiết bị ra (WASAPI) | P0 | ⬜ | M5a |
-| AUD-02 | Âm lượng, đồng bộ hình–tiếng theo đồng hồ âm thanh, crossfade theo transition, meter | P1 | ⬜ | M5a |
+| AUD-01 | Âm thanh theo Channel, bật/tắt từng Channel, chọn thiết bị ra (WASAPI) | P0 | 🟡 | **Đã làm (M5a):** giải mã FFmpeg (swresample → float32 stereo 48 kHz), mixer thread riêng, mỗi Channel một bus, ring lock-free, lớp trừu tượng `AudioDevice` (backend **WASAPI** shared/event-driven cho Windows — chỉ Win32/COM, không Qt Multimedia — và backend **Null**), chọn thiết bị trong dock *Âm thanh* và lưu vào project (`audio.device`), nút Tắt tiếng mỗi Channel. Nguồn không có tiếng thì im lặng, không lỗi. Test tự động trên Linux bằng backend Null (`lumacast_audio_tests`, `lumacast_audio_ui_tests`). **Chưa thử:** WASAPI thật, thiết bị đa kênh/rút thiết bị, nghe bằng tai (T-AUD-DEV, T-AUD-MUTE, T-AUD-HOT). **Chưa làm:** mỗi Channel ra một thiết bị riêng (hiện mix chung ra một thiết bị), macOS, WASAPI exclusive, file chỉ có âm thanh (chưa nhập được) |
+| AUD-02 | Âm lượng, đồng bộ hình–tiếng theo đồng hồ âm thanh, crossfade theo transition, meter | P1 | 🟡 | **Đã làm (M5a):** âm lượng Channel (0–150% trên UI, 0–2 trong API) và âm lượng Layer (Inspector, hoàn tác được); crossfade Program→Preview theo **đúng tiến độ transition kể cả easing và T-bar** (Dip: im ở giữa; Stinger: cắt cứng ở điểm cắt, tiếng stinger đi kèm; FTB kéo cả tiếng), đổi hệ số nội suy tuyến tính theo từng mẫu (không tiếng lách); **hình chạy theo đồng hồ âm thanh** khi mixer đang lấy tiếng của nguồn (lặp nối liền không ngắt, mốc hình tính lại từ mẫu âm thanh đầu mỗi vòng nên không tích luỹ lệch), tự rơi về đồng hồ tường khi không có tiếng/mixer/âm thanh đứng; `restart()` im lập tức rồi phát lại từ đầu; meter peak/RMS L/R mỗi Channel và master; điều khiển ngoài mute/âm lượng (HTTP + OSC, lệnh live, chạy cả khi khoá vận hành). Test tự động trên Linux: lệch hình–tiếng đo được −1…+27 ms qua nhiều vòng lặp (clip 50 fps; tiêu chí test −15…+45 ms). **Chưa kiểm chứng:** lệch < 40 ms sau **30 phút** trên Windows với WASAPI thật (T-AUD-SYNC), nghe crossfade bằng tai (T-AUD-XFADE). Meter chưa chỉnh theo chuẩn LUFS/true-peak |
 | CTL-01 | Điều khiển ngoài: HTTP/WebSocket, OSC, MIDI (chọn Scene, TAKE/CUT, Đen, đặt tham số) | P1 | 🟡 | **HTTP REST + SSE và OSC/UDP đã làm (M5c)**, xem `CONTROL-API.md`: mặc định tắt và chỉ `127.0.0.1`; LAN phải bật rõ + token bắt buộc; giới hạn kích thước/thời gian; chống CSRF/DNS rebinding; log từ chối. Test tự động bằng socket thật trên Linux (`lumacast_control_tests`). **Dùng SSE thay WebSocket** (lý do: `KienTruc.md` mục 15). **Chưa làm:** MIDI, đặt tham số Layer/Effect qua API (chưa có endpoint sửa cấu hình). **Chưa thử** trên Windows/LAN/điện thoại/Companion thật (T-CTL, T-OSC) |
 | OPS-01 | Tự khởi động cùng Windows, tự mở lại project gần nhất, ghi log | P1 | 🟡 | **Đã làm (M5c):** tuỳ chọn ghi `HKCU\...\Run` (logic test bằng QSettings giả), tự mở lại project gần nhất (tắt được; file mất/hỏng → chạy bình thường + thông báo; dùng cơ chế khôi phục autosave), log đã có từ M3c. **Chưa thử** ghi registry thật/khởi động cùng Windows (T-AUTO) |
 | OPS-02 | Watchdog: render thread treo (> 2 s) thì cảnh báo trên giao diện + log; màn hình giữ hình cuối | P0 | 🟡 | Test tự động (chặn render thread); **chưa tự khởi động lại** |
@@ -145,7 +145,7 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | NFR-06 | Độ bền | File hỏng/media thiếu không làm crash | Đáp ứng với project JSON (PRJ-02) |
 | NFR-07 | Tương thích | Windows 10/11 x64; OpenGL 3.3 core; Qt ≥ 6.4 (đã dùng 6.4, 6.8.3); FFmpeg ≥ 6.1 (đã dùng 6.1, 9.1) | Đáp ứng |
 | NFR-08 | Giấy phép phụ thuộc | FFmpeg bản LGPL liên kết động; Qt LGPL liên kết động hoặc giấy phép thương mại | Đáp ứng (vcpkg `ffmpeg` mặc định) |
-| NFR-09 | Kiểm thử | Mọi tính năng mới có test tự động; PR phải qua `ctest` | 709 kiểm tra tự động (7 bộ) |
+| NFR-09 | Kiểm thử | Mọi tính năng mới có test tự động; PR phải qua `ctest` | 833 kiểm tra tự động (9 bộ) |
 | NFR-10 | Khả năng mở rộng | GPU chỉ chạm qua `Compositor`, `GlHelpers` và upload texture để thay bằng RHI (macOS) | Giữ nguyên tắc |
 
 ---

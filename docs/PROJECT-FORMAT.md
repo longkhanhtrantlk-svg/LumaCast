@@ -10,6 +10,8 @@ Mã nguồn tham chiếu: `src/core/Project.cpp` (`saveProject`, `loadProject`).
   Lưu thành công sẽ xoá bản tự lưu cũ.
 - Trường lạ bị bỏ qua; trường thiếu dùng giá trị mặc định (xem bảng).
 
+**Thêm ở M5a (tất cả tuỳ chọn, `version` vẫn 1, project cũ mở bình thường):** `audio.device` ở gốc, `volume`/`mute` ở `channels[]`, `volume` ở `layers[]`. Giá trị mặc định (100 %, không mute, thiết bị mặc định) **không được ghi ra** nên file không đổi nếu không dùng âm thanh.
+
 **Không đổi ở M5c:** vẫn `version` 1, không thêm trường. Cài đặt điều khiển ngoài (cổng, LAN, token), Khoá vận hành, tuỳ chọn tự khởi động và "project gần nhất" là **cài đặt theo máy/phiên** (`QSettings`), cố ý **không** lưu vào file project để mở project trên máy khác không mang theo token hay mở cổng mạng.
 
 ## 2. Cấu trúc
@@ -31,6 +33,7 @@ Mã nguồn tham chiếu: `src/core/Project.cpp` (`saveProject`, `loadProject`).
 | `app` | chuỗi | có | — | phải đúng `"LumaCast"` |
 | `version` | số nguyên | có | — | hiện phải bằng `1` |
 | `fps` | số | không | 60 | nhịp master, 1–240 |
+| `audio` | đối tượng | không | (không có) | `{ "device": "<id>" }`: id thiết bị âm thanh ra mong muốn (WASAPI: id endpoint của Windows). Vắng/rỗng = mặc định của hệ thống. Id không có trên máy đang mở → dùng mặc định (dock *Âm thanh* ghi chú "không có trên máy này"), id vẫn được giữ trong project |
 
 ### 2.1 `sources[]`
 | Trường | Kiểu | Ghi chú |
@@ -76,6 +79,7 @@ Các trường tuỳ chọn của Layer thêm ở M4b (mặc định = không đ
 | `rotation` | số | 0 | độ, **theo chiều kim đồng hồ**, quanh tâm layer |
 | `crop` | `[x, y, w, h]` | `[0,0,1,1]` | vùng của nguồn được dùng, chuẩn hoá, gốc trên-trái, **tính theo hình đã xoay** (video điện thoại); `w`,`h` ≤ 0 → bỏ qua |
 | `blend` | chuỗi | `normal` | `normal` · `add` · `multiply` · `screen` (giá trị lạ → `normal`) |
+| `volume` | số | 1 | âm lượng nguồn trong Layer (0–2, 1 = nguyên gốc); ngoài khoảng bị ép vào 0–2, không phải số → 1. Không có tác dụng với nguồn không có tiếng |
 | `tracks[]` | mảng | (rỗng) | keyframe, xem dưới |
 
 `tracks[]`: mỗi phần tử `{ "prop": "x"|"y"|"w"|"h"|"opacity"|"rotation", "keys": [ { "t": giây, "v": giá trị, "i": kiểu nối } ] }`.
@@ -92,6 +96,8 @@ Chưa lưu trong project: Transition đang chọn (kiểu, tham số, easing, St
 | `width`, `height` | số nguyên | 1920, 1080 | kích thước khi chạy transition |
 | `scenes` | mảng số | — | chỉ số vào `scenes[]` của gốc; chỉ số sai là lỗi nạp |
 | `program`, `preview` | số | 0, 1 | chỉ số **trong `scenes` của Channel**; giá trị sai được đưa về hợp lệ |
+| `volume` | số | 1 | âm lượng bus của Channel (0–2; UI 0–150 %); ép vào 0–2 |
+| `mute` | bool | false | tắt tiếng Channel (hình không đổi). Trạng thái mute/âm lượng được lưu cùng project; bật project lên là đúng như lúc lưu |
 
 ### 2.4 `outputs[]`
 | Trường | Kiểu | Mặc định | Ghi chú |

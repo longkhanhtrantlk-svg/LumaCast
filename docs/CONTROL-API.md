@@ -33,6 +33,9 @@ Thân yêu cầu (POST) là một **đối tượng JSON** hoặc rỗng (rỗng
 | `POST /api/channels/{n}/cut` | — | CUT: Program ↔ Preview |
 | `POST /api/channels/{n}/take` | `{"type":"fade","duration":1.0,"easing":"easeinout"}` | TAKE. Tất cả trường tuỳ chọn |
 | `POST /api/channels/{n}/ftb` | `{"on":true,"duration":1.0}` | Fade-To-Black. Bỏ `on` = đảo trạng thái |
+| `POST /api/channels/{n}/mute` | `{"on":true}` | **Tắt tiếng** Channel n (hình không đổi). Bỏ `on` = đảo. Lệnh **live** |
+| `POST /api/channels/{n}/volume` | `{"volume":0.8}` hoặc `{"db":-6}` | Âm lượng Channel: tuyến tính 0–2 (1 = nguyên gốc) hoặc dB −60…+6. Ngoài khoảng/sai kiểu → 400, không đổi. Lệnh **live** |
+| `GET /api/audio` | — | Thiết bị đang phát, `underruns`, `clippedBlocks`, meter peak/RMS [trái, phải] của từng Channel và master (không nằm trong `/api/state`/SSE vì đổi liên tục) |
 | `POST /api/outputs/{i}/black` | `{"on":true}` | Đen **chỉ Output i**. Bỏ `on` = đảo |
 | `POST /api/outputs/{i}/freeze` | `{"on":true}` | Dừng hình Output i |
 | `POST /api/outputs/{i}/pattern` | `{"on":true}` | Mẫu thử Output i |
@@ -69,7 +72,7 @@ Thân yêu cầu (POST) là một **đối tượng JSON** hoặc rỗng (rỗng
 {"ok":true,"version":1,"locked":false,
  "engine":{"fps":60.0,"droppedFrames":0,"frameP50":1.2,"frameP99":2.4,"stalled":false},
  "channels":[{"index":1,"name":"Channel 1","program":1,"preview":2,"programName":"Test","previewName":"Xanh",
-              "inTransition":false,"ftb":false,"ftbAmount":0.0,"scenes":["Test","Xanh"]}],
+              "inTransition":false,"ftb":false,"ftbAmount":0.0,"audio":{"volume":1.0,"mute":false},"scenes":["Test","Xanh"]}],
  "scenes":[{"index":1,"name":"Test","time":0.0,"playing":true}],
  "outputs":[{"index":1,"name":"Output 1","channel":1,"width":1920,"height":1080,
              "black":false,"freeze":false,"pattern":false,"health":"ok","fps":60}]}
@@ -90,6 +93,9 @@ curl -X POST http://127.0.0.1:8088/api/channels/1/preview -d '{"scene":3}'
 curl -X POST http://127.0.0.1:8088/api/channels/1/take -d '{"type":"wipeleft","duration":0.8,"easing":"linear"}'
 curl -X POST http://127.0.0.1:8088/api/channels/1/cut
 curl -X POST http://127.0.0.1:8088/api/outputs/2/black -d '{"on":true}'
+curl -X POST http://127.0.0.1:8088/api/channels/1/mute -d '{"on":true}'
+curl -X POST http://127.0.0.1:8088/api/channels/1/volume -d '{"db":-6}'
+curl http://127.0.0.1:8088/api/audio
 curl -X POST http://127.0.0.1:8088/api/black-all -d '{"on":false}'
 curl -X POST http://127.0.0.1:8088/api/scenes/3/seek -d '{"time":2.5}'
 curl -N http://127.0.0.1:8088/api/events                 # SSE
@@ -107,6 +113,8 @@ UDP, OSC 1.0: thông điệp đơn hoặc bundle (lồng tối đa 4 cấp; time
 | `/lumacast/channel/{n}/cut` | — | `…/cut` |
 | `/lumacast/channel/{n}/take` | tuỳ chọn: `string` kiểu, `float` giây, `string` easing (theo thứ tự xuất hiện) | `…/take` |
 | `/lumacast/channel/{n}/ftb` | tuỳ chọn `int`/`T`/`F` | `…/ftb` |
+| `/lumacast/channel/{n}/mute` | tuỳ chọn `int`/`T`/`F` (1/T tắt tiếng, 0/F bật, bỏ = đảo) | `…/mute` |
+| `/lumacast/channel/{n}/volume` | `float`/`int` 0–2 | `…/volume` |
 | `/lumacast/output/{i}/black` · `freeze` · `pattern` | tuỳ chọn `int`/`T`/`F` (1/T bật, 0/F tắt, bỏ = đảo) | `…/outputs/{i}/…` |
 | `/lumacast/blackall` | tuỳ chọn như trên | `/api/black-all` |
 | `/lumacast/scene/{n}/play` · `pause` · `stop` | — | `…/scenes/{n}/…` |
@@ -118,7 +126,7 @@ Gói hỏng, địa chỉ lạ, chỉ số sai đều **bị bỏ qua** (không 
 
 ## 4. Khoá vận hành (UI-07) và API
 
-Khi **Khoá vận hành** bật, API vẫn nhận mọi lệnh *live* (CUT/TAKE/FTB/Đen/Dừng/Mẫu/chọn Scene/phát-tua timeline). Lệnh *sửa cấu hình* (nếu có) bị từ chối `423 locked` và ghi log. **Hiện chưa có endpoint sửa cấu hình nào** nên khoá chưa chặn gì ở API; cơ chế đã được cài và có test (`ControlApi::addRoute(..., edit=true, ...)`) để các endpoint sửa sau này mặc định tuân theo khoá. API **không thể mở khoá** (mở khoá cần người thao tác tại máy).
+Khi **Khoá vận hành** bật, API vẫn nhận mọi lệnh *live* (CUT/TAKE/FTB/Đen/Dừng/Mẫu/chọn Scene/phát-tua timeline/**tắt tiếng và âm lượng Channel**). Lệnh *sửa cấu hình* (nếu có) bị từ chối `423 locked` và ghi log. **Hiện chưa có endpoint sửa cấu hình nào** nên khoá chưa chặn gì ở API; cơ chế đã được cài và có test (`ControlApi::addRoute(..., edit=true, ...)`) để các endpoint sửa sau này mặc định tuân theo khoá. API **không thể mở khoá** (mở khoá cần người thao tác tại máy).
 
 ## 5. Bảo mật
 

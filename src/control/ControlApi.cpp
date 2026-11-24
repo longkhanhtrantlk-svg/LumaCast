@@ -237,6 +237,8 @@ CmdResult ControlApi::audioInfo() {
     o["running"] = m.running();
     o["device"] = m.deviceName();
     o["deviceId"] = m.deviceId();
+    o["underruns"] = double(m.outputUnderruns());          // so lan thiet bi doi du lieu ma mixer chua kip dua
+    o["clippedBlocks"] = double(m.clippedBlocks());        // so khoi 10 ms bi cat o master (qua +-1)
     auto lv = [](const AudioMeter& mt) {
         auto r2 = [](double x) { return std::round(x * 1000) / 1000; };
         return QJsonObject{{"peak", QJsonArray{r2(mt.peak[0]), r2(mt.peak[1])}}, {"rms", QJsonArray{r2(mt.rms[0]), r2(mt.rms[1])}}};

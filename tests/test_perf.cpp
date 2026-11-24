@@ -7,6 +7,7 @@
 #include "render/Benchmark.h"
 #include "render/Compositor.h"
 #include <QGuiApplication>
+#include <QtGlobal>
 #include <QImage>
 #include <QJsonDocument>
 #include <QOffscreenSurface>
@@ -506,17 +507,17 @@ int main(int argc, char** argv) {
 
     // ===== 6. Tuy chon mac dinh =====
     {
-        setenv("LUMACAST_HWDEC", "off", 1);
-        setenv("LUMACAST_GPU_YUV", "0", 1);
+        qputenv("LUMACAST_HWDEC", "off");
+        qputenv("LUMACAST_GPU_YUV", "0");
         const VideoDecodeOptions e = VideoDecodeOptions::fromEnvironment();
         CHECK(e.hwDecode == "off" && !e.gpuColor, "VideoDecodeOptions::fromEnvironment doc LUMACAST_HWDEC / LUMACAST_GPU_YUV");
-        unsetenv("LUMACAST_HWDEC");
-        unsetenv("LUMACAST_GPU_YUV");
+        qunsetenv("LUMACAST_HWDEC");
+        qunsetenv("LUMACAST_GPU_YUV");
         const VideoDecodeOptions d = VideoDecodeOptions::fromEnvironment();
         CHECK(d.hwDecode == "auto" && d.gpuColor && d.hapDirect, "Mac dinh: hwdec=auto, doi mau tren GPU, HAP truc tiep");
-        setenv("LUMACAST_HAP", "0", 1);
+        qputenv("LUMACAST_HAP", "0");
         CHECK(!VideoDecodeOptions::fromEnvironment().hapDirect, "LUMACAST_HAP=0 tat HAP truc tiep");
-        unsetenv("LUMACAST_HAP");
+        qunsetenv("LUMACAST_HAP");
     }
 
     // ===== 7. Benchmark + so lieu tung giai doan =====

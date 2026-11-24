@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "edition": "basic",
+  "licensee": "Ten khach hang",
+  "maxOutputs": 2,
+  "features": {
+    "plugins": false,
+    "ndi": false,
+    "camera": false,
+    "externalControl": false,
+    "timeline": false
+  }
+}

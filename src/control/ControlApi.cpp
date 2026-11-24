@@ -343,6 +343,19 @@ QJsonObject ControlApi::state() {
     eng["frameP50"] = std::round(engine_.frameP50() * 10) / 10;
     eng["frameP99"] = std::round(engine_.frameP99() * 10) / 10;
     eng["stalled"] = engine_.stalled();
+    {   // thoi gian tung giai doan (ms, p50/p99): xem KienTruc.md muc 3.3
+        const StageReport sr = engine_.stages();
+        auto js = [](const StageStat& st) {
+            QJsonObject o;
+            o["p50"] = std::round(st.p50 * 100) / 100;
+            o["p99"] = std::round(st.p99 * 100) / 100;
+            return o;
+        };
+        QJsonObject stg;
+        stg["upload"] = js(sr.upload); stg["scene"] = js(sr.scene); stg["transition"] = js(sr.transition);
+        stg["monitor"] = js(sr.monitor); stg["output"] = js(sr.output);
+        eng["stages"] = stg;
+    }
     root["engine"] = eng;
 
     QJsonArray chs;

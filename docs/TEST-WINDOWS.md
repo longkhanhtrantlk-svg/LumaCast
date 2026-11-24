@@ -20,7 +20,7 @@
 
 ## 3. Test tu dong
     ctest --test-dir build --output-on-failure
-Ky vong: tat ca test pass (9 bo: render, ui, reliability, effects, animation, control, ops, audio, audio_engine). Neu fail o "Khong co OpenGL 3.3": cap nhat driver GPU (khong dung may ao/Remote Desktop).
+Ky vong: tat ca test pass (15 muc ctest: render, ui, reliability, effects, animation, control, ops, audio, audio_engine, live, live_ui, perf, release, package, license). Cac test can `ffmpeg.exe` trong PATH de tao video thu; khong co thi tu bo qua (phan do chi kiem chung bang thu tay). Neu fail o "Khong co OpenGL 3.3": cap nhat driver GPU (khong dung may ao/Remote Desktop).
 
 ## 4. Test thu cong (che do cua so, 1 man hinh la du)
     build\lumacast.exe -o 960x540 -o 540x960 -m clip.mp4
@@ -51,6 +51,18 @@ Build khong can NDI SDK (runtime duoc nap dong luc chay). Camera dung Media Foun
 3. May **khong** cai NDI: mo project co nguon NDI -> nguon hien "Chua cai NDI Runtime", khong crash (T-NDI-NONE). `set LUMACAST_NDI_DISABLE=1` de tat han NDI neu nghi runtime gay loi.
 4. Neu NDI crash/khong hien nguon: ABI trong `src/live/NdiRuntime.cpp` chua doi chieu voi header NDI cua ban - gui log `%AppData%\LumaCast\logs\lumacast.log` (dong "NDI Runtime nap tu ...").
 5. Khong co phan cung: `set LUMACAST_NDI_BACKEND=fake` va `set LUMACAST_CAMERA_BACKEND=fake` cho nguon gia de xem giao dien.
+
+## 5d. Hieu nang va phat hanh (M6)
+**Giai ma phan cung / shader YUV / HAP (T-HWDEC, T-HAP):** log o `%AppData%\LumaCast\logs\lumacast.log` co dong `Video '<ten>': giai ma D3D11VA (phan cung) -> nv12 -> shader` (hoac `phan mem -> yuv420p -> shader`, `HAP (DXT1) -> GPU truc tiep`). So CPU (Task Manager) giua `lumacast.exe -m clip4k.mp4` (mac dinh), `--hwdec off`, `--no-gpu-yuv`. Khong co D3D11VA -> dong `Giai ma phan cung khong dung duoc ... -> phan mem` va van phat.
+**Benchmark (T-PERF):** `build\lumacast.exe --benchmark "outputs=4,size=3840x2160,source=file:C:\clip4k.mp4,hwdec=1,seconds=60" --bench-json b4.json`; so sanh `hwdec=0`, `gpucolor=0`, va `set LUMACAST_NO_PBO=1`. Ghi GPU/driver/Windows. Xem `docs/TEST-PLAN.md` muc 4.
+**Bo cai (T-INST):** tren may Windows co Visual Studio + Qt + vcpkg:
+
+    cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake -DCMAKE_PREFIX_PATH=C:\Qt\6.x.x\msvc2022_64
+    cmake --build build
+    cpack --config build\CPackConfig.cmake -C Release        :: ra build\LumaCast-0.1.0-Windows.exe (NSIS) + .zip
+
+Neu `FFmpeg DLL` khong duoc tim thay: them `-DLUMACAST_FFMPEG_BIN_DIR=C:\vcpkg\installed\x64-windows\bin`. Dat `licenses\LGPL-3.0.txt`, `LGPL-2.1.txt` (tai tu gnu.org) truoc khi dong goi. **Kiem tra giay phep truoc khi phat hanh:** `set LUMACAST_REQUIRE_LGPL=1 && ctest --test-dir build -R "license|package" --output-on-failure` (that bai neu FFmpeg khong phai LGPL hoac goi cai co file NDI). Cai bo cai tren may SACH (khong Qt/FFmpeg/VC++) va chay.
+**Giay phep tinh nang (T-LIC):** chep `license.example.json` thanh `license.json` canh `lumacast.exe` (hoac `set LUMACAST_LICENSE=<duong dan>`), sua `edition`.
 
 ## 6. Bao loi
 Gui: ban build (commit), lenh da chay, thong bao loi, driver GPU. Neu build loi, dan nguyen van 20 dong loi dau tien.

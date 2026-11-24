@@ -1,0 +1,53 @@
+name: Release (Windows installer)
+
+# Chay tay hoac khi dat tag v*: dung bo cai NSIS + ban ZIP mang theo, KHONG tu phat hanh len dau (chi tai len artifact).
+# Truoc khi ban: doc THIRD-PARTY-NOTICES.txt va docs/SPEC.md muc 5.1 (NDI). Bo cai khong kem runtime NDI (cmake/CheckNoNdi.cmake chan).
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  windows-installer:
+    runs-on: windows-2022
+    env:
+      QT_VERSION: "6.8.3"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+          cache: true
+      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\vcpkg\archives
+          key: vcpkg-ffmpeg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+      - name: Toan van giay phep LGPL (Qt, FFmpeg)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://www.gnu.org/licenses/lgpl-3.0.txt -OutFile licenses/LGPL-3.0.txt
+          Invoke-WebRequest https://www.gnu.org/licenses/lgpl-2.1.txt -OutFile licenses/LGPL-2.1.txt
+      - name: Cau hinh + build
+        shell: pwsh
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows
+          cmake --build build
+      - name: FFmpeg phai la LGPL
+        shell: pwsh
+        env:
+          LUMACAST_REQUIRE_LGPL: "1"
+        run: |
+          & "$env:QT_ROOT_DIR\bin\windeployqt.exe" build\lumacast_license_tests.exe
+          ctest --test-dir build -R "^(license|package)$" --output-on-failure
+      - name: Dong goi
+        shell: pwsh
+        run: cpack --config build/CPackConfig.cmake -C Release -B build/pkg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LumaCast-windows
+          path: |
+            build/pkg/*.exe
+            build/pkg/*.zip

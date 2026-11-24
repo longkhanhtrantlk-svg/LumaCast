@@ -33,4 +33,15 @@ private:
     size_t head_ = 0, count_ = 0;
 };
 
+// Thoi gian tung giai doan cua khung render (ms): p50/p99/max tren ~300 khung gan nhat.
+struct StageStat { double p50 = 0, p99 = 0, max = 0; };
+struct StageReport {
+    StageStat frame;        // ca khung (khong tinh thoi gian ngu cho nhip)
+    StageStat upload;       // day khung nguon len GPU (PBO/doi mau YUV)
+    StageStat scene;        // ve Scene (khong tinh upload)
+    StageStat transition;   // pha tron Transition
+    StageStat monitor;      // anh thu nho cho monitor UI (doc nguoc GPU->CPU, ~15 lan/giay)
+    StageStat output;       // dua ra tat ca Output (ve len cua so/NDI + swap)
+};
+
 } // namespace lc

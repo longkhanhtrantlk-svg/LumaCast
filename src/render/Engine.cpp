@@ -1,5 +1,6 @@
 #include "Engine.h"
 #include "audio/AudioPlan.h"
+#include "core/Features.h"
 #include "render/FrameStats.h"
 #include "render/NdiOutput.h"
 #include "render/OutputWindow.h"
@@ -17,6 +18,19 @@
 namespace lc {
 
 using Clock = std::chrono::steady_clock;
+
+namespace {
+// Output bi tat boi goi giay phep: giu cho (chi so + cau hinh duoc luu lai nguyen ven) nhung khong hien/khong gui gi.
+class DisabledSink : public OutputSink {
+public:
+    explicit DisabledSink(OutputConfig c) : cfg_(std::move(c)) {}
+    const OutputConfig& config() const override { return cfg_; }
+    OutputConfig& mutableConfig() override { return cfg_; }
+    void present(QOpenGLContext&, Compositor&, RenderTarget*) override {}
+private:
+    OutputConfig cfg_;
+};
+} // namespace
 
 RenderEngine::RenderEngine(Project& p, QObject* parent) : QThread(parent), project_(p) { ownRegistry_.loadBuiltins(); }
 
@@ -48,9 +62,44 @@ RenderEngine::MonitorFrame RenderEngine::monitor(int ch) const {
     return ch >= 0 && ch < int(monitors_.size()) ? monitors_[ch] : MonitorFrame{};
 }
 
+StageReport RenderEngine::stages() const {
+    std::lock_guard lk(stageMu_);
+    return stages_;
+}
+
+void RenderEngine::startRecording() {
+    std::lock_guard lk(recMu_);
+    rec_.clear();
+    rec_.reserve(1 << 15);
+    recording_ = true;
+}
+
+std::vector<RenderEngine::FrameSample> RenderEngine::takeRecording() {
+    recording_ = false;
+    std::lock_guard lk(recMu_);
+    return std::move(rec_);
+}
+
+void RenderEngine::setProfileSync(bool on) { GlProfile::setSync(on); }
+
+int RenderEngine::addSink(std::unique_ptr<OutputSink> sink) {
+    if (!sink) return -1;
+    auto box = std::make_shared<std::unique_ptr<OutputSink>>(std::move(sink));
+    auto idx = std::make_shared<std::atomic<int>>(-1);
+    postAndWait([this, box, idx](double) {
+        std::lock_guard lk(sinksMu_);
+        idx->store(int(sinks_.size()));
+        sinks_.push_back(std::move(*box));
+    });
+    if (*box) return -1;
+    return idx->load();
+}
+
 int RenderEngine::addNdiOutput(const OutputConfig& cfgIn) {
     OutputConfig cfg = cfgIn;
     cfg.kind = OutputKind::Ndi;
+    if (!Entitlements::current().ndi) return -1;
+    if (const int mo = Entitlements::current().maxOutputs; mo > 0 && outputCount() >= mo) return -1;
     if (cfg.channel < 0 || cfg.channel >= int(project_.channels.size())) return -1;
     auto sink = std::make_shared<std::unique_ptr<OutputSink>>(std::make_unique<NdiOutputSink>(cfg, project_.fps, &audio_));
     auto idx = std::make_shared<std::atomic<int>>(-1);
@@ -96,8 +145,21 @@ void RenderEngine::startEngine() {
     // Che do cua so (phat trien): xep cac output thanh hang ngang duoi bang dieu khien, xuong dong khi het cho.
     const QRect avail = QGuiApplication::primaryScreen()->availableGeometry();
     int x = avail.left() + 20, y = avail.top() + 420, rowH = 0;
+    const int maxOut = Entitlements::current().maxOutputs;            // 0 = khong gioi han (mac dinh)
+    int outIdx = 0;
     for (const OutputConfig& cfg : project_.outputs) {
+        // Output vuot gioi han goi / NDI khong co trong goi: giu mot sink RONG (khong hien/khong gui) de chi so Output va project luu lai van khop
+        if (maxOut > 0 && outIdx++ >= maxOut) {
+            qWarning().noquote() << QString("Output '%1' bị tắt: gói giấy phép hiện tại tối đa %2 Output").arg(cfg.name).arg(maxOut);
+            sinks_.push_back(std::make_unique<DisabledSink>(cfg));
+            continue;
+        }
         if (cfg.kind == OutputKind::Ndi) {
+            if (!Entitlements::current().ndi) {
+                qWarning().noquote() << QString("Output NDI '%1' bị tắt: NDI không có trong gói giấy phép").arg(cfg.name);
+                sinks_.push_back(std::make_unique<DisabledSink>(cfg));
+                continue;
+            }
             sinks_.push_back(std::make_unique<NdiOutputSink>(cfg, project_.fps, &audio_));
             continue;
         }
@@ -162,7 +224,7 @@ void RenderEngine::run() {
     const int monitorEvery = std::max(1, int(project_.fps / 15.0));
     int monitorTick = 0;
 
-    FrameStats stats;
+    FrameStats stats, stUpload, stScene, stTrans, stMonitor, stOutput;
     auto statsMark = Clock::now();
     heartbeatNs_ = steadyNs();
     qInfo().noquote() << "Engine bat dau: GPU" << gpuName() << "| output:" << int(project_.outputs.size())
@@ -187,6 +249,8 @@ void RenderEngine::run() {
 
         // 2) render tat ca Channel vao FBO
         ctx.makeCurrent(surface_.get());
+        GlProfile::uploadNs() = 0;
+        comp.resetTiming();
         pool.beginFrame();
         comp.setTime(t);
         for (const auto& sc : project_.scenes) sc->clock.tick(t, sc->duration, sc->loop);     // dong ho keyframe cua moi Scene
@@ -199,19 +263,31 @@ void RenderEngine::run() {
             if (!lastPlan_ || !plan->sameAs(*lastPlan_)) { lastPlan_ = plan; audio_.setPlan(plan); }
         }
 
+        const int64_t upNs = GlProfile::uploadNs(), scNs = comp.timing().sceneNs, trNs = comp.timing().transitionNs;
+        const int64_t monT0 = GlProfile::nowNs();
         // 2b) anh thu nho cho monitor UI (~15 lan/giay)
         if (++monitorTick >= monitorEvery) {
             monitorTick = 0;
             std::vector<MonitorFrame> mf(project_.channels.size());
+            std::vector<char> keepProg(mf.size(), 0), keepPrev(mf.size(), 0);
             for (size_t i = 0; i < project_.channels.size(); ++i) {
-                if (chanOut[i]) mf[i].program = comp.thumbnail(pool, *chanOut[i], 480);
-                if (RenderTarget* pv = project_.channels[i]->renderPreview(comp, pool))
-                    mf[i].preview = comp.thumbnail(pool, *pv, 480);
+                // doc bat dong bo (PBO): anh tre them 1 nhip monitor (~67 ms) nhung khong chan CPU cho GPU xong khung nay
+                if (chanOut[i]) { mf[i].program = comp.thumbnailAsync(pool, *chanOut[i], 480, int(i) * 2); keepProg[i] = mf[i].program.isNull(); }
+                if (RenderTarget* pv = project_.channels[i]->renderPreview(comp, pool)) {
+                    mf[i].preview = comp.thumbnailAsync(pool, *pv, 480, int(i) * 2 + 1);
+                    keepPrev[i] = mf[i].preview.isNull();
+                }
             }
             std::lock_guard lk(monitorMutex_);
+            for (size_t i = 0; i < mf.size() && i < monitors_.size(); ++i) {       // anh chua ve kip (lan dau/doi kich thuoc): giu anh cu, khong nhay ve trong
+                if (keepProg[i]) mf[i].program = monitors_[i].program;
+                if (keepPrev[i]) mf[i].preview = monitors_[i].preview;
+            }
             monitors_ = std::move(mf);
         }
 
+        const int64_t monNs = GlProfile::nowNs() - monT0;
+        const int64_t outT0 = GlProfile::nowNs();
         // 3) dua ra tung Output
         {
             std::vector<OutputSink*> cur;
@@ -223,13 +299,30 @@ void RenderEngine::run() {
                 const int ch = sink->config().channel;
                 sink->present(ctx, comp, (ch >= 0 && ch < int(chanOut.size())) ? chanOut[ch] : nullptr);
             }
+            if (GlProfile::sync()) comp.gl().glFinish();
         }
 
-        stats.add(std::chrono::duration<double, std::milli>(Clock::now() - frameStart).count());
+        const double frameMs = std::chrono::duration<double, std::milli>(Clock::now() - frameStart).count();
+        stats.add(frameMs);
+        if (recording_) {
+            std::lock_guard lk(recMu_);
+            rec_.push_back({float(frameMs), float(double(upNs) / 1e6), float(double(scNs) / 1e6), float(double(trNs) / 1e6),
+                            float(double(monNs) / 1e6), float(double(GlProfile::nowNs() - outT0) / 1e6)});
+        }
+        stUpload.add(double(upNs) / 1e6);
+        stScene.add(double(scNs) / 1e6);
+        stTrans.add(double(trNs) / 1e6);
+        stMonitor.add(double(monNs) / 1e6);
+        stOutput.add(double(GlProfile::nowNs() - outT0) / 1e6);
         if (Clock::now() - statsMark >= std::chrono::seconds(1)) {
             p50_ = stats.percentile(0.50);
             p99_ = stats.percentile(0.99);
             maxMs_ = stats.max();
+            auto st = [](const FrameStats& f) { return StageStat{f.percentile(0.50), f.percentile(0.99), f.max()}; };
+            {
+                std::lock_guard lk(stageMu_);
+                stages_ = StageReport{st(stats), st(stUpload), st(stScene), st(stTrans), st(stMonitor), st(stOutput)};
+            }
             statsMark = Clock::now();
         }
 

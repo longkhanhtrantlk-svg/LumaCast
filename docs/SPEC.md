@@ -1,6 +1,6 @@
 # LumaCast — Đặc tả yêu cầu (SPEC)
 
-**Phiên bản tài liệu:** 1.1 · **Trạng thái mã:** sau M5a (nhánh `m5a-audio`, xếp chồng trên `m4b` đã gồm M5c) · **Nền tảng mục tiêu:** Windows 10/11 x64 (macOS sau)
+**Phiên bản tài liệu:** 1.2 · **Trạng thái mã:** sau M6 (nhánh `m6-perf-release`, từ `main` đã gồm M4b, M5a, M5b, M5c) · **Nền tảng mục tiêu:** Windows 10/11 x64 (macOS sau)
 
 Tài liệu này trả lời *"phần mềm phải làm gì và thế nào là đạt"*. Thiết kế kỹ thuật nằm ở `KienTruc.md`, lộ trình ở `PLAN.md`,
 định dạng file ở `PROJECT-FORMAT.md`, cách kiểm thử ở `TEST-PLAN.md`.
@@ -38,8 +38,8 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | SRC-01 | Nguồn ảnh (PNG/JPG/BMP/GIF/WebP), màu trơn, test pattern có lưới/thanh màu/viền | P0 | ✅ | Test tự động (ảnh, màu, snapshot) |
 | SRC-02 | Nguồn video qua FFmpeg, phát theo PTS, tự lặp | P0 | ✅ | Test tự động (nếu có `ffmpeg` để tạo video thử) + thử tay T-VID |
 | SRC-03 | Video dọc/quay bằng điện thoại hiện đúng chiều (cờ xoay); ảnh theo EXIF | P0 | ✅ | Test tự động so với FFmpeg (90/180/270) + đã thử tay trên Windows |
-| SRC-04 | Giải mã phần cứng (D3D11VA) và đổi màu YUV→RGB bằng shader | P1 | ⬜ | Benchmark 4K ≥ 60 fps, CPU thấp hơn bản CPU |
-| SRC-05 | Codec HAP | P1 | ⬜ | Phát HAP 4K không rơi khung |
+| SRC-04 | Giải mã phần cứng (D3D11VA) và đổi màu YUV→RGB bằng shader | P1 | 🟡 | **Đổi màu bằng shader: ✅ có test** (plane Y/UV lên GPU, 8/10 bit, 4:2:0/4:2:2/4:4:4, NV12/P010, BT.601/709/2020, giới hạn/đầy đủ; khớp công thức CPU ≤ 2/255, khớp `sws_scale` trên vùng phẳng, đường CPU dự phòng cùng ma trận). **D3D11VA: mã xong, chép NV12/P010 xuống RAM rồi đi đường shader; mọi lỗi → tự về phần mềm (✅ test đường dự phòng trên Linux); CHƯA chạy với D3D11VA thật** — cần Windows (T-HWDEC). Chưa đạt chỉ tiêu "4K ≥ 60 fps, CPU thấp hơn" vì chưa đo trên GPU thật (T-PERF) |
+| SRC-05 | Codec HAP | P1 | 🟡 | **Hap (DXT1), Hap Alpha (DXT5), Hap Q (YCoCg) đi đường trực tiếp: tách khung HAP (none/snappy/complex) → upload DXT thẳng lên GPU, không giải mã CPU** (✅ test: khung dựng tay, 3000 khung bị phá ngẫu nhiên, 4 biến thể `ffmpeg -c:v hap`, khớp bộ giải mã FFmpeg ≤ 1/255). Không có S3TC trên GPU hoặc kích thước không chia hết 4 hoặc Hap-Alpha-only/Hap-M → bộ giải mã `hap` của FFmpeg. **Chưa đo "HAP 4K không rơi khung" trên GPU thật** (T-HAP) |
 | SRC-06 | NDI vào | P1 | 🟡 | Nhận stream NDI (hình + tiếng), độ trễ < 3 khung. **Mã xong, test tự động bằng backend giả + thư viện NDI giả; chưa thử với NDI Runtime thật** (T-NDI-IN, T-NDI-LOSS) |
 | SRC-07 | Camera/card capture | P1 | 🟡 | Hiện hình từ webcam/card capture. **Mã Media Foundation viết xong, mới kiểm tra cú pháp bằng mingw, chưa chạy trên Windows**; test tự động bằng camera giả (T-CAM, T-CAM-HOT). Chưa có: âm thanh từ capture, Linux/macOS |
 | SRC-08 | Chữ/đồ hoạ (CG), web, chuỗi ảnh | P2 | ⬜ | — |
@@ -137,15 +137,15 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 
 | ID | Yêu cầu | Chỉ tiêu | Hiện tại |
 |---|---|---|---|
-| NFR-01 | Nhịp render | 60 fps ổn định, khung rơi < 0,1 % sau 1 giờ | Đo trên Windows (AMD Radeon, 2 Output cửa sổ): 60 fps. Chưa đo dài hạn |
-| NFR-02 | Quy mô | 4 Output 1080p, hoặc 2 Output 4K + 2 Output 1080p | Chưa đo (T-4K) |
+| NFR-01 | Nhịp render | 60 fps ổn định, khung rơi < 0,1 % sau 1 giờ | Đo trên Windows (AMD Radeon, 2 Output cửa sổ): 60 fps. Chưa đo dài hạn. **M6:** có benchmark lặp lại được (`lumacast --benchmark`, p50/p99/rơi khung từng giai đoạn); số trên llvmpipe KHÔNG đại diện GPU thật |
+| NFR-02 | Quy mô | 4 Output 1080p, hoặc 2 Output 4K + 2 Output 1080p | Chưa đo trên GPU thật (T-4K, T-PERF). M6 đã giảm hot spot đo được (xem `TEST-PLAN.md` mục 4) |
 | NFR-03 | Độ trễ thao tác | Từ bấm CUT đến đổi hình ≤ 2 khung | Chưa đo |
 | NFR-04 | An toàn khi live | Preview không đổi Program; Đen có phạm vi rõ; xác nhận khi thoát; FTB | Đáp ứng (UI-04, CHN-07, OUT-07) |
 | NFR-05 | Phục hồi | Mất điện: mất tối đa 60 s thay đổi chưa lưu; mở lại khôi phục được | Đáp ứng cơ chế (PRJ-03) |
 | NFR-06 | Độ bền | File hỏng/media thiếu không làm crash | Đáp ứng với project JSON (PRJ-02) |
 | NFR-07 | Tương thích | Windows 10/11 x64; OpenGL 3.3 core; Qt ≥ 6.4 (đã dùng 6.4, 6.8.3); FFmpeg ≥ 6.1 (đã dùng 6.1, 9.1) | Đáp ứng |
-| NFR-08 | Giấy phép phụ thuộc | FFmpeg bản LGPL liên kết động; Qt LGPL liên kết động hoặc giấy phép thương mại | Đáp ứng (vcpkg `ffmpeg` mặc định) |
-| NFR-09 | Kiểm thử | Mọi tính năng mới có test tự động; PR phải qua `ctest` | 833 kiểm tra tự động (9 bộ) |
+| NFR-08 | Giấy phép phụ thuộc | FFmpeg bản LGPL liên kết động; Qt LGPL liên kết động hoặc giấy phép thương mại | Đáp ứng về thiết kế; **M6 thêm kiểm tra tự động**: `THIRD-PARTY-NOTICES.txt`, hộp thoại Giới thiệu hiện giấy phép lúc chạy, ctest `license` (với `LUMACAST_REQUIRE_LGPL=1` thất bại nếu FFmpeg không phải LGPL — CI Windows/bản phát hành bật). Bản FFmpeg trên Linux dev là GPL nên không phân phối. Cần bạn duyệt: Qt dùng LGPL (động) hay mua giấy phép thương mại |
+| NFR-09 | Kiểm thử | Mọi tính năng mới có test tự động; PR phải qua `ctest` | 1097 kiểm tra tự động (14 bộ chương trình + 1 kiểm tra gói cài đặt) |
 | NFR-10 | Khả năng mở rộng | GPU chỉ chạm qua `Compositor`, `GlHelpers` và upload texture để thay bằng RHI (macOS) | Giữ nguyên tắc |
 
 ---
@@ -165,11 +165,21 @@ Bạn từng nói nếu bán sẽ có gói cơ bản và gói thương mại nâ
 | Timeline / keyframe | không | có |
 Cơ chế khoá nên là cờ tính năng đọc từ giấy phép, tách khỏi lõi (xem `PLAN.md`, mục Phát hành).
 
+**M6 đã làm cơ chế, chưa chọn chính sách.** `src/core/Features.*` đọc `license.json` (cạnh file thực thi, `%AppData%\LumaCast\`, hoặc `LUMACAST_LICENSE`); mẫu: `license.example.json`.
+- **Không có file = không khoá gì** (mặc định hiện tại). File hỏng → không khoá + báo lỗi trong Giới thiệu (không làm hỏng buổi diễn).
+- Preset `"basic"` = đúng bảng trên (≤ 2 Output, không plug-in/NDI/camera/điều khiển ngoài/timeline); `"commercial"` = mở hết; có thể ghi đè từng cờ (`features`) và `maxOutputs`.
+- Điểm thi hành: tạo nguồn NDI/camera, nạp plug-in, mở HTTP/OSC, số Output (Output vượt gói **giữ chỗ rỗng** — không hiện, không gửi — để project lưu lại nguyên vẹn), Output NDI, timeline (dock làm xám).
+- **Không phải chống sao chép**: file không ký/không mã hoá. Nếu cần xác thực thật (chữ ký, gắn máy, hết hạn) thì thay phần nạp file bằng bộ kiểm tra riêng; phần còn lại của ứng dụng chỉ hỏi `Entitlements::allows()`.
+- **Câu hỏi mở số 6 (dưới đây) vẫn chờ bạn**: bảng phân gói trên có đúng không (ví dụ HTTP/OSC có nên thuộc gói Cơ bản?), giấy phép cấp theo máy hay theo người dùng, có cần hết hạn/kích hoạt trực tuyến không.
+
 ### 5.1 NDI® — điều khoản cần xác nhận **trước khi phát hành** (M5b)
+**Quyết định (sau khi đọc EULA của NDI SDK): bản phát hành KHÔNG có NDI.** EULA buộc (mục 3d) mọi bản phân phối phải kèm EULA của LumaCast chứa các điều khoản ràng buộc của NDI, giữ tương thích với SDK mới nhất (2b, 3h), bồi thường cho NDI (7) và tài liệu SDK là thông tin mật (3a, nên không được đưa header vào repo/chat). Với dự án cộng đồng miễn phí thì quá nặng. Do đó: CMake `LUMACAST_ENABLE_NDI` (**mặc định OFF**; chỉ job Linux của `ci.yml` bật để chạy test nội bộ, bản phát hành luôn OFF) thay `NdiRuntime.cpp` bằng `NdiStub.cpp`: file thực thi không chứa mã nạp/khai báo API của NDI, giao diện ẩn mọi mục NDI, Giới thiệu ghi "Bản này không có NDI". **Mặc định tắt và bị khoá ở CMake:** bật `LUMACAST_ENABLE_NDI=ON` mà thiếu `-DLUMACAST_NDI_EULA_ACCEPTED=I_ACCEPT_NDI_SDK_EULA` thì cấu hình dừng với hướng dẫn (người dùng tự chịu trách nhiệm về EULA của NDI). Mã NDI giữ nguyên trong repo để người có chuyên môn đọc; ai cần bản có NDI liên hệ tác giả hoặc tự dựng theo các bước dưới. Muốn bật lại: soạn EULA đúng mục 3d, đối chiếu ABI với header chính thức trên máy có SDK, rồi build với `-DLUMACAST_ENABLE_NDI=ON`. Mã NDI vẫn nằm trong repo (khai báo ABI viết từ trí nhớ, chưa đối chiếu); nếu muốn dứt điểm có thể xoá hẳn `src/live/NdiRuntime.cpp`, `NdiFake.*`, Output NDI.
+Nội dung dưới đây áp dụng KHI bật NDI:
 NDI là công nghệ và thương hiệu đã đăng ký của Vizrt NDI AB. Cách LumaCast dùng: **không** chứa và **không** liên kết tĩnh bất kỳ header/thư viện nào của NDI SDK; runtime NDI được nạp **động** lúc chạy (`QLibrary`, `Processing.NDI.Lib.x64.dll` / `libndi`) và tự khai báo tối thiểu các hàm cần dùng. Không có runtime thì NDI tự tắt và báo "Chưa cài NDI Runtime"; mọi tính năng khác chạy bình thường. Các điểm **người dùng cần tự đọc điều khoản NDI mới nhất rồi quyết định** (tôi chưa xác minh nguyên văn điều khoản):
 1. **Đăng ký/giấy phép:** dùng NDI trong sản phẩm bán ra thường yêu cầu đăng ký với NDI (ndi.video) và chấp nhận giấy phép SDK/Advanced SDK; cần xác nhận gói nào áp dụng cho gói Thương mại.
-2. **Ghi thương hiệu:** hiển thị "NDI®" và dòng ghi nhận bản quyền theo hướng dẫn thương hiệu của NDI (màn hình giới thiệu, website, tài liệu) — hiện giao diện **chưa** có dòng này, cần thêm trước khi phát hành.
-3. **Không phân phối lại runtime:** bộ cài LumaCast **không** được kèm `Processing.NDI.Lib.x64.dll` trừ khi giấy phép cho phép; hướng dẫn người dùng tự cài NDI Tools/Runtime miễn phí từ ndi.video (đây cũng là lý do thiết kế nạp động).
+2. **Ghi thương hiệu:** hiển thị "NDI®" và dòng ghi nhận theo hướng dẫn thương hiệu của NDI (màn hình giới thiệu, website, tài liệu). **M6 đã thêm vào Help ▸ Giới thiệu** dòng "NDI® is a registered trademark of Vizrt NDI AB." (có test), kèm liên kết tới ndi.video ở Giới thiệu và ở các hộp thoại Thêm nguồn/Output NDI, và README ghi NDI® ở lần đầu; website/tài liệu bán hàng và việc đối chiếu hướng dẫn thương hiệu chính thức là việc của bạn.
+3. **Không phân phối lại runtime:** bộ cài LumaCast **không** kèm `Processing.NDI.Lib.x64.dll` — **M6 cưỡng chế bằng `cmake/CheckNoNdi.cmake`** (cài đặt/CPack thất bại nếu thấy file NDI; có test) — trừ khi giấy phép cho phép; hướng dẫn người dùng tự cài NDI Tools/Runtime miễn phí từ ndi.video (đây cũng là lý do thiết kế nạp động).
+**Lưu ý:** các điểm 1–3 phía trên mới dựa trên bản tóm tắt do AI tổng hợp (chưa đọc nguyên văn EULA); người phát hành phải đọc EULA khi tải SDK. Bản tóm tắt nêu thêm: khi phát hành bản cập nhật nên dùng SDK không quá cũ so với bản mới nhất của NDI — cần xác nhận trong EULA.
 4. **ABI chưa đối chiếu:** các khai báo hàm/struct trong `src/live/NdiRuntime.cpp` viết theo header công khai từ trí nhớ, chưa đối chiếu với header chính thức của phiên bản SDK bạn dùng; cần đối chiếu + thử T-NDI-IN/T-NDI-OUT trước khi tin vào nó.
 Biến môi trường `LUMACAST_NDI_DISABLE=1` tắt hẳn NDI (dùng khi nghi ngờ runtime làm sập ứng dụng).
 
@@ -179,4 +189,5 @@ Biến môi trường `LUMACAST_NDI_DISABLE=1` tắt hẳn NDI (dùng khi nghi n
 3. Có cần điều khiển trực tiếp bộ gửi tín hiệu LED (Novastar, Colorlight) qua mạng không, hay chỉ HDMI/DP?
 4. GPU và cấu hình máy tối thiểu để cam kết hiệu năng?
 5. Bao giờ cần macOS? (quyết định thời điểm làm lớp RHI)
-6. Phân gói và cách cấp giấy phép (xem mục 5).
+6. Phân gói và cách cấp giấy phép (xem mục 5) — **cơ chế đã có từ M6, chờ bạn chốt chính sách** (bảng gói, cấp theo máy/người, hết hạn).
+7. Trình cài đặt: M6 chọn **CPack/NSIS** (+ ZIP mang theo; WiX chọn qua `-DLUMACAST_INSTALLER=WIX`, chưa thử). Có cần MSI cho triển khai doanh nghiệp, ký số (code signing), cập nhật tự động không?

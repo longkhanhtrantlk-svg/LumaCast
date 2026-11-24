@@ -1,4 +1,5 @@
 #include "Project.h"
+#include "core/Features.h"
 #include "live/Camera.h"
 #include "live/LiveSource.h"
 #include "live/Ndi.h"
@@ -34,10 +35,12 @@ std::shared_ptr<Source> createSource(const SourceDef& d, QString* err) {
                                              d.label.isEmpty() ? "test" : d.label);
     // Nguon truc tiep: KHONG bao gio that bai luc tao — thieu NDI Runtime/camera chi la trang thai cua nguon (project van mo duoc).
     if (d.type == "ndi") {
+        if (!Entitlements::current().ndi) return fail("NDI không có trong gói giấy phép hiện tại");
         if (d.device.isEmpty()) return fail("Nguon NDI thieu ten");
         return makeNdiSource(d.device, d.url, d.label);
     }
     if (d.type == "camera") {
+        if (!Entitlements::current().camera) return fail("Camera/capture không có trong gói giấy phép hiện tại");
         if (d.device.isEmpty() && d.deviceName.isEmpty()) return fail("Nguon camera thieu thiet bi");
         return makeCameraSource(d.device, d.deviceName, {std::max(0, d.size.width()), std::max(0, d.size.height()), std::max(0.0, d.fps)}, d.label);
     }

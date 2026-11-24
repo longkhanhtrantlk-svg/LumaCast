@@ -49,10 +49,12 @@ uniform float uBrightness;
 uniform float uContrast;
 uniform float uGamma;
 uniform vec3 uGain;
+uniform int uIdentity;      // 1: khong hieu chinh (mac dinh) -> chi chep, bo qua contrast/gain/pow (hot spot khi nhieu Output 4K)
 in vec2 vUv;
 out vec4 o;
 void main() {
     vec3 c = texture(uTex, vUv).rgb;
+    if (uIdentity == 1) { o = vec4(c, 1.0); return; }
     c = (c - 0.5) * uContrast + 0.5;
     c *= uBrightness * uGain;
     c = pow(clamp(c, 0.0, 1.0), vec3(1.0 / uGamma));
@@ -99,6 +101,8 @@ static std::unique_ptr<QOpenGLShaderProgram> makeProgram(const char* frag) {
 
 bool Compositor::init() {
     if (!gl_.initializeOpenGLFunctions()) return false;
+    if (QOpenGLContext* c = QOpenGLContext::currentContext())
+        HapSupport::set(c->hasExtension("GL_EXT_texture_compression_s3tc") || c->hasExtension("GL_EXT_texture_compression_dxt1"));
     gl_.glGenVertexArrays(1, &vao_);
     blit_ = makeProgram(kFragBlit);
     out_ = makeProgram(kFragOut);
@@ -108,6 +112,8 @@ bool Compositor::init() {
 }
 
 void Compositor::shutdown() {
+    for (auto& r : readers_) r.second.release(gl_);
+    readers_.clear();
     fxCache_.clear();
     blit_.reset();
     out_.reset();
@@ -148,6 +154,14 @@ QRectF cropToTexture(const QRectF& d, int rotation) {
 }
 
 void Compositor::renderScene(const Scene& scene, RenderTarget& dst) {
+    const int64_t t0 = GlProfile::nowNs(), up0 = GlProfile::uploadNs();
+    struct Done {
+        Compositor& c; int64_t t0, up0;
+        ~Done() {
+            if (GlProfile::sync()) c.gl_.glFinish();
+            c.timing_.sceneNs += (GlProfile::nowNs() - t0) - (GlProfile::uploadNs() - up0);     // upload do rieng
+        }
+    } done{*this, t0, up0};
     clear(dst, scene.background);
 
     const double W = dst.w, H = dst.h;
@@ -211,8 +225,22 @@ void Compositor::renderScene(const Scene& scene, RenderTarget& dst) {
     gl_.glDisable(GL_BLEND);
 }
 
+namespace {
+struct TransTimer {
+    int& depth; int64_t& acc; GL& gl; int64_t t0 = GlProfile::nowNs();
+    TransTimer(int& d, int64_t& a, GL& g) : depth(d), acc(a), gl(g) { ++depth; }
+    ~TransTimer() {
+        if (--depth == 0) {                 // chi do lop ngoai cung (overload day du goi overload theo loai)
+            if (GlProfile::sync()) gl.glFinish();
+            acc += GlProfile::nowNs() - t0;
+        }
+    }
+};
+} // namespace
+
 void Compositor::renderTransition(const RenderTarget& a, const RenderTarget& b, TransitionType type, float t,
                                   RenderTarget& dst) {
+    TransTimer tt(transDepth_, timing_.transitionNs, gl_);
     gl_.glBindFramebuffer(GL_FRAMEBUFFER, dst.fbo);
     gl_.glViewport(0, 0, dst.w, dst.h);
     gl_.glDisable(GL_BLEND);
@@ -304,6 +332,7 @@ RenderTarget* Compositor::applyLayerEffects(const Layer& l, const TexRef& tex) {
 
 void Compositor::renderTransition(const RenderTarget& a, const RenderTarget& b, const TransitionSpec& spec, float t,
                                   RenderTarget& dst) {
+    TransTimer tt(transDepth_, timing_.transitionNs, gl_);
     if (spec.type == TransitionType::Plugin && registry_) {
         auto def = registry_->find(spec.pluginId);
         QOpenGLShaderProgram* prog = def && def->kind == EffectDef::Transition ? effectProgram(*def) : nullptr;
@@ -360,6 +389,17 @@ QImage Compositor::thumbnail(TargetPool& pool, const RenderTarget& src, int maxW
     return img.mirrored(false, true);                 // GL goc duoi-trai -> anh goc tren-trai
 }
 
+QImage Compositor::thumbnailAsync(TargetPool& pool, const RenderTarget& src, int maxW, int slot) {
+    const int tw = std::max(1, std::min(maxW, src.w));
+    const int th = std::max(1, int(std::lround(double(tw) * src.h / src.w)));
+    RenderTarget* t = pool.acquire(tw, th);
+    gl_.glBindFramebuffer(GL_FRAMEBUFFER, t->fbo);
+    OutputConfig cfg;
+    cfg.scale = ScaleMode::Stretch;
+    drawToCurrent(src.tex, src.w, src.h, cfg, tw, th);
+    return readers_[slot].submit(gl_, tw, th);
+}
+
 void Compositor::fadeToBlack(RenderTarget& dst, float amount) {
     gl_.glBindFramebuffer(GL_FRAMEBUFFER, dst.fbo);
     gl_.glViewport(0, 0, dst.w, dst.h);
@@ -401,6 +441,8 @@ void Compositor::drawToCurrent(GLuint tex, int texW, int texH, const OutputConfi
     out_->setUniformValue("uContrast", k.contrast);
     out_->setUniformValue("uGamma", std::max(0.1f, k.gamma));
     out_->setUniformValue("uGain", QVector3D(k.gainR, k.gainG, k.gainB));
+    const bool identity = k.brightness == 1.0f && k.contrast == 1.0f && k.gamma == 1.0f && k.gainR == 1.0f && k.gainG == 1.0f && k.gainB == 1.0f;
+    out_->setUniformValue("uIdentity", identity ? 1 : 0);
     gl_.glActiveTexture(GL_TEXTURE0);
     gl_.glBindTexture(GL_TEXTURE_2D, tex);
     drawQuad(*out_, clip, uv, float(cfg.rotation));

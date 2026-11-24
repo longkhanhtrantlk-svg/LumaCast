@@ -19,6 +19,11 @@ class Compositor {
 public:
     bool init();                              // can context GL hien hanh; false neu loi shader
     GL& gl() { return gl_; }
+    // Thoi gian CPU tich luy (ns) tu lan resetTiming() gan nhat: Scene (khong tinh upload nguon, do rieng trong GlProfile::uploadNs()) va Transition.
+    // Voi GlProfile::setSync(true) co glFinish cuoi moi giai doan nen la thoi gian GPU that.
+    struct Timing { int64_t sceneNs = 0, transitionNs = 0; };
+    const Timing& timing() const { return timing_; }
+    void resetTiming() { timing_ = Timing(); }
 
     void clear(RenderTarget& dst, const QColor& c);
     void renderScene(const Scene& scene, RenderTarget& dst);
@@ -36,6 +41,8 @@ public:
     void drawToCurrent(GLuint tex, int texW, int texH, const OutputConfig& cfg, int winW, int winH);
     // Thu nho texture (toi da maxW rong) va doc ve CPU cho monitor UI. Chay tren render thread.
     QImage thumbnail(TargetPool& pool, const RenderTarget& src, int maxW);
+    // Nhu thumbnail() nhung doc bat dong bo qua PBO: tra anh CUA LAN GOI TRUOC cung `slot` (rong o lan dau/doi kich thuoc) -> khong chan CPU cho GPU xong khung nay.
+    QImage thumbnailAsync(TargetPool& pool, const RenderTarget& src, int maxW, int slot);
     // Phu den len dst voi do mo `amount` (0..1): dung cho Fade-To-Black.
     void fadeToBlack(RenderTarget& dst, float amount);
     void shutdown();
@@ -53,6 +60,9 @@ private:
     TargetPool* pool_ = nullptr;
     double time_ = 0;
     std::map<QString, std::unique_ptr<QOpenGLShaderProgram>> fxCache_;
+    Timing timing_;
+    std::map<int, AsyncReadback> readers_;
+    int transDepth_ = 0;
 };
 
 } // namespace lc

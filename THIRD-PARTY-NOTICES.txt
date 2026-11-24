@@ -1,0 +1,42 @@
+LumaCast — THIRD-PARTY NOTICES / Thông báo về phần mềm bên thứ ba
+=================================================================
+(Đây là thông báo kỹ thuật để đóng gói đúng, KHÔNG phải tư vấn pháp lý. Người phát hành tự chịu trách nhiệm đối chiếu điều khoản bản đang dùng.)
+
+LumaCast là mã nguồn của tác giả. Bản phát hành Windows liên kết ĐỘNG (dynamic linking) tới các thư viện dưới đây, để người dùng có thể thay các DLL đó
+bằng bản khác của cùng thư viện (điều kiện của LGPL).
+
+1. Qt 6 (Qt Core, Gui, Widgets, OpenGL, Network)
+   - Giấy phép: GNU Lesser General Public License v3 (LGPLv3) — qt.io/licensing. Không dùng module chỉ-GPL / thương mại của Qt.
+   - Cách dùng: LIÊN KẾT ĐỘNG (Qt6Core.dll, Qt6Gui.dll, Qt6Widgets.dll, Qt6OpenGL.dll, Qt6Network.dll + platforms/, styles/ do windeployqt tạo); không sửa Qt.
+   - Mã nguồn Qt và bản thường của giấy phép: https://www.qt.io/download-open-source , https://code.qt.io/ . Toàn văn LGPLv3: thư mục "licenses/" của bản cài.
+   - Người dùng được phép thay các DLL Qt trong thư mục cài đặt bằng bản Qt khác tương thích (cùng phiên bản nhỏ). Chúng tôi không cấm dịch ngược để gỡ lỗi việc thay thế.
+   - Muốn phân phối Qt liên kết TĨNH hoặc dùng module chỉ-GPL thì cần giấy phép thương mại Qt riêng — LumaCast KHÔNG làm vậy.
+
+2. FFmpeg (libavformat, libavcodec, libswscale, libswresample, libavutil)
+   - Giấy phép: GNU Lesser General Public License v2.1 or later (LGPL-2.1+) KHI build KHÔNG có --enable-gpl, KHÔNG có --enable-nonfree.
+   - Bản phát hành dùng FFmpeg từ vcpkg (port "ffmpeg", không bật feature gpl/nonfree), liên kết ĐỘNG (avcodec-*.dll, avformat-*.dll, ...).
+     Lúc chạy, hộp thoại Help ▸ Giới thiệu hiện chuỗi giấy phép của libavutil; bộ kiểm thử "release" với LUMACAST_REQUIRE_LGPL=1 sẽ thất bại nếu FFmpeg không phải LGPL.
+   - Mã nguồn / thông tin: https://ffmpeg.org/legal.html , https://ffmpeg.org/download.html . Toàn văn: licenses/ffmpeg-copyright.
+   - Lưu ý bằng sáng chế (patent) của một số codec (H.264/HEVC...) là trách nhiệm của người phát hành ở từng nước; giải mã phần cứng D3D11VA dùng driver của người dùng.
+   - Bộ giải mã "hap" của FFmpeg chỉ là đường dự phòng; đường HAP trực tiếp của LumaCast (src/media/Hap.cpp) do tác giả viết từ đặc tả công khai, không sao chép mã FFmpeg.
+
+3. Snappy / HAP
+   - src/media/Hap.cpp có một bộ giải nén định dạng Snappy (raw) TỰ VIẾT theo mô tả định dạng công khai để đọc khung HAP. Không dùng mã của thư viện Snappy.
+   - HAP là định dạng của Vidvox (hap.video), đặc tả công khai. Tên "HAP" thuộc chủ sở hữu của nó.
+
+4. NDI® — KHÔNG KÈM THEO (bản phát hành dựng với LUMACAST_ENABLE_NDI=OFF không chứa mã NDI nào)
+   - NDI® is a registered trademark of Vizrt NDI AB.   (dòng này hiện trong Help ▸ Giới thiệu)
+   - LumaCast KHÔNG chứa, KHÔNG liên kết tĩnh và KHÔNG phân phối kèm NDI SDK hay runtime (Processing.NDI.Lib.x64.dll / libndi). NDI được nạp ĐỘNG lúc chạy nếu
+     người dùng tự cài NDI Tools / NDI Runtime từ https://ndi.video . Không có runtime thì NDI tự tắt, các chức năng khác vẫn chạy.
+   - Trước khi bán gói Thương mại có NDI: đọc điều khoản NDI mới nhất và đăng ký với NDI nếu được yêu cầu (xem docs/SPEC.md mục 5.1).
+   - Bộ cài có bước kiểm tra: nếu thư mục đóng gói chứa file Processing.NDI.Lib* / libndi* thì cài đặt THẤT BẠI (cmake/CheckNoNdi.cmake).
+
+5. Thành phần hệ điều hành / công cụ (không kèm mã nguồn của họ)
+   - Windows API: WASAPI (âm thanh), Media Foundation (camera), Direct3D 11 Video Acceleration (giải mã phần cứng) — gọi qua API hệ điều hành.
+   - Microsoft Visual C++ Redistributable (vcruntime140*.dll, msvcp140*.dll): phân phối lại theo điều khoản redistribution của Visual Studio, chỉ khi đóng gói kèm (windeployqt có thể sao chép).
+
+6. Khi đóng gói bản phát hành, bắt buộc có trong thư mục cài đặt:
+   [x] THIRD-PARTY-NOTICES.txt (tệp này)
+   [x] licenses/ chứa toàn văn LGPL-3.0, LGPL-2.1 và "copyright" của qtbase + ffmpeg (vcpkg cung cấp; CMake tự sao chép khi cài)
+   [x] DLL Qt và FFmpeg ở dạng CÁC TỆP RIÊNG (không gộp / không nén vào exe)
+   [x] KHÔNG có Processing.NDI.Lib*.dll

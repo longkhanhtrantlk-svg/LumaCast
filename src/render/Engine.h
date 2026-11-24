@@ -2,6 +2,7 @@
 #include "audio/AudioMixer.h"
 #include "core/Project.h"
 #include "render/EffectRegistry.h"
+#include "render/FrameStats.h"
 #include "render/OutputSink.h"
 #include <QImage>
 #include <QOffscreenSurface>
@@ -41,6 +42,16 @@ public:
     double frameP50() const { return p50_; }
     double frameP99() const { return p99_; }
     double frameMax() const { return maxMs_; }
+    // Thoi gian tung giai doan (upload / Scene / transition / monitor / Output), cap nhat moi giay. setProfileSync(true): glFinish cuoi moi giai doan de do
+    // thoi gian GPU that (cham hon, chi dung khi do) - mac dinh chi do thoi gian CPU phat lenh.
+    StageReport stages() const;
+    void setProfileSync(bool on);
+    // Them Output tuy y (benchmark, loai dich den moi) luc dang chay; sink do ben ngoai khoi tao. Tra chi so Output, -1 neu loi/het thoi gian.
+    int addSink(std::unique_ptr<OutputSink> sink);
+    // Ghi lai moi khung (ms) de tinh phan vi chinh xac tren ca doan do (benchmark). takeRecording() dung ghi, tra du lieu va xoa.
+    struct FrameSample { float total = 0, upload = 0, scene = 0, transition = 0, monitor = 0, output = 0; };
+    void startRecording();
+    std::vector<FrameSample> takeRecording();
     // Watchdog: render thread khong bao nhip (heartbeat) qua nguong -> treo. Man hinh giu hinh cuoi (khong swap).
     bool stalled() const;
     void setStallThresholdMs(int ms) { stallMs_ = ms; }
@@ -73,6 +84,11 @@ private:
     QString error_, gpu_;
     std::atomic<uint64_t> dropped_{0};
     std::atomic<double> p50_{0}, p99_{0}, maxMs_{0};
+    std::mutex recMu_;
+    std::vector<FrameSample> rec_;
+    std::atomic<bool> recording_{false};
+    mutable std::mutex stageMu_;
+    StageReport stages_;
     std::atomic<int64_t> heartbeatNs_{0};
     std::atomic<int> stallMs_{2000};
     mutable std::mutex monitorMutex_;

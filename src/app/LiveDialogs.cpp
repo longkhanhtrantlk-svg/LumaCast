@@ -3,6 +3,7 @@
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include "AboutInfo.h"
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -24,6 +25,13 @@ NdiSourceDialog::NdiSourceDialog(QWidget* parent) : QDialog(parent) {
     note_->setObjectName("ndiNote");
     note_->setWordWrap(true);
     v->addWidget(note_);
+    {   // NDI(R): dong ghi nhan + lien ket toi ndi.video gan noi dung NDI (SPEC 5.1)
+        auto* nl = new QLabel(QString("%1<br><a href=\"https://ndi.video\">Tìm hiểu thêm về NDI® tại ndi.video</a>").arg(ndiTrademarkNotice().toHtmlEscaped()));
+        nl->setObjectName("ndiLink");
+        nl->setOpenExternalLinks(true);
+        nl->setWordWrap(true);
+        v->addWidget(nl);
+    }
     list_ = new QListWidget;
     list_->setObjectName("ndiList");
     v->addWidget(list_, 1);
@@ -184,6 +192,13 @@ NdiOutputDialog::NdiOutputDialog(const QStringList& channelNames, QWidget* paren
     note_->setText(b->available() ? "Phát Program của một Channel ra mạng. Phần mềm khác (vMix, OBS, Resolume...) sẽ thấy nguồn này trong danh sách NDI."
                                   : "<b>NDI chưa dùng được:</b> " + b->unavailableReason() + "<br>Output vẫn được tạo và sẽ tự phát khi NDI sẵn sàng.");
     v->addWidget(note_);
+    {   // NDI(R): dong ghi nhan + lien ket toi ndi.video gan noi dung NDI (SPEC 5.1)
+        auto* nl = new QLabel(QString("%1<br><a href=\"https://ndi.video\">Tìm hiểu thêm về NDI® tại ndi.video</a>").arg(ndiTrademarkNotice().toHtmlEscaped()));
+        nl->setObjectName("ndiLink");
+        nl->setOpenExternalLinks(true);
+        nl->setWordWrap(true);
+        v->addWidget(nl);
+    }
     auto* form = new QFormLayout;
     name_ = new QLineEdit("LumaCast Program");
     name_->setObjectName("ndiOutName");

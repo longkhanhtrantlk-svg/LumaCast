@@ -1,13 +1,17 @@
 #include "FFmpegSource.h"
+#include <QDebug>
 #include <QFileInfo>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <deque>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/display.h>
+#include <libavutil/hwcontext.h>
+#include <libavutil/pixdesc.h>
 #include <libswresample/swresample.h>
 #include <libswscale/swscale.h>
 }
@@ -27,10 +31,89 @@ static int rotationFromMatrix(const uint8_t* data, size_t size) {
     return ((cw + 45) / 90 * 90) % 360;                  // chi ho tro boi so cua 90
 }
 
-FFmpegSource::FFmpegSource(QString path, bool loop)
-    : path_(std::move(path)), name_(QFileInfo(path_).fileName()), loop_(loop) {
+// ---------------- Tuy chon giai ma ----------------
+
+static std::mutex gOptMu;
+static VideoDecodeOptions gOpt;
+static bool gOptSet = false;
+
+VideoDecodeOptions VideoDecodeOptions::fromEnvironment() {
+    VideoDecodeOptions o;
+    const QString hw = qEnvironmentVariable("LUMACAST_HWDEC").trimmed().toLower();
+    if (!hw.isEmpty()) o.hwDecode = hw;
+    if (qEnvironmentVariable("LUMACAST_GPU_YUV").trimmed() == "0") o.gpuColor = false;
+    if (qEnvironmentVariable("LUMACAST_HAP").trimmed() == "0") o.hapDirect = false;
+    return o;
+}
+VideoDecodeOptions VideoDecodeOptions::defaults() {
+    std::lock_guard lk(gOptMu);
+    if (!gOptSet) { gOpt = fromEnvironment(); gOptSet = true; }
+    return gOpt;
+}
+void VideoDecodeOptions::setDefaults(const VideoDecodeOptions& o) {
+    std::lock_guard lk(gOptMu);
+    gOpt = o;
+    gOptSet = true;
+}
+
+// Bo nho dung lai cho anh YUV (tranh cap phat vai chuc MB moi khung 4K): frame tra ve ho khi het nguoi giu.
+struct FFmpegSource::BufPool {
+    std::mutex m;
+    std::vector<std::unique_ptr<YuvImage>> free;
+    std::shared_ptr<YuvImage> get(const std::shared_ptr<BufPool>& self) {
+        std::unique_ptr<YuvImage> img;
+        {
+            std::lock_guard lk(m);
+            if (!free.empty()) { img = std::move(free.back()); free.pop_back(); }
+        }
+        if (!img) img = std::make_unique<YuvImage>();
+        return std::shared_ptr<YuvImage>(img.release(), [self](YuvImage* p) {
+            std::lock_guard lk(self->m);
+            if (self->free.size() < 4) self->free.emplace_back(p);
+            else delete p;
+        });
+    }
+};
+
+FFmpegSource::FFmpegSource(QString path, bool loop, VideoDecodeOptions opts)
+    : path_(std::move(path)), name_(QFileInfo(path_).fileName()), loop_(loop), opts_(std::move(opts)) {
     audio_ = std::make_unique<AudioStream>();
+    pool_ = std::make_shared<BufPool>();
     thread_ = std::thread([this] { run(); });
+}
+
+QString FFmpegSource::decodeInfo() const {
+    std::lock_guard lk(m_);
+    return info_;
+}
+
+// Anh YUV -> QImage thu nho (chi cho snapshot cua UI; lay mau gan nhat, cung cong thuc voi shader).
+static QImage yuvToImage(const YuvImage& y, int maxWidth) {
+    const int tw = std::max(1, std::min(maxWidth, y.w)), th = std::max(1, int(std::lround(double(tw) * y.h / y.w)));
+    QImage img(tw, th, QImage::Format_RGBA8888);
+    const int bps = y.fmt.bytesPerSample();
+    const bool semi = y.fmt.layout == YuvLayout::SemiPlanar;
+    auto sample = [&](const std::vector<uint8_t>& pl, size_t idx) -> double {
+        if (bps == 1) return pl[idx];
+        const int v = pl[idx * 2] | (pl[idx * 2 + 1] << 8);
+        return y.fmt.msb ? v >> (16 - y.fmt.bits) : v;
+    };
+    for (int j = 0; j < th; ++j) {
+        const int sy = std::min(y.h - 1, int((j + 0.5) * y.h / th));
+        uint8_t* row = img.scanLine(j);
+        for (int i = 0; i < tw; ++i) {
+            const int sx = std::min(y.w - 1, int((i + 0.5) * y.w / tw));
+            const size_t cidx = size_t(sy >> y.fmt.chromaShiftY) * y.chromaW() + (sx >> y.fmt.chromaShiftX);
+            const double yy = sample(y.plane[0], size_t(sy) * y.w + sx);
+            const double u = semi ? sample(y.plane[1], cidx * 2) : sample(y.plane[1], cidx);
+            const double v = semi ? sample(y.plane[1], cidx * 2 + 1) : sample(y.plane[2], cidx);
+            double rgb[3];
+            YuvTexture::convertPixel(y.fmt, yy, u, v, rgb);
+            row[i * 4] = uint8_t(std::lround(rgb[0] * 255)); row[i * 4 + 1] = uint8_t(std::lround(rgb[1] * 255));
+            row[i * 4 + 2] = uint8_t(std::lround(rgb[2] * 255)); row[i * 4 + 3] = 255;
+        }
+    }
+    return img;
 }
 
 FFmpegSource::~FFmpegSource() {
@@ -55,12 +138,23 @@ TexRef FFmpegSource::acquire(GL& gl) {
         if (latest_ && latest_->seq != uploaded_) f = latest_;
     }
     if (f) {
-        tex_.upload(gl, f->rgba.data(), f->w, f->h);
+        if (f->hap) {
+            const HapGlFormat gf = f->hap->format == HapFormat::Dxt1 ? HapGlFormat::Dxt1
+                                 : f->hap->format == HapFormat::Dxt5 ? HapGlFormat::Dxt5 : HapGlFormat::YCoCgDxt5;
+            if (hapTex_.upload(gl, gf, f->hap->w, f->hap->h, f->hap->data.data(), f->hap->data.size())) cur_ = Cur::Hap;
+        } else if (f->yuv) {
+            if (yuvTex_.upload(gl, *f->yuv)) cur_ = Cur::Yuv;
+        } else {
+            tex_.upload(gl, f->rgba.data(), f->w, f->h);
+            cur_ = Cur::Rgba;
+        }
         uploaded_ = f->seq;
         rotation_ = f->rotation;
         waitFirst_ = false;
     }
     if (waitFirst_) return {};
+    if (cur_ == Cur::Hap) return {hapTex_.id(), hapTex_.w(), hapTex_.h(), rotation_};
+    if (cur_ == Cur::Yuv) return {yuvTex_.id(), yuvTex_.w(), yuvTex_.h(), rotation_};
     return {tex_.id(), tex_.w(), tex_.h(), rotation_};
 }
 
@@ -71,6 +165,18 @@ QImage FFmpegSource::snapshot(int maxWidth) const {
         f = latest_;
     }
     if (!f) return {};
+    if (f->hap) {
+        const int tw = std::max(1, std::min(maxWidth, f->w)), th = std::max(1, int(std::lround(double(tw) * f->h / f->w)));
+        QImage img(tw, th, QImage::Format_RGBA8888);
+        for (int j = 0; j < th; ++j)
+            for (int i = 0; i < tw; ++i)
+                hapSamplePixel(*f->hap, int((i + 0.5) * f->w / tw), int((j + 0.5) * f->h / th), img.scanLine(j) + i * 4);
+        return f->rotation ? img.transformed(QTransform().rotate(f->rotation)) : img;
+    }
+    if (f->yuv) {
+        const QImage small = yuvToImage(*f->yuv, std::min(maxWidth, f->w));
+        return f->rotation ? small.transformed(QTransform().rotate(f->rotation)) : small;
+    }
     QImage img(f->rgba.data(), f->w, f->h, f->w * 4, QImage::Format_RGBA8888);   // f giu bo nho song
     img = img.scaledToWidth(std::min(maxWidth, f->w), Qt::SmoothTransformation);   // scaled* tao ban sao
     return f->rotation ? img.transformed(QTransform().rotate(f->rotation)) : img;
@@ -87,8 +193,60 @@ void FFmpegSource::restart() {
 }
 
 namespace {
+// get_format cua giai ma phan cung: chon dung dinh dang phan cung da xin (opaque tro toi AVPixelFormat); khong co -> de FFmpeg tu chon (phan mem).
+AVPixelFormat pickHwFormat(AVCodecContext* c, const AVPixelFormat* fmts) {
+    const AVPixelFormat want = *static_cast<AVPixelFormat*>(c->opaque);
+    for (const AVPixelFormat* p = fmts; *p != AV_PIX_FMT_NONE; ++p)
+        if (*p == want) return *p;
+    return AV_PIX_FMT_NONE;                          // khong dung duoc phan cung cho luong nay -> avcodec_open2/receive loi -> ve phan mem
+}
+
+// Dinh dang AVFrame -> mo ta YUV cho shader. false = khong ho tro (RGB, gray, co alpha, 12/16 bit...) -> sws_scale RGBA tren CPU.
+YuvMatrix matrixOf(const AVFrame* f) {
+    switch (f->colorspace) {
+    case AVCOL_SPC_BT709: return YuvMatrix::BT709;
+    case AVCOL_SPC_BT470BG: case AVCOL_SPC_SMPTE170M: case AVCOL_SPC_SMPTE240M: return YuvMatrix::BT601;
+    case AVCOL_SPC_BT2020_NCL: case AVCOL_SPC_BT2020_CL: return YuvMatrix::BT2020;
+    default: return f->height >= 720 ? YuvMatrix::BT709 : YuvMatrix::BT601;      // khong khai bao: HD -> 709, SD -> 601
+    }
+}
+bool fullRangeOf(const AVFrame* f) {
+    switch (AVPixelFormat(f->format)) {
+    case AV_PIX_FMT_YUVJ420P: case AV_PIX_FMT_YUVJ422P: case AV_PIX_FMT_YUVJ444P: case AV_PIX_FMT_YUVJ440P: return true;
+    default: return f->color_range == AVCOL_RANGE_JPEG;
+    }
+}
+bool yuvFormatOf(const AVFrame* f, YuvFormat& o) {
+    o = YuvFormat();
+    switch (AVPixelFormat(f->format)) {
+    case AV_PIX_FMT_YUV420P: break;
+    case AV_PIX_FMT_YUVJ420P: break;
+    case AV_PIX_FMT_YUV422P: o.chromaShiftY = 0; break;
+    case AV_PIX_FMT_YUVJ422P: o.chromaShiftY = 0; break;
+    case AV_PIX_FMT_YUV444P: o.chromaShiftX = o.chromaShiftY = 0; break;
+    case AV_PIX_FMT_YUVJ444P: o.chromaShiftX = o.chromaShiftY = 0; break;
+    case AV_PIX_FMT_YUV420P10LE: o.bits = 10; break;
+    case AV_PIX_FMT_YUV422P10LE: o.bits = 10; o.chromaShiftY = 0; break;
+    case AV_PIX_FMT_YUV444P10LE: o.bits = 10; o.chromaShiftX = o.chromaShiftY = 0; break;
+    case AV_PIX_FMT_NV12: o.layout = YuvLayout::SemiPlanar; break;
+    case AV_PIX_FMT_P010LE: o.layout = YuvLayout::SemiPlanar; o.bits = 10; o.msb = true; break;
+    default: return false;
+    }
+    o.fullRange = fullRangeOf(f);
+    o.matrix = matrixOf(f);
+    // vi tri mau sac: khai bao "giua" -> giua; khong khai bao + day du khoang (JPEG) -> giua; con lai (MPEG-2/H.264) -> lech trai
+    o.chromaCenter = f->chroma_location == AVCHROMA_LOC_CENTER || (f->chroma_location == AVCHROMA_LOC_UNSPECIFIED && o.fullRange);
+    return true;
+}
+
+const char* pixName(int fmt) {
+    const char* n = av_get_pix_fmt_name(AVPixelFormat(fmt));
+    return n ? n : "?";
+}
+
 struct Pend {
     AVFrame* f = nullptr;
+    std::shared_ptr<HapFrame> hap;       // HAP truc tiep: khong co AVFrame
     double pts = 0;          // PTS goc cua file (giay)
     double cont = 0;         // moc tren dong thoi gian lien tuc (hop le khi hasCont)
     bool hasCont = false;
@@ -97,6 +255,7 @@ struct Pend {
 
 void FFmpegSource::run() {
     AVFormatContext* fmt = nullptr;
+    AVBufferRef* hwDev = nullptr;
     AVCodecContext *cc = nullptr, *ac = nullptr;
     AVPacket* pkt = av_packet_alloc();
     AVFrame *fr = av_frame_alloc(), *afr = av_frame_alloc();
@@ -114,6 +273,7 @@ void FFmpegSource::run() {
         av_packet_free(&pkt);
         avcodec_free_context(&cc);
         avcodec_free_context(&ac);
+        av_buffer_unref(&hwDev);
         avformat_close_input(&fmt);
     };
 
@@ -133,17 +293,90 @@ void FFmpegSource::run() {
     AVStream* st = fmt->streams[vs];
     if (fmt->duration > 0) duration_ = double(fmt->duration) / AV_TIME_BASE;
     const AVCodec* codec = avcodec_find_decoder(st->codecpar->codec_id);
-    cc = codec ? avcodec_alloc_context3(codec) : nullptr;
-    if (!cc || avcodec_parameters_to_context(cc, st->codecpar) < 0) {
+    if (!codec) {
         setError("Khong ho tro codec");
         return cleanup();
     }
-    cc->thread_count = 0;
-    cc->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
-    if (avcodec_open2(cc, codec, nullptr) < 0) {
-        setError("Khong mo duoc decoder");
-        return cleanup();
+
+    // ----- mo decoder: thu phan cung (neu bat) -> that bai thi phan mem -----
+    AVPixelFormat hwPixFmt = AV_PIX_FMT_NONE;
+    bool hwActive = false;
+    int hwNoFrame = 0;                                  // so goi tin da gui ma chua ra khung nao (phan cung) -> that bai im lang
+    auto hwTypeName = [&]() -> QString {
+        const QString o = opts_.hwDecode.trimmed().toLower();
+        if (o == "off" || o == "0" || o == "none" || o == "false") return {};
+        if (o == "auto" || o.isEmpty()) {
+#ifdef _WIN32
+            return "d3d11va";
+#else
+            return {};
+#endif
+        }
+        return o;
+    };
+    auto openCodec = [&](bool wantHw, QString* why) -> bool {
+        avcodec_free_context(&cc);
+        av_buffer_unref(&hwDev);
+        hwActive = false;
+        cc = avcodec_alloc_context3(codec);
+        if (!cc || avcodec_parameters_to_context(cc, st->codecpar) < 0) { if (why) *why = "khong tao duoc context"; return false; }
+        if (wantHw) {
+            const QString tn = hwTypeName();
+            const AVHWDeviceType type = av_hwdevice_find_type_by_name(tn.toUtf8().constData());
+            if (type == AV_HWDEVICE_TYPE_NONE) { if (why) *why = "thiet bi '" + tn + "' khong duoc FFmpeg ho tro"; return false; }
+            hwPixFmt = AV_PIX_FMT_NONE;
+            for (int i = 0;; ++i) {
+                const AVCodecHWConfig* c = avcodec_get_hw_config(codec, i);
+                if (!c) break;
+                if ((c->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) && c->device_type == type) { hwPixFmt = c->pix_fmt; break; }
+            }
+            if (hwPixFmt == AV_PIX_FMT_NONE) { if (why) *why = QString("codec %1 khong co %2").arg(codec->name, tn); return false; }
+            if (av_hwdevice_ctx_create(&hwDev, type, nullptr, nullptr, 0) < 0) { if (why) *why = "khong tao duoc thiet bi " + tn; return false; }
+            cc->hw_device_ctx = av_buffer_ref(hwDev);
+            cc->opaque = &hwPixFmt;
+            cc->get_format = pickHwFormat;
+            cc->extra_hw_frames = 4;                    // du cho hang cho phat lai (khung duoc chep xuong RAM ngay nen it)
+        } else {
+            cc->thread_count = 0;
+            cc->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
+        }
+        if (avcodec_open2(cc, codec, nullptr) < 0) { if (why) *why = "avcodec_open2 that bai"; return false; }
+        hwActive = wantHw;
+        return true;
+    };
+    {
+        QString why;
+        bool ok = false;
+        if (!hwTypeName().isEmpty()) {
+            ok = openCodec(true, &why);
+            if (!ok) qInfo().noquote() << QString("Giải mã phần cứng không dùng được cho '%1' (%2) → phần mềm").arg(name_, why);
+        }
+        if (!ok && !openCodec(false, nullptr)) {
+            setError("Khong mo duoc decoder");
+            return cleanup();
+        }
     }
+    // HAP truc tiep: can S3TC tren GPU (Compositor::init() ghi HapSupport) - doi toi ~1,5 s neu engine chua kip khoi dong
+    bool hapDirect = false, hapWarned = false;
+    if (opts_.hapDirect && st->codecpar->codec_id == AV_CODEC_ID_HAP && cc->width % 4 == 0 && cc->height % 4 == 0) {
+        for (int i = 0; i < 150 && !stop_ && HapSupport::state() == HapSupport::Unknown; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        hapDirect = HapSupport::state() == HapSupport::Yes;
+        if (!hapDirect) qInfo().noquote() << QString("HAP '%1': GPU khong co S3TC (hoac chua biet) → giai ma bang FFmpeg").arg(name_);
+    }
+    hwActive_ = hwActive;
+    gpuColorActive_ = opts_.gpuColor;
+    auto setInfo = [&](const char* swFmt) {
+        const QString hwName = hwActive ? hwTypeName().toUpper() + " (phần cứng)" : QString("phần mềm");
+        const QString path = !opts_.gpuColor ? "RGBA (CPU, sws_scale)" : QString("%1 → shader").arg(swFmt);
+        std::lock_guard lk(m_);
+        info_ = QString("%1 → %2").arg(hwName, path);
+    };
+    auto fallbackToSoftware = [&](const char* reason) {   // loi phan cung giua chung: mo lai bang phan mem, ve dau file
+        qWarning().noquote() << QString("Giải mã phần cứng lỗi '%1' (%2) → chuyển sang phần mềm").arg(name_, reason);
+        if (!openCodec(false, nullptr)) { setError("Khong mo duoc decoder (phan mem)"); stop_ = true; return; }
+        hwActive_ = false;
+        restartReq_ = true;
+    };
 
     // am thanh (tuy chon): khong co / khong giai ma duoc -> nguon im lang, KHONG bao loi
     int as = av_find_best_stream(fmt, AVMEDIA_TYPE_AUDIO, -1, vs, nullptr, 0);
@@ -257,18 +490,39 @@ void FFmpegSource::run() {
     };
 
     // ----- hinh: giai ma vao hang cho (pend) -----
+    auto enqueue = [&](Pend& p) {
+        if (!haveAudio && !offsetKnown) resolveOffset(fallbackOffset(p.pts));      // khong co tieng: dong ho tuong
+        if (offsetKnown) { p.cont = p.pts + vOffset; p.hasCont = true; }
+        pend.push_back(p);
+    };
     auto drainVideo = [&] {
-        while (!stop_ && avcodec_receive_frame(cc, fr) == 0) {
+        while (!stop_) {
+            const int rr = avcodec_receive_frame(cc, fr);
+            if (rr < 0) {
+                if (rr != AVERROR(EAGAIN) && rr != AVERROR_EOF && hwActive) fallbackToSoftware("receive_frame");
+                break;
+            }
+            hwNoFrame = 0;
             const double pts = fr->best_effort_timestamp == AV_NOPTS_VALUE ? lastVpts + frameDur : double(fr->best_effort_timestamp) * vtb;
             lastVpts = pts;
             Pend p;
-            p.f = av_frame_clone(fr);
+            if (hwActive && fr->format == int(hwPixFmt)) {      // khung o VRAM: chep xuong RAM (NV12/P010) ngay de tra khung cho bo giai ma
+                AVFrame* sw = av_frame_alloc();
+                if (!sw || av_hwframe_transfer_data(sw, fr, 0) < 0) {
+                    av_frame_free(&sw);
+                    av_frame_unref(fr);
+                    fallbackToSoftware("transfer_data");
+                    break;
+                }
+                av_frame_copy_props(sw, fr);
+                p.f = sw;
+            } else {
+                p.f = av_frame_clone(fr);
+            }
             p.pts = pts;
             av_frame_unref(fr);
             if (!p.f) continue;
-            if (!haveAudio && !offsetKnown) resolveOffset(fallbackOffset(pts));      // khong co tieng: dong ho tuong
-            if (offsetKnown) { p.cont = pts + vOffset; p.hasCont = true; }
-            pend.push_back(p);
+            enqueue(p);
         }
     };
     auto clearPending = [&] {
@@ -283,6 +537,8 @@ void FFmpegSource::run() {
         audio_->flush(0);
     };
 
+    int infoFmt = -2;
+    bool infoHw = false, infoGpu = false;
     // dua khung den han len `latest_`
     auto present = [&](double clk) {
         Pend last;
@@ -291,21 +547,79 @@ void FFmpegSource::run() {
             last = pend.front();
             pend.pop_front();
         }
-        if (!last.f) return;
+        if (!last.f && !last.hap) return;
         lastCont = last.cont;
-        AVFrame* f = last.f;
-        sws = sws_getCachedContext(sws, f->width, f->height, AVPixelFormat(f->format), f->width, f->height, AV_PIX_FMT_RGBA,
-                                   SWS_BILINEAR, nullptr, nullptr, nullptr);
-        if (sws) {
+        if (last.hap) {                                       // HAP truc tiep: khong doi mau tren CPU
             auto out = std::make_shared<Frame>();
-            out->w = f->width; out->h = f->height;
+            out->w = last.hap->w; out->h = last.hap->h;
             out->rotation = streamRotation;
-            if (const AVFrameSideData* fd = av_frame_get_side_data(f, AV_FRAME_DATA_DISPLAYMATRIX))
-                out->rotation = rotationFromMatrix(fd->data, fd->size);
-            out->rgba.resize(size_t(out->w) * out->h * 4);
-            uint8_t* dst[4] = {out->rgba.data(), nullptr, nullptr, nullptr};
-            int ls[4] = {out->w * 4, 0, 0, 0};
-            sws_scale(sws, f->data, f->linesize, 0, f->height, dst, ls);
+            out->hap = std::move(last.hap);
+            out->seq = ++seq;
+            if (infoFmt != -3) {
+                infoFmt = -3;
+                const char* n = out->hap->format == HapFormat::Dxt1 ? "HAP (DXT1)" : out->hap->format == HapFormat::Dxt5 ? "HAP Alpha (DXT5)" : "HAP Q (YCoCg DXT5)";
+                {
+                    std::lock_guard lk(m_);
+                    info_ = QString("%1 → GPU trực tiếp (không giải mã CPU)").arg(n);
+                }
+                qInfo().noquote() << QString("Video '%1': %2").arg(name_, decodeInfo());
+            }
+            {
+                std::lock_guard lk(m_);
+                latest_ = std::move(out);
+            }
+            presentedCont_ = last.cont;
+            lateMs_ = (clk - last.cont) * 1000.0;
+            return;
+        }
+        AVFrame* f = last.f;
+        if (infoFmt != f->format || infoHw != hwActive || infoGpu != opts_.gpuColor) {
+            infoFmt = f->format; infoHw = hwActive; infoGpu = opts_.gpuColor;
+            setInfo(pixName(f->format));
+            qInfo().noquote() << QString("Video '%1': giải mã %2").arg(name_, decodeInfo());
+        }
+        auto out = std::make_shared<Frame>();
+        out->w = f->width; out->h = f->height;
+        out->rotation = streamRotation;
+        if (const AVFrameSideData* fd = av_frame_get_side_data(f, AV_FRAME_DATA_DISPLAYMATRIX))
+            out->rotation = rotationFromMatrix(fd->data, fd->size);
+        bool ok = false;
+        YuvFormat yf;
+        if (opts_.gpuColor && yuvFormatOf(f, yf)) {
+            // duong GPU: chep plane (bo padding) -> shader doi mau. Rat re so voi sws_scale RGBA (1,5 byte/diem anh thay vi 4 + phep nhan).
+            auto img = pool_->get(pool_);
+            img->w = f->width; img->h = f->height; img->fmt = yf;
+            const int n = yf.layout == YuvLayout::SemiPlanar ? 2 : 3;
+            for (int i = 0; i < 3; ++i) img->plane[i].resize(i < n ? img->planeBytes(i) : 0);
+            const int bps = yf.bytesPerSample();
+            for (int i = 0; i < n; ++i) {
+                const int pw = (i == 0 ? f->width : img->chromaW()), ph = (i == 0 ? f->height : img->chromaH());
+                const size_t rowBytes = size_t(pw) * bps * (yf.layout == YuvLayout::SemiPlanar && i == 1 ? 2 : 1);
+                uint8_t* dst = img->plane[i].data();
+                for (int y = 0; y < ph; ++y) std::memcpy(dst + rowBytes * y, f->data[i] + ptrdiff_t(f->linesize[i]) * y, rowBytes);
+            }
+            out->yuv = std::move(img);
+            ok = true;
+        }
+        if (!ok) {
+            sws = sws_getCachedContext(sws, f->width, f->height, AVPixelFormat(f->format), f->width, f->height, AV_PIX_FMT_RGBA,
+                                       SWS_BILINEAR, nullptr, nullptr, nullptr);
+            if (sws) {
+                const AVPixFmtDescriptor* d = av_pix_fmt_desc_get(AVPixelFormat(f->format));
+                if (d && !(d->flags & AV_PIX_FMT_FLAG_RGB) && d->nb_components >= 3) {      // YUV: dung cung ma tran/khoang voi shader (mac dinh cua sws la 601 gioi han)
+                    const YuvMatrix m = matrixOf(f);
+                    const int cs = m == YuvMatrix::BT709 ? SWS_CS_ITU709 : m == YuvMatrix::BT2020 ? SWS_CS_BT2020 : SWS_CS_ITU601;
+                    const bool full = fullRangeOf(f);
+                    sws_setColorspaceDetails(sws, sws_getCoefficients(cs), full ? 1 : 0, sws_getCoefficients(cs), 1, 0, 1 << 16, 1 << 16);
+                }
+                out->rgba.resize(size_t(out->w) * out->h * 4);
+                uint8_t* dst[4] = {out->rgba.data(), nullptr, nullptr, nullptr};
+                int ls[4] = {out->w * 4, 0, 0, 0};
+                sws_scale(sws, f->data, f->linesize, 0, f->height, dst, ls);
+                ok = true;
+            }
+        }
+        if (ok) {
             out->seq = ++seq;
             std::lock_guard lk(m_);
             latest_ = std::move(out);
@@ -351,8 +665,23 @@ void FFmpegSource::run() {
             if (r < 0) {
                 eof = true;
             } else {
-                if (pkt->stream_index == vs) {
+                if (pkt->stream_index == vs && hapDirect) {
+                    HapFrame hf;
+                    QString herr;
+                    if (hapParseFrame(pkt->data, size_t(pkt->size), cc->width, cc->height, hf, &herr)) {
+                        Pend p;
+                        p.hap = std::make_shared<HapFrame>(std::move(hf));
+                        p.pts = pkt->pts == AV_NOPTS_VALUE ? lastVpts + frameDur : double(pkt->pts) * vtb;
+                        lastVpts = p.pts;
+                        enqueue(p);
+                    } else {                                  // khung khong ho tro: dung bo giai ma FFmpeg (co the lan voi khung truc tiep, HAP la intra-only)
+                        if (!hapWarned) { hapWarned = true; qInfo().noquote() << QString("HAP '%1': %2 → bo giai ma FFmpeg").arg(name_, herr); }
+                        avcodec_send_packet(cc, pkt);
+                        drainVideo();
+                    }
+                } else if (pkt->stream_index == vs) {
                     avcodec_send_packet(cc, pkt);
+                    if (hwActive && ++hwNoFrame > 60) fallbackToSoftware("khong ra khung");   // phan cung nuot goi tin nhung khong tra hinh
                     drainVideo();
                 } else if (ac && pkt->stream_index == as) {
                     avcodec_send_packet(ac, pkt);

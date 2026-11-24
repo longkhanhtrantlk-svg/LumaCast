@@ -70,13 +70,16 @@ Thân yêu cầu (POST) là một **đối tượng JSON** hoặc rỗng (rỗng
 
 ```json
 {"ok":true,"version":1,"locked":false,
- "engine":{"fps":60.0,"droppedFrames":0,"frameP50":1.2,"frameP99":2.4,"stalled":false},
+ "engine":{"fps":60.0,"droppedFrames":0,"frameP50":1.2,"frameP99":2.4,"stalled":false,
+            "stages":{"upload":{"p50":0.3,"p99":0.6},"scene":{"p50":0.4,"p99":0.9},"transition":{"p50":0,"p99":0},"monitor":{"p50":0.1,"p99":1.2},"output":{"p50":0.5,"p99":1.1}}},
  "channels":[{"index":1,"name":"Channel 1","program":1,"preview":2,"programName":"Test","previewName":"Xanh",
               "inTransition":false,"ftb":false,"ftbAmount":0.0,"audio":{"volume":1.0,"mute":false},"scenes":["Test","Xanh"]}],
  "scenes":[{"index":1,"name":"Test","time":0.0,"playing":true}],
  "outputs":[{"index":1,"name":"Output 1","channel":1,"width":1920,"height":1080,
              "black":false,"freeze":false,"pattern":false,"health":"ok","fps":60}]}
 ```
+
+`engine.stages` (M6, trường thêm — `version` vẫn 1): thời gian CPU mỗi giai đoạn của khung render, ms, p50/p99 trên ~300 khung gần nhất. GPU chạy bất đồng bộ nên đây là thời gian phát lệnh, không phải thời gian GPU (muốn GPU: `lumacast --benchmark ... sync=1`, xem `TEST-PLAN.md` mục 4).
 **M5b:** `outputs[]` có thêm `kind` (`screen`/`ndi`) và với Output NDI một khối `ndi: {name, sending, connections, status}`; `sources` liệt kê **chỉ nguồn trực tiếp** (NDI/camera): `{index (1-based theo Media Pool), name, kind, state (connecting|live|lost|unavailable), status, width, height, fps, reconnects}`; nguồn NDI thêm `audio: {fillMs, driftPpm, resyncs}` (độ đầy ring âm thanh, độ lệch đồng hồ ước lượng, số lần mất đồng bộ) — dùng khi thử T-NDI-IN.
 
 `program`/`preview` là `null` khi chưa có Scene. `health`: `ok`, `no_screen` (mất màn), `hidden`, `wrong_screen`.

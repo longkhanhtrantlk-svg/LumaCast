@@ -25,12 +25,17 @@ class InspectorPanel : public QTabWidget {
 public:
     InspectorPanel(Project& project, RenderEngine& engine, QUndoStack* undo, QWidget* parent = nullptr);
     void refreshFromProject();            // goi tren UI thread sau khi them scene/nguon
+    void sceneRemoved(int sceneIdx);      // UI thread: Scene sceneIdx da bi go khoi project (hoan tac nhap media) -> bo ban sao tuong ung
 
     // Goi boi lenh Undo/Redo (khong ghi them vao stack):
     void applyLayers(int sceneIdx, const std::vector<Layer>& layers);
     void applyOutput(int outIdx, const OutputConfig& cfg);
 
     QListWidget* layerList() const { return layerList_; }       // cho test
+    QUndoStack* undoStack() const { return undo_; }
+    // Khoa van hanh: vo hieu ca panel VA chan moi chinh sua bang lenh (defence in depth).
+    void setLocked(bool on) { locked_ = on; setEnabled(!on); }
+    bool locked() const { return locked_; }
 
     // --- Dung chung voi Timeline (moi chinh sua di qua editLayers => co Hoan tac/Lam lai) ---
     int currentSceneIndex() const { return currentScene(); }
@@ -79,6 +84,7 @@ private:
     Project& project_;
     RenderEngine& engine_;
     QUndoStack* undo_;
+    bool locked_ = false;
     std::vector<std::vector<Layer>> layerCache_;     // theo project_.scenes
     std::vector<OutputConfig> outCache_;             // theo output
     std::vector<OutW> outW_;

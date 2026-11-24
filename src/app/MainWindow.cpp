@@ -1,7 +1,11 @@
 #include "MainWindow.h"
 #include "InspectorPanel.h"
+#include "LockButton.h"
 #include "MonitorWidget.h"
 #include "ParamEditor.h"
+#include "SettingsDialog.h"
+#include "core/AppSettings.h"
+#include "core/Startup.h"
 #include "TimelineWidget.h"
 #include "render/OutputWindow.h"
 #include "Theme.h"
@@ -30,6 +34,7 @@
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QToolButton>
+#include <QUndoCommand>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -37,6 +42,22 @@ namespace lc {
 
 static const QStringList kImageExt = {"png", "jpg", "jpeg", "bmp", "gif", "webp"};
 static const char* kMediaFilter = "Media (*.mp4 *.mov *.mkv *.avi *.webm *.png *.jpg *.jpeg *.bmp *.gif *.webp);;Tất cả (*.*)";
+
+namespace {
+// Hoan tac/Lam lai cho nhap media va tao Scene tu Media Pool (PRJ-07). Khong gop buoc.
+constexpr int kImportCmdId = 7000001;
+class ImportCmd : public QUndoCommand {
+public:
+    ImportCmd(MainWindow* w, std::shared_ptr<MainWindow::ImportEntry> e, const QString& text) : QUndoCommand(text), w_(w), e_(std::move(e)) {}
+    int id() const override { return kImportCmdId; }
+    void redo() override { w_->applyImport(e_); }
+    void undo() override { w_->unapplyImport(e_, this); }
+    const MainWindow::ImportEntry& entry() const { return *e_; }
+private:
+    MainWindow* w_;
+    std::shared_ptr<MainWindow::ImportEntry> e_;
+};
+} // namespace
 
 MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList pluginDirs)
     : project_(project), engine_(engine), sup_(engine), pm_(engine.registry(), std::move(pluginDirs)) {
@@ -48,9 +69,19 @@ MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList plugi
     }
     buildUi();
     buildDocks();
+    ctlApi_ = new ControlApi(project_, engine_, &sup_, this);
+    ctlApi_->setLockProvider([this] { return locked_; });
+    ctl_ = new ControlService(*ctlApi_, this);
+    ctlLabel_ = new QLabel;
+    ctlLabel_->setObjectName("ctlLabel");
+    statusBar()->addPermanentWidget(ctlLabel_);
+    lockLabel_ = new QLabel;
+    lockLabel_->setObjectName("lockLabel");
+    statusBar()->addPermanentWidget(lockLabel_);
+    connect(ctl_, &ControlService::statusChanged, this, [this] { updateControlStatus(); });
     buildMenus();
     defaultState_ = saveState();
-    QSettings st("LumaCast", "LumaCast");
+    QSettings st = appSettings();
     if (st.contains("geometry")) restoreGeometry(st.value("geometry").toByteArray());
     else resize(1500, 900);
     if (st.contains("state")) restoreState(st.value("state").toByteArray());
@@ -64,6 +95,61 @@ MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList plugi
     autosaveTimer_.start(60 * 1000);
     refresh();
     refreshSlow();
+    {
+        QSettings cst = appSettings();
+        const ControlSettings cs = ControlSettings::load(cst);
+        if (cs.httpEnabled || cs.oscEnabled) {
+            const QString e = ctl_->apply(cs);
+            if (!e.isEmpty()) showMessage("Điều khiển ngoài: " + e.section('\n', 0, 0));
+        }
+    }
+    updateControlStatus();
+    setLocked(false);                                  // khoi dong luon mo khoa (khong luu giua cac phien)
+}
+
+void MainWindow::updateUndoActions() {
+    undoAct_->setEnabled(!locked_ && undo_.canUndo());
+    redoAct_->setEnabled(!locked_ && undo_.canRedo());
+    undoAct_->setText(undo_.canUndo() ? "Hoàn tác " + undo_.undoText() : "Hoàn tác");
+    redoAct_->setText(undo_.canRedo() ? "Làm lại " + undo_.redoText() : "Làm lại");
+}
+
+// UI-07. Khoa = vo hieu moi dieu khien SUA (Inspector, sua keyframe/thoi luong, nhap media, Plug-in, Hoan tac/Lam lai, mo project,
+// cai dat, dong cua so chinh); GIU dieu khien live (CUT/TAKE/AUTO/T-bar/BLACK ALL/FTB/Den-Dung-Mau, chon Scene, Phat-Tam dung-Ve 0).
+void MainWindow::setLocked(bool on) {
+    const bool changed = on != locked_;
+    locked_ = on;
+    lockBtn_->setLocked(on);
+    inspector_->setLocked(on);
+    timeline_->setLocked(on);
+    pluginPanel_->setEnabled(!on);
+    importBtn_->setEnabled(!on);
+    importAct_->setEnabled(!on);
+    openAct_->setEnabled(!on);
+    recentMenu_->setEnabled(!on && !appSettings().value("recent").toStringList().isEmpty());
+    settingsAct_->setEnabled(!on);
+    updateUndoActions();
+    lockLabel_->setText(on ? "🔒 KHOÁ VẬN HÀNH" : "🔓 Mở khoá");
+    lockLabel_->setStyleSheet(on ? "color:white;background:#8a1c1c;font-weight:bold;padding:0 8px" : "color:#8a90a2");
+    updateTitle();
+    if (changed) {
+        qInfo().noquote() << (on ? "Khoá vận hành: BẬT" : "Khoá vận hành: TẮT");
+        showMessage(on ? "Đã khoá vận hành: chỉ còn điều khiển live" : "Đã mở khoá vận hành");
+    }
+}
+
+void MainWindow::updateControlStatus() {
+    QStringList parts;
+    if (ctl_->httpRunning()) parts << QString("HTTP :%1%2").arg(ctl_->httpPort()).arg(ctl_->settings().httpLan ? " (LAN)" : "");
+    if (ctl_->oscRunning()) parts << QString("OSC :%1%2").arg(ctl_->oscPort()).arg(ctl_->settings().oscLan ? " (LAN)" : "");
+    ctlLabel_->setText(parts.isEmpty() ? QString() : "Điều khiển ngoài: " + parts.join(" · "));
+}
+
+void MainWindow::showStartupNotice(const QString& msg) { statusBar()->showMessage(msg, 30000); }
+
+void MainWindow::openSettings() {
+    SettingsDialog dlg(*ctl_, this);
+    dlg.exec();
 }
 
 int MainWindow::channelIdx() const { return std::max(0, chanCombo_->currentIndex()); }
@@ -87,6 +173,11 @@ void MainWindow::buildUi() {
         chanCombo_->addItem(QString("Kênh %1: %2").arg(i + 1).arg(project_.channels[i]->name));
     top->addWidget(chanCombo_);
     top->addStretch();
+    lockBtn_ = new LockButton;
+    top->addWidget(lockBtn_);
+    connect(lockBtn_, &LockButton::lockRequested, this, [this] { setLocked(true); });
+    connect(lockBtn_, &LockButton::unlockConfirmed, this, [this] { setLocked(false); });
+    new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_L), this, [this] { if (!locked_) setLocked(true); });
     chanCombo_->setVisible(project_.channels.size() > 1);
     v->addLayout(top);
 
@@ -271,6 +362,7 @@ void MainWindow::buildDocks() {
     auto* mv = new QVBoxLayout(mw);
     auto* mtop = new QHBoxLayout;
     auto* importB = new QPushButton("Nhập media...");
+    importBtn_ = importB;
     mtop->addWidget(importB);
     mtop->addWidget(new QLabel("Nhấp đúp để tạo Scene từ nguồn"));
     mtop->addStretch();
@@ -290,18 +382,18 @@ void MainWindow::buildDocks() {
         for (const QString& f : QFileDialog::getOpenFileNames(this, "Nhập media", QString(), kMediaFilter)) addMediaFile(f);
     });
     connect(mediaList_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* it) {
+        if (locked_) { showMessage("Đang khoá vận hành: không tạo Scene mới được"); return; }
         const int k = it->data(Qt::UserRole).toInt();
         if (k < 0 || k >= int(project_.sources.size())) return;
         auto src = project_.sources[k].source;
-        auto scene = std::make_shared<Scene>();
-        scene->name = src->name();
-        scene->size = project_.channels[0]->size;
-        scene->layers.push_back({src, {0, 0, 1, 1}, 1.0f, LayerFit::Fit, true});
-        engine_.post([this, scene](double) {
-            project_.scenes.push_back(scene);
-            for (auto& c : project_.channels) c->scenes.push_back(scene);
-            QMetaObject::invokeMethod(this, [this] { onProjectChanged(); }, Qt::QueuedConnection);
-        });
+        auto e = std::make_shared<ImportEntry>();
+        e->addsSource = false;
+        e->def = project_.sources[k];
+        e->scene = std::make_shared<Scene>();
+        e->scene->name = src->name();
+        e->scene->size = project_.channels[0]->size;
+        e->scene->layers.push_back({src, {0, 0, 1, 1}, 1.0f, LayerFit::Fit, true});
+        pushImport(e, "Tạo Scene: " + src->name());
     });
 
 
@@ -335,6 +427,7 @@ void MainWindow::buildDocks() {
     hint->setWordWrap(true);
     pv->addWidget(hint);
     plugDock->setWidget(pw);
+    pluginPanel_ = pw;
     tabifyDockWidget(inspDock, plugDock);
     inspDock->raise();
     connect(rescanB, &QPushButton::clicked, this, [this] { pm_.rescan(); });
@@ -387,14 +480,13 @@ void MainWindow::rebuildPluginList() {
 
 void MainWindow::buildMenus() {
     auto* file = menuBar()->addMenu("&File");
-    auto* openA = file->addAction("Mở project...", QKeySequence::Open, this, [this] { openProject(); });
-    Q_UNUSED(openA);
+    openAct_ = file->addAction("Mở project...", QKeySequence::Open, this, [this] { openProject(); });
     recentMenu_ = file->addMenu("Gần đây");
     file->addSeparator();
     file->addAction("Lưu", QKeySequence::Save, this, [this] { saveProject(false); });
     file->addAction("Lưu thành...", QKeySequence::SaveAs, this, [this] { saveProject(true); });
     file->addSeparator();
-    file->addAction("Nhập media...", this, [this] {
+    importAct_ = file->addAction("Nhập media...", this, [this] {
         for (const QString& f : QFileDialog::getOpenFileNames(this, "Nhập media", QString(), kMediaFilter)) addMediaFile(f);
     });
     file->addSeparator();
@@ -402,12 +494,18 @@ void MainWindow::buildMenus() {
     rebuildRecentMenu();
 
     auto* edit = menuBar()->addMenu("&Edit");
-    QAction* undoA = undo_.createUndoAction(this, "Hoàn tác");
-    undoA->setShortcut(QKeySequence::Undo);
-    QAction* redoA = undo_.createRedoAction(this, "Làm lại");
-    redoA->setShortcuts({QKeySequence::Redo, QKeySequence(Qt::CTRL | Qt::Key_Y)});
-    edit->addAction(undoA);
-    edit->addAction(redoA);
+    // Hoan tac/Lam lai tu dinh nghia (khong dung createUndoAction) de khoa van hanh vo hieu duoc chung.
+    undoAct_ = new QAction("Hoàn tác", this);
+    undoAct_->setShortcut(QKeySequence::Undo);
+    redoAct_ = new QAction("Làm lại", this);
+    redoAct_->setShortcuts({QKeySequence::Redo, QKeySequence(Qt::CTRL | Qt::Key_Y)});
+    connect(undoAct_, &QAction::triggered, this, [this] { if (!locked_) doUndo(); });
+    connect(redoAct_, &QAction::triggered, this, [this] { if (!locked_) undo_.redo(); });
+    for (auto sig : {&QUndoStack::canUndoChanged, &QUndoStack::canRedoChanged}) connect(&undo_, sig, this, [this] { updateUndoActions(); });
+    for (auto sig : {&QUndoStack::undoTextChanged, &QUndoStack::redoTextChanged}) connect(&undo_, sig, this, [this] { updateUndoActions(); });
+    edit->addAction(undoAct_);
+    edit->addAction(redoAct_);
+    updateUndoActions();
 
     auto* view = menuBar()->addMenu("&View");
     for (QDockWidget* d : findChildren<QDockWidget*>()) view->addAction(d->toggleViewAction());
@@ -416,6 +514,9 @@ void MainWindow::buildMenus() {
         restoreState(defaultState_);
         for (QDockWidget* d : findChildren<QDockWidget*>()) d->show();
     });
+
+    auto* settings = menuBar()->addMenu("&Cài đặt");
+    settingsAct_ = settings->addAction("Cài đặt vận hành…", this, [this] { openSettings(); });
 
     auto* help = menuBar()->addMenu("&Help");
     help->addAction("Giới thiệu", this, [this] {
@@ -648,11 +749,15 @@ void MainWindow::onProjectChanged() {
     rebuildSceneList();
     rebuildMediaList();
     inspector_->refreshFromProject();
+    rebuildTransitionCombo();                              // danh sach nguon Stinger co the doi
+    timeline_->refresh();
+    ctlApi_->refreshProject();
 }
 
 // ---------------- media ----------------
 
 bool MainWindow::addMediaFile(const QString& path) {
+    if (locked_) { showMessage("Đang khoá vận hành: không nhập media được"); return false; }
     SourceDef d;
     d.path = QFileInfo(path).absoluteFilePath();
     d.type = kImageExt.contains(QFileInfo(path).suffix().toLower()) ? "image" : "video";
@@ -660,21 +765,113 @@ bool MainWindow::addMediaFile(const QString& path) {
     auto src = createSource(d, &err);
     if (!src) { showMessage("Không nhập được: " + err); return false; }
     d.source = src;
-    auto scene = std::make_shared<Scene>();
-    scene->name = src->name();
-    scene->size = project_.channels[0]->size;
-    scene->layers.push_back({src, {0, 0, 1, 1}, 1.0f, LayerFit::Fit, true});
-    engine_.post([this, d, scene](double) mutable {
-        int n = int(project_.sources.size()) + 1;
-        auto taken = [&](const QString& id) { for (const auto& s : project_.sources) if (s.id == id) return true; return false; };
-        while (taken(QString("src%1").arg(n))) ++n;
-        d.id = QString("src%1").arg(n);
-        project_.sources.push_back(d);
-        project_.scenes.push_back(scene);
-        for (auto& c : project_.channels) c->scenes.push_back(scene);
-        QMetaObject::invokeMethod(this, [this] { onProjectChanged(); }, Qt::QueuedConnection);
-    });
+    auto e = std::make_shared<ImportEntry>();
+    e->def = d;
+    e->scene = std::make_shared<Scene>();
+    e->scene->name = src->name();
+    e->scene->size = project_.channels[0]->size;
+    e->scene->layers.push_back({src, {0, 0, 1, 1}, 1.0f, LayerFit::Fit, true});
+    pushImport(e, "Nhập media: " + src->name());
     return true;
+}
+
+void MainWindow::pushImport(std::shared_ptr<ImportEntry> e, const QString& text) { undo_.push(new ImportCmd(this, std::move(e), text)); }
+
+void MainWindow::doUndo() {
+    // Khong hoan tac nhap media khi Scene do dang On Air (go ra se doi hinh dang len song): bao va giu nguyen.
+    if (undo_.canUndo())
+        if (auto* c = dynamic_cast<const ImportCmd*>(undo_.command(undo_.index() - 1)); c && importInUse(c->entry())) {
+            showMessage("Không hoàn tác được: Scene này đang ở PROGRAM/đang chuyển cảnh. Đưa Scene khác lên Program rồi hoàn tác lại.");
+            qWarning().noquote() << "Hoàn tác nhập media bị từ chối: Scene đang On Air";
+            return;
+        }
+    undo_.undo();
+}
+
+bool MainWindow::importInUse(const ImportEntry& e) const {
+    for (const auto& c : project_.channels) {
+        const int pg = c->program, pv = c->preview;
+        const auto& sc = c->scenes;
+        if (pg >= 0 && pg < int(sc.size()) && sc[pg] == e.scene) return true;
+        if (c->inTransition() && pv >= 0 && pv < int(sc.size()) && sc[pv] == e.scene) return true;
+    }
+    return false;
+}
+
+// Them (hoac them lai khi Lam lai) nguon + Scene. Doi render thread chay xong roi cap nhat ban sao UI NGAY, de cac buoc Hoan tac/Lam lai
+// ke tiep (vd. sua layer cua Scene nay) thay du lieu nhat quan. Bo qua phan da co (an toan khi lap).
+void MainWindow::applyImport(const std::shared_ptr<ImportEntry>& e) {
+    engine_.postAndWait([this, e](double) {
+        if (e->addsSource) {
+            bool have = false;
+            for (const auto& s : project_.sources) have = have || (s.source == e->def.source);
+            if (!have) {
+                if (e->def.id.isEmpty()) {
+                    int n = int(project_.sources.size()) + 1;
+                    auto taken = [&](const QString& id) { for (const auto& s : project_.sources) if (s.id == id) return true; return false; };
+                    while (taken(QString("src%1").arg(n))) ++n;
+                    e->def.id = QString("src%1").arg(n);
+                }
+                project_.sources.push_back(e->def);
+            }
+        }
+        if (std::find(project_.scenes.begin(), project_.scenes.end(), e->scene) == project_.scenes.end()) {
+            project_.scenes.push_back(e->scene);
+            for (auto& c : project_.channels) c->scenes.push_back(e->scene);
+        }
+    });
+    onProjectChanged();
+}
+
+// Go Scene (va nguon neu khong con ai dung) ra khoi project + moi Channel; dieu chinh chi so Program/Preview.
+// Neu luc nay Scene dang On Air (lenh live xen vao giua kiem tra UI va render thread) thi KHONG go, bao lai va khoi phuc buoc hoan tac.
+void MainWindow::unapplyImport(const std::shared_ptr<ImportEntry>& e, const QUndoCommand* cmd) {
+    auto removedIdx = std::make_shared<std::atomic<int>>(-1);
+    auto busy = std::make_shared<std::atomic<bool>>(false);
+    engine_.postAndWait([this, e, removedIdx, busy](double) {
+        auto sit = std::find(project_.scenes.begin(), project_.scenes.end(), e->scene);
+        if (sit == project_.scenes.end()) return;
+        for (const auto& c : project_.channels) {
+            auto it = std::find(c->scenes.begin(), c->scenes.end(), e->scene);
+            if (it == c->scenes.end()) continue;
+            const int k = int(it - c->scenes.begin());
+            if (c->program == k || (c->inTransition() && c->preview == k)) { *busy = true; return; }
+        }
+        for (auto& c : project_.channels) {
+            auto it = std::find(c->scenes.begin(), c->scenes.end(), e->scene);
+            if (it == c->scenes.end()) continue;
+            const int k = int(it - c->scenes.begin());
+            c->scenes.erase(it);
+            const int pv = c->preview;
+            if (pv == k) c->preview = -1;
+            else if (pv > k) c->preview = pv - 1;
+            const int pg = c->program;
+            if (pg > k) c->program = pg - 1;
+        }
+        *removedIdx = int(sit - project_.scenes.begin());
+        project_.scenes.erase(sit);
+        if (e->addsSource) {                                   // chi go nguon neu khong Scene nao khac con dung
+            bool used = false;
+            for (const auto& sc : project_.scenes)
+                for (const auto& l : sc->layers) used = used || l.source == e->def.source;
+            if (!used)
+                project_.sources.erase(std::remove_if(project_.sources.begin(), project_.sources.end(),
+                                                      [&](const SourceDef& s) { return s.source == e->def.source; }), project_.sources.end());
+        }
+    });
+    if (*busy) {
+        QMetaObject::invokeMethod(this, [this, cmd] {
+            showMessage("Hoàn tác nhập media bị huỷ: Scene vừa được đưa lên PROGRAM");
+            qWarning().noquote() << "Hoàn tác nhập media bị huỷ giữa chừng: Scene đang On Air";
+            if (undo_.index() < undo_.count() && undo_.command(undo_.index()) == cmd) undo_.redo();   // giu ngan xep nhat quan voi project
+        }, Qt::QueuedConnection);
+        return;
+    }
+    if (*removedIdx >= 0) {
+        inspector_->sceneRemoved(*removedIdx);
+        timeline_->sceneRemoved(*removedIdx);
+    }
+    onProjectChanged();
 }
 
 // ---------------- project ----------------
@@ -709,17 +906,17 @@ void MainWindow::saveProject(bool saveAs) {
         const bool ok = lc::saveProject(project_, path, &err);
         QMetaObject::invokeMethod(this, [this, ok, err, path] {
             showMessage(ok ? "Đã lưu: " + path : "Lỗi lưu: " + err);
-            if (ok) { addRecent(path); updateTitle(); QFile::remove(path + ".autosave"); }
+            if (ok) { addRecent(path); updateTitle(); QFile::remove(path + ".autosave"); QSettings stl = appSettings(); rememberProject(stl, path); }
         }, Qt::QueuedConnection);
     });
 }
 
 void MainWindow::updateTitle() {
-    setWindowTitle(QString("LumaCast — %1").arg(project_.filePath.isEmpty() ? "Chưa đặt tên" : QFileInfo(project_.filePath).fileName()));
+    setWindowTitle(QString("LumaCast — %1%2").arg(project_.filePath.isEmpty() ? "Chưa đặt tên" : QFileInfo(project_.filePath).fileName(), locked_ ? "  [KHOÁ VẬN HÀNH]" : ""));
 }
 
 void MainWindow::addRecent(const QString& path) {
-    QSettings st("LumaCast", "LumaCast");
+    QSettings st = appSettings();
     QStringList l = st.value("recent").toStringList();
     l.removeAll(path);
     l.prepend(path);
@@ -730,9 +927,9 @@ void MainWindow::addRecent(const QString& path) {
 
 void MainWindow::rebuildRecentMenu() {
     recentMenu_->clear();
-    const QStringList l = QSettings("LumaCast", "LumaCast").value("recent").toStringList();
+    const QStringList l = appSettings().value("recent").toStringList();
     for (const QString& p : l) recentMenu_->addAction(p, this, [this, p] { launchProject(p); });
-    recentMenu_->setEnabled(!l.isEmpty());
+    recentMenu_->setEnabled(!l.isEmpty() && !locked_);
 }
 
 void MainWindow::openProject() {
@@ -742,6 +939,7 @@ void MainWindow::openProject() {
 
 // Mo project khac = khoi dong lai voi project do (engine/output dung lai tu dau, don gian va chac chan).
 void MainWindow::launchProject(const QString& path) {
+    if (locked_) { showMessage("Đang khoá vận hành: không mở project khác được"); return; }
     if (QMessageBox::question(this, "Mở project",
                               "Mở project này sẽ ĐÓNG project hiện tại và tắt các output.\nTiếp tục?",
                               QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
@@ -755,13 +953,19 @@ void MainWindow::launchProject(const QString& path) {
 }
 
 void MainWindow::closeEvent(QCloseEvent* e) {
+    if (locked_ && askOnClose_) {                          // khoa: khong dong duoc cho den khi mo khoa (mo khoa = xac nhan)
+        qWarning().noquote() << "Khoá vận hành: từ chối đóng cửa sổ chính";
+        showMessage("Đang KHOÁ vận hành — giữ nút khoá 1 giây để mở khoá rồi mới thoát được");
+        e->ignore();
+        return;
+    }
     if (askOnClose_ &&
         QMessageBox::question(this, "Thoát LumaCast", "Thoát sẽ tắt tất cả output.\nBạn chắc chắn?",
                               QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) {
         e->ignore();
         return;
     }
-    QSettings st("LumaCast", "LumaCast");
+    QSettings st = appSettings();
     st.setValue("geometry", saveGeometry());
     st.setValue("state", saveState());
     e->accept();

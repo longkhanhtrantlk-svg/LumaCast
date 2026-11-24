@@ -9,6 +9,7 @@ Bo dieu khien man hinh LED nhieu kenh / nhieu do phan giai. Xem thiet ke: `docs/
 | `docs/PLAN.md` | Hiện trạng, lộ trình M3c → M7, nhiệm vụ, nghiệm thu, rủi ro, quy trình |
 | `docs/KienTruc.md` | Thiết kế kỹ thuật và quyết định |
 | `docs/PLUGIN-SDK.md` | Huong dan viet plug-in shader (Effect/Transition) |
+| `docs/CONTROL-API.md` | API dieu khien ngoai: HTTP/SSE, OSC, bao mat, vi du |
 | `docs/PROJECT-FORMAT.md` | Đặc tả định dạng file project (phiên bản 1) |
 | `docs/TEST-PLAN.md` | Test tự động, checklist thử tay trên Windows, benchmark |
 | `docs/TEST-WINDOWS.md` | Hướng dẫn build và chạy trên Windows |
@@ -26,6 +27,13 @@ Windows (muc tieu): Qt 6 + FFmpeg qua vcpkg (`vcpkg install ffmpeg[core,avcodec,
 
 `-o WxH[@man_hinh][/kenh]` (lap lai cho nhieu output), `--scale fit|fill|stretch|pixel`, `--fps 60`.
 Phim tat (kenh 1): `1..9` chon Preview, `Space` = AUTO, `Enter` = CUT.
+
+## M5c them (dieu khien ngoai va van hanh)
+- **Dieu khien ngoai** (Cai dat > Cai dat van hanh): HTTP REST + SSE (`GET /` co trang web cho dien thoai) va OSC/UDP. **Mac dinh tat**, chi `127.0.0.1`; nghe LAN phai bat ro va **bat buoc token**. Chi dung Qt Network (khong can Qt WebSockets). Xem `docs/CONTROL-API.md` (endpoint, ma loi, OSC, bao mat, vi du `curl`).
+- **Khoa van hanh** (nut tren thanh tren, Ctrl+L): vo hieu moi dieu khien SUA, giu dieu khien live; mo khoa bang giu nut 1 giay.
+- **Khoi dong cung Windows** va **tu mo lai project gan nhat** (tat duoc); file mat -> chay binh thuong kem thong bao.
+- **Hoan tac** cho nhap media / tao Scene va thuoc tinh Scene. **Timeline**: zoom/cuon ngang, chon nhieu keyframe, keo nhom, Ctrl+C / Ctrl+V.
+- Chua co (de dot sau): MIDI, am thanh, NDI, camera.
 
 ## M4b them (hoat hoa)
 - Layer: **xoay**, **cat (crop)** theo hinh da xoay, **blend** Add/Multiply/Screen. O co vien vang = dang co keyframe.

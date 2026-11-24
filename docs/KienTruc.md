@@ -197,19 +197,20 @@ Cửa sổ chính (`MainWindow`) dạng dock, giao diện tối; bố cục lưu
 ```
 lumacast/
  ├─ CMakeLists.txt        CMake; FFmpeg qua pkg-config (Linux) hoặc vcpkg (Windows)
- ├─ docs/                 SPEC, PLAN, KienTruc, PROJECT-FORMAT, TEST-PLAN, TEST-WINDOWS
+ ├─ docs/                 SPEC, PLAN, KienTruc, PROJECT-FORMAT, TEST-PLAN, TEST-WINDOWS, CONTROL-API, PLUGIN-SDK
  ├─ src/
  │   ├─ core/             Types, Scene/Layer, Channel (Program/Preview/transition/T-bar/FTB), Project (JSON, wall)
  │   ├─ render/           Compositor (toàn bộ GL), GlHelpers (FBO/texture), Engine (thread render, monitor),
  │   │                    OutputSink (giao diện đích), OutputWindow (cửa sổ LED)
- │   ├─ media/            Source (giao diện), StaticSources (ảnh/màu/test pattern), FFmpegSource (video)
+ │   ├─ control/          (M5c) HttpServer (HTTP/1.1 + SSE), Osc (bộ phân tích/dựng gói), ControlApi (lệnh + trạng thái + định tuyến), ControlService (bật/tắt theo cài đặt), trang web điều khiển
+│   ├─ media/            Source (giao diện), StaticSources (ảnh/màu/test pattern), FFmpegSource (video)
  │   └─ app/              main (CLI), MainWindow, InspectorPanel (Layer/Output + undo), MonitorWidget, Theme
  └─ tests/                test_render.cpp (lõi/engine), test_ui.cpp (giao diện)
 ```
-**Dự kiến thêm:** `plugin/` (Host, Loader, ManifestParser), `sdk/` (header C ABI + plug-in mẫu), `control/` (HTTP/WS/OSC/MIDI),
+**Dự kiến thêm:** `plugin/` (Host, Loader, ManifestParser), `sdk/` (header C ABI + plug-in mẫu), MIDI trong `control/`,
 `audio/` (mixer, WASAPI), `shaders/` (GLSL tách khỏi mã).
 
-**Thư viện đang dùng:** Qt 6 (Core, Gui, Widgets, OpenGL), FFmpeg (avformat, avcodec, swscale, avutil). **Dự kiến:** NDI SDK, thư viện âm thanh.
+**Thư viện đang dùng:** Qt 6 (Core, Gui, Widgets, OpenGL, **Network** — chỉ để dùng `QTcpServer`/`QUdpSocket`; **không** dùng Qt WebSockets, máy Windows của dự án chỉ có Qt Base), FFmpeg (avformat, avcodec, swscale, avutil). **Dự kiến:** NDI SDK, thư viện âm thanh.
 **Build:** C++20, CMake ≥ 3.21, Ninja; Windows: MSVC 2022 + vcpkg (FFmpeg) + Qt 6.x (đã dùng 6.4 và 6.8.3).
 
 ---
@@ -270,7 +271,7 @@ Fit/Fill tính theo tỉ lệ sau xoay; ảnh theo EXIF khi nạp.
 (Đen luôn thắng); FTB = `Compositor::fadeToBlack` phủ đen với độ mờ tăng/giảm theo thời gian (rủi ro R1 trong PLAN: Dừng hình chưa xác nhận trên Windows).
 
 **Hoàn tác/làm lại.** `QUndoStack` trong `MainWindow`; mỗi chỉnh sửa Inspector là `LayersCmd`/`OutputCmd` (lưu trước/sau); lần `redo()` đầu bị bỏ qua vì UI đã áp dụng;
-các chỉnh sửa liên tiếp cùng một trường gộp bằng `mergeWith` theo `id`. Thao tác live (CUT/TAKE/FTB/Đen) không nằm trong undo; nhập media chưa hoàn tác được.
+các chỉnh sửa liên tiếp cùng một trường gộp bằng `mergeWith` theo `id`. Thao tác live (CUT/TAKE/FTB/Đen) không nằm trong undo. Từ M5c nhập media và thuộc tính Scene cũng hoàn tác được (xem bên dưới).
 
 **T-bar và AUTO.** `Channel::setManual(type, t)` chạy trên render thread, tiến độ trực tiếp (không ease), bị bỏ qua khi đang chạy transition tự động; kéo hết = hoàn tất,
 về 0 = huỷ, CUT giữa chừng hoàn tất ngay. AUTO là công tắc giao diện: bật thì bấm Scene = đặt Preview + `startTransition`.
@@ -298,5 +299,23 @@ về 0 = huỷ, CUT giữa chừng hoàn tất ngay. AUTO là công tắc giao d
 - *Xoay hình học:* đổi ở vertex shader chung (`uRotSC`, `uAspectM1`): xoay `offset` của đỉnh trong không gian điểm ảnh (hiệu chỉnh tỉ lệ rộng/cao đích) nên hình vuông không bị méo trên Scene không vuông; mặc định uniform = 0 nghĩa là không xoay nên các chương trình khác không phải đụng tới.
 - *Crop:* tính trong không gian **hình đã xoay** rồi đổi sang vùng trên texture gốc bằng `cropToTexture` (0/90/180/270); Fit/Fill dùng tỉ lệ của vùng đã crop; sau cùng `uUvRect` + `uUvRot` lấy mẫu vùng con và xoay quanh tâm của chính vùng đó.
 - *Blend:* `glBlendFuncSeparate` theo chế độ + `uBlendMode` trong shader: Add/Screen dùng màu nhân alpha trước; Multiply dùng `mix(1, rgb, alpha)`; alpha đích không bị đổi.
-- *Timeline:* `TimelineWidget` + `TrackView` (tự vẽ). Mọi sửa đổi đi qua `InspectorPanel::editCurrentLayer` nên dùng chung `QUndoStack`; mỗi lần nhấn chuột kéo key có `dragSession` riêng để không bị gộp với lần kéo trước. Thuộc tính Scene (thời lượng/lặp/tự phát lại) đi trực tiếp qua `post()` và chưa hoàn tác được. Playhead đọc `clock.time` (atomic); khi tua, UI dùng `scrubTime_` để không phải đợi render thread.
-- *An toàn:* timeline chỉ báo (không khoá) khi Scene đang chọn đang On Air. Khoá thao tác khi On Air nằm trong kế hoạch (UI-07).
+- *Timeline:* `TimelineWidget` + `TrackView` (tự vẽ). Mọi sửa đổi đi qua `InspectorPanel::editCurrentLayer` nên dùng chung `QUndoStack`; mỗi lần nhấn chuột kéo key có `dragSession` riêng để không bị gộp với lần kéo trước. Thuộc tính Scene (thời lượng/lặp/tự phát lại) từ M5c đi qua `ScenePropsCmd` nên hoàn tác được. Playhead đọc `clock.time` (atomic); khi tua, UI dùng `scrubTime_` để không phải đợi render thread.
+- *An toàn:* timeline báo khi Scene đang chọn đang On Air; từ M5c có thêm Khoá vận hành (xem bên dưới).
+
+**Điều khiển ngoài (M5c, `control/`).** Chi tiết API ở `CONTROL-API.md`; ở đây là các quyết định thiết kế.
+- *SSE thay vì WebSocket.* Nhu cầu là *đẩy trạng thái một chiều*; lệnh đã có REST. SSE là HTTP thường nên dùng chung bộ phân tích, giới hạn, xác thực và kiểm tra Origin/Host với phần còn lại, không có bắt tay nâng cấp/mask/phân mảnh/ping-pong (nơi hay có lỗi khi tự viết RFC 6455). Qt WebSockets lại không có trên máy Windows của dự án, nên chỉ cần `QtNetwork`. Trình duyệt dùng `fetch()` đọc luồng thay `EventSource` để gửi được header `Authorization` (token không đi qua URL). Nếu sau này cần lệnh hai chiều độ trễ thấp, WebSocket có thể thêm trên cùng `HttpServer` mà không đổi `ControlApi`.
+- *Luồng và dữ liệu.* `HttpServer`/`OscServer`/`ControlApi` chạy trên UI thread (vòng lặp sự kiện Qt), không có thread riêng. Mọi lệnh gọi `RenderEngine::post()` như giao diện. Trạng thái đọc từ các trường atomic (Program/Preview/FTB/Đen/Dừng/Mẫu/đồng hồ Scene) và từ **bản chụp** danh sách Scene/Output lấy trên UI thread (`ControlApi::refreshProject()` sau mỗi thay đổi project); FPS từng Output đo bằng timer 500 ms. Các lệnh Output cũng đi qua `post()` (khác các nút trên giao diện hiện còn ghi thẳng atomic) nên có thêm độ trễ ≤ 1 khung.
+- *Dùng chung HTTP và OSC.* Cả hai gọi cùng các hàm lệnh của `ControlApi` (`setPreview`, `cut`, `take`, `ftb`, `outputFlag`, `blackAll`, `sceneTransport`) nên quy tắc an toàn không thể lệch nhau; `handleOsc` chỉ ánh xạ địa chỉ → hàm lệnh.
+- *Mô hình mối đe doạ.* Mặc định tắt và chỉ loopback; LAN → token bắt buộc (≥ 16 ký tự, so sánh hằng thời gian) hoặc không mở cổng; giới hạn tài nguyên (header/thân/URL/kết nối/SSE/thời gian) chống treo; Origin≠Host → 403 (CSRF qua trình duyệt), Host lạ khi loopback → 403 (DNS rebinding); không CORS. OSC không có xác thực nên chỉ loopback theo mặc định. HTTP không mã hoá (cần mạng điều khiển riêng/VPN/proxy TLS).
+- *Khoá vận hành và API.* `ControlApi` hỏi một hàm `lockProvider`; tuyến đăng ký với `edit=true` trả `423` khi khoá. Hiện chưa có tuyến sửa cấu hình nào (lệnh live luôn chạy); khoá không thể được mở từ API.
+
+**Khoá vận hành (M5c, UI-07).** `MainWindow::setLocked` vô hiệu: `InspectorPanel` (cả widget lẫn `editLayers/editOutput`), `TimelineWidget` (sửa key/thời lượng/lặp, kéo thước; Phát/Tạm dừng/Về 0 giữ lại), dock Plug-in, Nhập media (nút, menu, nhấp đúp Media Pool, `addMediaFile`), Hoàn tác/Làm lại (action tự định nghĩa thay `createUndoAction` để khoá được), Mở project/Gần đây, Cài đặt, và `closeEvent`. Điều khiển live không bị đụng. Mở khoá bằng `LockButton` phải giữ ≥ 1 s (chuột hoặc Space). Trạng thái chỉ nằm trong bộ nhớ (không `QSettings`, không project).
+
+**Tự khởi động và mở lại project (M5c, OPS-01).** `core/Startup` tách logic khỏi registry: `setAutostart/autostartState` nhận một `QSettings` bất kỳ (registry thật chỉ ở `openRunKey()` trên Windows; test dùng file .ini). `decideStartupProject` + `pickProjectToLoad` dùng chung cho `--project` và tự mở lại; tự mở lại bị bỏ qua nếu dòng lệnh có `-o/-m/--wall/--save`. Thất bại (file mất/hỏng) chỉ đẩy thông báo lên thanh trạng thái, không dừng chương trình, để khởi động không người trực vẫn lên được.
+
+**Hoàn tác nhập media (M5c, PRJ-07).** `ImportCmd` (trong `MainWindow.cpp`) giữ `ImportEntry{SourceDef, Scene}`; `redo` = thêm vào `project_`/mọi Channel trên render thread, `undo` = gỡ ra và chỉnh chỉ số Program/Preview (Preview trỏ vào Scene bị gỡ → -1), gỡ nguồn nếu không Scene nào còn dùng. Cả hai chạy bằng `RenderEngine::postAndWait` (chờ có giới hạn 2 s) rồi cập nhật ngay bản sao UI (Inspector/Timeline/API/danh sách) để các bước Hoàn tác nối nhau thấy dữ liệu nhất quán. Scene đang ở Program hoặc đang chuyển → từ chối ở UI, kiểm tra lại ở render thread (lệnh live có thể xen vào giữa) và nếu bị chặn thì khôi phục ngăn xếp bằng `redo()`.
+
+**Timeline nâng cao (M5c).** Vùng nhìn = (`viewStart_`, `zoom_`); `timeToX/xToTime` đổi theo, thước và key vẽ trong vùng cắt để không đè cột nhãn. Vùng chọn lưu theo `(thuộc tính, thời điểm)` (không theo chỉ số vì chỉ số đổi khi sửa) và được dọn mỗi lần `refresh()`. Mọi thao tác nhóm đi qua `InspectorPanel::editCurrentLayer` (một bước Hoàn tác); kéo liên tục dùng `mergeId` theo `dragSession_`. Bộ nhớ đệm chép/dán dùng chung giữa các Scene trong tiến trình.
+
+**Cài đặt theo máy và cô lập khi test (M5c).** Luôn dùng `lc::appSettings()` (`core/AppSettings.h`) thay cho `QSettings("LumaCast", "LumaCast")`: constructor (tổ chức, ứng dụng) luôn dùng `NativeFormat` nên **bỏ qua** `QSettings::setDefaultFormat()` mà test gọi, khiến test ghi đè lên cấu hình/registry thật (lỗi đã có từ trước M5c, được sửa cùng đợt). `appSettings()` theo `defaultFormat()`: sản phẩm vẫn là `NativeFormat` (cùng vị trí cũ), test dùng `IniFormat` + `setPath`. Biến môi trường `LUMACAST_CONFIG_DIR` đặt thư mục cấu hình + log riêng cho một tiến trình `lumacast` (dùng trong test tiến trình con; hữu ích cho bản mang theo).
+

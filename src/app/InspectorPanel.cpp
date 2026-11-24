@@ -83,6 +83,7 @@ InspectorPanel::InspectorPanel(Project& project, RenderEngine& engine, QUndoStac
 }
 
 void InspectorPanel::editLayers(int si, std::vector<Layer> after, const QString& text, int mergeId) {
+    if (locked_) return;                                        // khoa van hanh
     auto before = layerCache_[si];
     layerCache_[si] = after;
     pushLayers(si);
@@ -91,6 +92,7 @@ void InspectorPanel::editLayers(int si, std::vector<Layer> after, const QString&
 }
 
 void InspectorPanel::editOutput(int i, OutputConfig after, const QString& text, int mergeId) {
+    if (locked_) return;
     OutputConfig before = outCache_[i];
     outCache_[i] = after;
     pushOutput(i);
@@ -126,6 +128,7 @@ QWidget* InspectorPanel::buildSceneTab() {
     auto* v = new QVBoxLayout(page);
 
     sceneCombo_ = new QComboBox;
+    sceneCombo_->setObjectName("sceneCombo");
     v->addWidget(sceneCombo_);
 
     layerList_ = new QListWidget;
@@ -240,6 +243,11 @@ QWidget* InspectorPanel::buildSceneTab() {
     });
     refreshFromProject();
     return page;
+}
+
+void InspectorPanel::sceneRemoved(int si) {
+    if (si >= 0 && si < int(layerCache_.size())) layerCache_.erase(layerCache_.begin() + si);
+    while (layerCache_.size() > project_.scenes.size()) layerCache_.pop_back();        // phong ho: khong de ban sao thua tham chieu treo
 }
 
 void InspectorPanel::refreshFromProject() {

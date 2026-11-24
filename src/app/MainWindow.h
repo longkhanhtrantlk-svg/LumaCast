@@ -1,4 +1,5 @@
 #pragma once
+#include "control/ControlService.h"
 #include "render/Engine.h"
 #include "render/OutputSupervisor.h"
 #include "render/PluginManager.h"
@@ -17,11 +18,13 @@ class QMenu;
 class QPushButton;
 class QSlider;
 class QToolButton;
+class QUndoCommand;
 
 
 namespace lc {
 
 class InspectorPanel;
+class LockButton;
 class TimelineWidget;
 class MonitorWidget;
 
@@ -29,6 +32,17 @@ class MonitorWidget;
 // Outputs (Black/Freeze/trang thai), Inspector. Moi thao tac di qua RenderEngine::post().
 class MainWindow : public QMainWindow {
 public:
+    // Mot lan nhap: them nguon (tuy chon) + Scene vao project va moi Channel. Dung chung cho Hoan tac/Lam lai (PRJ-07).
+    struct ImportEntry {
+        SourceDef def;
+        bool addsSource = true;               // false: chi tao Scene tu nguon da co (Media Pool)
+        std::shared_ptr<Scene> scene;
+    };
+    // Goi boi lenh Hoan tac/Lam lai; ca hai chay tren render thread qua post(), co ban sao UI cap nhat sau.
+    void applyImport(const std::shared_ptr<ImportEntry>& e);
+    void unapplyImport(const std::shared_ptr<ImportEntry>& e, const QUndoCommand* cmd);
+    bool importInUse(const ImportEntry& e) const;           // Scene dang o Program/dang chuyen cua kenh nao (UI thread)
+
     MainWindow(Project& project, RenderEngine& engine, QStringList pluginDirs = PluginManager::defaultDirs());
     PluginManager& plugins() { return pm_; }
     TransitionSpec currentSpec() const;          // hieu ung chuyen dang chon tren thanh chuyen
@@ -41,6 +55,13 @@ public:
     InspectorPanel* inspector() const { return inspector_; }
     TimelineWidget* timeline() const { return timeline_; }
     QUndoStack* undoStack() { return &undo_; }
+    ControlService& control() { return *ctl_; }
+    ControlApi& controlApi() { return *ctlApi_; }
+    void showStartupNotice(const QString& msg);    // thong bao khong chan (thanh trang thai) khi tu mo project that bai/thieu file
+    void openSettings();
+    // UI-07: Khoa van hanh (theo phien, khong luu vao project). Khoa = vo hieu moi dieu khien SUA, giu dieu khien live.
+    void setLocked(bool on);
+    bool isLocked() const { return locked_; }                           // hop thoai Cai dat van hanh (dieu khien ngoai...)
 
 protected:
     void closeEvent(QCloseEvent* e) override;
@@ -108,6 +129,20 @@ private:
     qint64 lastSlowMs_ = 0;
     bool lastStalled_ = false;
     bool askOnClose_ = true;
+    bool locked_ = false;
+    ControlApi* ctlApi_ = nullptr;
+    ControlService* ctl_ = nullptr;
+    QLabel* ctlLabel_ = nullptr;
+    QAction* settingsAct_ = nullptr;
+    QAction *importAct_ = nullptr, *openAct_ = nullptr, *undoAct_ = nullptr, *redoAct_ = nullptr;
+    QPushButton* importBtn_ = nullptr;
+    QWidget* pluginPanel_ = nullptr;
+    LockButton* lockBtn_ = nullptr;
+    QLabel* lockLabel_ = nullptr;
+    void updateUndoActions();
+    void pushImport(std::shared_ptr<ImportEntry> e, const QString& text);
+    void doUndo();
+    void updateControlStatus();
 };
 
 } // namespace lc

@@ -40,8 +40,8 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | SRC-03 | Video dọc/quay bằng điện thoại hiện đúng chiều (cờ xoay); ảnh theo EXIF | P0 | ✅ | Test tự động so với FFmpeg (90/180/270) + đã thử tay trên Windows |
 | SRC-04 | Giải mã phần cứng (D3D11VA) và đổi màu YUV→RGB bằng shader | P1 | ⬜ | Benchmark 4K ≥ 60 fps, CPU thấp hơn bản CPU |
 | SRC-05 | Codec HAP | P1 | ⬜ | Phát HAP 4K không rơi khung |
-| SRC-06 | NDI vào | P1 | ⬜ | Nhận stream NDI, độ trễ < 3 khung |
-| SRC-07 | Camera/card capture | P1 | ⬜ | Hiện hình từ webcam/card capture |
+| SRC-06 | NDI vào | P1 | 🟡 | Nhận stream NDI (hình + tiếng), độ trễ < 3 khung. **Mã xong, test tự động bằng backend giả + thư viện NDI giả; chưa thử với NDI Runtime thật** (T-NDI-IN, T-NDI-LOSS) |
+| SRC-07 | Camera/card capture | P1 | 🟡 | Hiện hình từ webcam/card capture. **Mã Media Foundation viết xong, mới kiểm tra cú pháp bằng mingw, chưa chạy trên Windows**; test tự động bằng camera giả (T-CAM, T-CAM-HOT). Chưa có: âm thanh từ capture, Linux/macOS |
 | SRC-08 | Chữ/đồ hoạ (CG), web, chuỗi ảnh | P2 | ⬜ | — |
 
 ### 3.2 Scene và Layer (SCN)
@@ -84,7 +84,7 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | OUT-10 | Trạng thái từng Output: hiển thị/không hiển thị, FPS thật, Đen/Dừng | P0 | ✅ | Test tự động |
 | OUT-11 | Test pattern riêng theo Output (lưới, thanh màu, thước điểm ảnh, toạ độ 4 góc, tên màn), bật từng Output hoặc tất cả | P1 | ✅ | Test tự động (nội dung cửa sổ thật); thử tay T-PAT |
 | OUT-12 | Phát hiện mất màn/sai màn/cửa sổ không hiển thị, báo đúng Output (giao diện + log), ẩn cửa sổ khi mất màn, tự hiện lại đúng màn khi màn quay lại | P0 | 🟡 | Test tự động (logic, ẩn cửa sổ); **chưa thử rút màn thật** (T-LOSS) |
-| OUT-13 | Output dạng khác: NDI ra, ghi file, DMX/Art-Net | P1 | ⬜ | Qua `OutputSink` |
+| OUT-13 | Output dạng khác: NDI ra, ghi file, DMX/Art-Net | P1 | 🟡 | Qua `OutputSink`. **NDI ra** có (Program của một Channel, tên cấu hình được, kèm âm thanh bus); test bằng backend giả, **chưa mở được bằng phần mềm NDI thật** (T-NDI-OUT). Ghi file, DMX/Art-Net: chưa làm |
 
 ### 3.5 Project (PRJ)
 | ID | Yêu cầu | Ưu tiên | TT | Nghiệm thu |
@@ -164,6 +164,14 @@ Bạn từng nói nếu bán sẽ có gói cơ bản và gói thương mại nâ
 | Điều khiển ngoài (HTTP/OSC/MIDI) | không | có |
 | Timeline / keyframe | không | có |
 Cơ chế khoá nên là cờ tính năng đọc từ giấy phép, tách khỏi lõi (xem `PLAN.md`, mục Phát hành).
+
+### 5.1 NDI® — điều khoản cần xác nhận **trước khi phát hành** (M5b)
+NDI là công nghệ và thương hiệu đã đăng ký của Vizrt NDI AB. Cách LumaCast dùng: **không** chứa và **không** liên kết tĩnh bất kỳ header/thư viện nào của NDI SDK; runtime NDI được nạp **động** lúc chạy (`QLibrary`, `Processing.NDI.Lib.x64.dll` / `libndi`) và tự khai báo tối thiểu các hàm cần dùng. Không có runtime thì NDI tự tắt và báo "Chưa cài NDI Runtime"; mọi tính năng khác chạy bình thường. Các điểm **người dùng cần tự đọc điều khoản NDI mới nhất rồi quyết định** (tôi chưa xác minh nguyên văn điều khoản):
+1. **Đăng ký/giấy phép:** dùng NDI trong sản phẩm bán ra thường yêu cầu đăng ký với NDI (ndi.video) và chấp nhận giấy phép SDK/Advanced SDK; cần xác nhận gói nào áp dụng cho gói Thương mại.
+2. **Ghi thương hiệu:** hiển thị "NDI®" và dòng ghi nhận bản quyền theo hướng dẫn thương hiệu của NDI (màn hình giới thiệu, website, tài liệu) — hiện giao diện **chưa** có dòng này, cần thêm trước khi phát hành.
+3. **Không phân phối lại runtime:** bộ cài LumaCast **không** được kèm `Processing.NDI.Lib.x64.dll` trừ khi giấy phép cho phép; hướng dẫn người dùng tự cài NDI Tools/Runtime miễn phí từ ndi.video (đây cũng là lý do thiết kế nạp động).
+4. **ABI chưa đối chiếu:** các khai báo hàm/struct trong `src/live/NdiRuntime.cpp` viết theo header công khai từ trí nhớ, chưa đối chiếu với header chính thức của phiên bản SDK bạn dùng; cần đối chiếu + thử T-NDI-IN/T-NDI-OUT trước khi tin vào nó.
+Biến môi trường `LUMACAST_NDI_DISABLE=1` tắt hẳn NDI (dùng khi nghi ngờ runtime làm sập ứng dụng).
 
 ## 6. Câu hỏi mở
 1. Số Output tối đa và độ phân giải tối đa mục tiêu của bản đầu? (đang giả định 4 Output; 1080p và 4K)

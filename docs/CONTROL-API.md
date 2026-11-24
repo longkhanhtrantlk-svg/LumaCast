@@ -57,7 +57,7 @@ Thân yêu cầu (POST) là một **đối tượng JSON** hoặc rỗng (rỗng
 | 400 | `unsupported` | Tính năng chưa hỗ trợ qua API (Stinger) |
 | 401 | `unauthorized` / `token_required` | Thiếu/sai token (kèm `WWW-Authenticate: Bearer`) |
 | 403 | `bad_host` / `bad_origin` | Host hoặc Origin không hợp lệ (mục 5) |
-| 404 | `not_found`, `channel_not_found`, `output_not_found`, `scene_not_found` | Đường dẫn hoặc chỉ số không tồn tại |
+| 404 | `not_found`, `channel_not_found`, `output_not_found`, `scene_not_found`, `source_not_found` | Đường dẫn hoặc chỉ số không tồn tại |
 | 405 | `method_not_allowed` | Sai phương thức (kèm `Allow`) |
 | 408 | `request_timeout` | Gửi yêu cầu quá chậm/dở dang (> 5 s) |
 | 409 | `transition_in_progress`, `no_preview` | Kênh đang chuyển cảnh / chưa có Scene ở Preview |
@@ -77,7 +77,16 @@ Thân yêu cầu (POST) là một **đối tượng JSON** hoặc rỗng (rỗng
  "outputs":[{"index":1,"name":"Output 1","channel":1,"width":1920,"height":1080,
              "black":false,"freeze":false,"pattern":false,"health":"ok","fps":60}]}
 ```
+**M5b:** `outputs[]` có thêm `kind` (`screen`/`ndi`) và với Output NDI một khối `ndi: {name, sending, connections, status}`; `sources` liệt kê **chỉ nguồn trực tiếp** (NDI/camera): `{index (1-based theo Media Pool), name, kind, state (connecting|live|lost|unavailable), status, width, height, fps, reconnects}`; nguồn NDI thêm `audio: {fillMs, driftPpm, resyncs}` (độ đầy ring âm thanh, độ lệch đồng hồ ước lượng, số lần mất đồng bộ) — dùng khi thử T-NDI-IN.
+
 `program`/`preview` là `null` khi chưa có Scene. `health`: `ok`, `no_screen` (mất màn), `hidden`, `wrong_screen`.
+
+### Nguồn trực tiếp (M5b)
+| Phương thức | Đường dẫn | Mô tả |
+|---|---|---|
+| GET | `/api/sources` | Danh sách + trạng thái nguồn NDI/camera (như `state.sources`) |
+| POST | `/api/sources/{n}/reconnect` | Đóng và mở lại kết nối của nguồn thứ `n` (chỉ số 1-based theo Media Pool). **Lệnh sửa** → `423` khi Khoá vận hành. `404 source_not_found` nếu không có, `400 not_live` nếu nguồn không phải NDI/camera |
+Đen/Dừng/Mẫu của Output NDI dùng chung `POST /api/outputs/{i}/black|freeze|pattern`. Chưa có OSC cho nguồn trực tiếp.
 
 ### SSE (`GET /api/events`)
 

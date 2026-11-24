@@ -64,6 +64,9 @@ public:
     CmdResult blackAll(std::optional<bool> on);
     enum class Transport { Play, Pause, Stop, Seek };
     CmdResult sceneTransport(int scene, Transport t, double seconds = 0);
+    // Nguon truc tiep (NDI/camera, M5b): danh sach + trang thai; noi lai thu cong la lenh SUA (423 khi khoa van hanh). Chi so 1-based theo Media Pool.
+    CmdResult liveSources();
+    CmdResult reconnectSource(int index);
     CmdResult handleOsc(const OscMessage& m);
 
     QJsonObject state();
@@ -78,7 +81,7 @@ signals:
 
 private:
     struct Route { QByteArray method; QStringList segs; bool edit; RouteFn fn; };
-    struct OutInfo { QString name; int channel = 0; QSize size; quint64 lastPresented = 0; double fps = 0; };
+    struct OutInfo { QString name; bool ndi = false; int channel = 0; QSize size; quint64 lastPresented = 0; double fps = 0; };
     void buildDefaultRoutes();
     void sampleFps();
     std::shared_ptr<Channel> chan(int n, CmdResult& err) const;
@@ -97,6 +100,7 @@ private:
     std::vector<std::vector<std::shared_ptr<Scene>>> chScenes_;
     std::vector<std::shared_ptr<Scene>> scenes_;
     std::vector<OutInfo> outs_;
+    std::vector<std::shared_ptr<Source>> sources_;                   // ban sao (UI thread) cua project.sources
     QTimer fpsTimer_;
     QElapsedTimer fpsClock_;
     int rejected_ = 0;

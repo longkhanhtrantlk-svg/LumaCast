@@ -21,8 +21,11 @@
 #include <QLibrary>
 #include <QOffscreenSurface>
 #include <QTemporaryDir>
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
+#include <functional>
 #include <iostream>
 #include <thread>
 

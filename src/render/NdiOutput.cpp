@@ -1,6 +1,7 @@
 #include "NdiOutput.h"
 #include "media/StaticSources.h"
 #include <QDebug>
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 

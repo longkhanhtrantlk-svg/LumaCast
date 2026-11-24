@@ -28,6 +28,13 @@ Windows (muc tieu): Qt 6 + FFmpeg qua vcpkg (`vcpkg install ffmpeg[core,avcodec,
 `-o WxH[@man_hinh][/kenh]` (lap lai cho nhieu output), `--scale fit|fill|stretch|pixel`, `--fps 60`.
 Phim tat (kenh 1): `1..9` chon Preview, `Space` = AUTO, `Enter` = CUT.
 
+## M5b them (NDI va camera)
+- **Nguon truc tiep** (NDI, camera): khong co dong ho file; chi giu khung moi nhat; **mat nguon -> giu khung cuoi + bao "Mat tin hieu" + tu noi lai** (khong bao gio treo render). Trang thai o Media Pool (● xanh/vang/do, ○ xam = khong kha dung) va `GET /api/sources`.
+- **NDI vao**: *File > Them nguon NDI...* (liet ke nguon tren mang, hinh + tieng; tieng di qua mixer voi **bu troi dong ho** bang resample thich ung). **NDI ra**: *File > Them Output NDI...* phat Program cua mot Channel (kem tieng) ra mang. Nap dong runtime NDI - **khong kem NDI SDK/runtime**; may chua cai se bao "Chua cai NDI Runtime" va moi thu khac chay binh thuong. Dieu khoan NDI (dang ky, ghi "NDI®", khong phan phoi runtime): `docs/SPEC.md` muc 5.1. **ABI chua doi chieu voi NDI that.**
+- **Camera/capture**: *File > Them camera...* (Windows: Media Foundation, chi Win32/COM; chon thiet bi + do phan giai/fps; rut cam tu noi lai). Linux/macOS: chua ho tro (bao ro). Chua co tieng tu camera.
+- Bien moi truong dev: `LUMACAST_NDI_BACKEND=fake` / `LUMACAST_CAMERA_BACKEND=fake` (nguon gia, khong can NDI/camera), `LUMACAST_NDI_DISABLE=1` (tat han NDI), `LUMACAST_NDI_LIB=<duong dan>` (chi dinh runtime).
+- **Chua kiem chung:** NDI that, Media Foundation that, do tre < 3 khung tren mang, NDI ra mo bang phan mem khac (xem `docs/TEST-PLAN.md`: T-NDI-*, T-CAM*).
+
 ## M5a them (am thanh theo Channel)
 - Video co tieng duoc giai ma (FFmpeg + swresample -> float32 stereo 48 kHz); moi Channel mot bus, mixer chay thread rieng. Dock **Am thanh**: nut *Tat tieng*, thanh am luong 0-150%, meter peak/RMS tung Channel + master, chon thiet bi ra (luu trong project). Am luong rieng tung Layer o Inspector (o "tieng").
 - **Crossfade am thanh theo dung tien do transition** (ca T-bar; Dip im o giua; FTB keo ca tieng). **Hinh chay theo dong ho am thanh** khi nguon co tieng; lap noi lien khong cat tieng.
@@ -40,7 +47,7 @@ Phim tat (kenh 1): `1..9` chon Preview, `Space` = AUTO, `Enter` = CUT.
 - **Khoa van hanh** (nut tren thanh tren, Ctrl+L): vo hieu moi dieu khien SUA, giu dieu khien live; mo khoa bang giu nut 1 giay.
 - **Khoi dong cung Windows** va **tu mo lai project gan nhat** (tat duoc); file mat -> chay binh thuong kem thong bao.
 - **Hoan tac** cho nhap media / tao Scene va thuoc tinh Scene. **Timeline**: zoom/cuon ngang, chon nhieu keyframe, keo nhom, Ctrl+C / Ctrl+V.
-- Chua co (de dot sau): MIDI, NDI, camera.
+- Chua co (de dot sau): MIDI. (NDI, camera: xem M5b.)
 
 ## M4b them (hoat hoa)
 - Layer: **xoay**, **cat (crop)** theo hinh da xoay, **blend** Add/Multiply/Screen. O co vien vang = dang co keyframe.

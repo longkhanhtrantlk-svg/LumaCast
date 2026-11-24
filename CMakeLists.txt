@@ -95,6 +95,7 @@ add_library(lumacast_ui STATIC
   src/app/TimelineWidget.h src/app/TimelineWidget.cpp
   src/app/LockButton.h src/app/LockButton.cpp
   src/app/AudioPanel.h src/app/AudioPanel.cpp
+  src/app/LiveDialogs.h src/app/LiveDialogs.cpp
   src/app/SettingsDialog.h src/app/SettingsDialog.cpp
   src/app/MainWindow.h src/app/MainWindow.cpp
 )
@@ -157,3 +158,7 @@ target_link_libraries(lumacast_live_tests PRIVATE lumacast_core)
 target_compile_definitions(lumacast_live_tests PRIVATE LUMACAST_FAKE_NDI_LIB="$<TARGET_FILE:lumacast_fake_ndi>")
 add_dependencies(lumacast_live_tests lumacast_fake_ndi)
 add_test(NAME live COMMAND lumacast_live_tests)
+
+add_executable(lumacast_live_ui_tests tests/test_live_ui.cpp)
+target_link_libraries(lumacast_live_ui_tests PRIVATE lumacast_ui)
+add_test(NAME live_ui COMMAND lumacast_live_ui_tests)

@@ -44,6 +44,14 @@ Build can FFmpeg co **swresample** (`vcpkg install ffmpeg:x64-windows` da gom sa
 4. Rut tai nghe / doi thiet bi mac dinh khi dang chay (T-AUD-HOT). `curl http://127.0.0.1:8088/api/audio` (neu bat HTTP) cho `underruns`.
 Neu khong co tieng: kiem tra dong "Am thanh:" trong `%AppData%\LumaCast\logs\lumacast.log` (thiet bi hong thi LumaCast tu dung backend Null va hinh van chay).
 
+## 5c. Test NDI va camera (M5b)
+Build khong can NDI SDK (runtime duoc nap dong luc chay). Camera dung Media Foundation co san cua Windows - khong can cai them. Cac thu vien `mfplat mf mfreadwrite mfuuid` da duoc them vao CMake; neu link loi thieu `Mf*.lib`, kiem tra Windows SDK da cai.
+1. **Camera:** cam webcam USB, mo `lumacast.exe`, *File > Them camera...* -> chon thiet bi + che do -> Them -> nhap dup Scene -> TAKE. Rut USB roi cam lai (T-CAM, T-CAM-HOT). Tat Zoom/Teams truoc (camera dang bi dung se bao ro).
+2. **NDI vao/ra:** cai *NDI Tools* (mien phi, ndi.video) - **khong** copy DLL vao thu muc LumaCast. Mo *NDI Test Patterns* hoac OBS (NDI output), roi *File > Them nguon NDI...* (T-NDI-IN, T-NDI-LOSS). Roi *File > Them Output NDI...* va mo *NDI Studio Monitor* (T-NDI-OUT).
+3. May **khong** cai NDI: mo project co nguon NDI -> nguon hien "Chua cai NDI Runtime", khong crash (T-NDI-NONE). `set LUMACAST_NDI_DISABLE=1` de tat han NDI neu nghi runtime gay loi.
+4. Neu NDI crash/khong hien nguon: ABI trong `src/live/NdiRuntime.cpp` chua doi chieu voi header NDI cua ban - gui log `%AppData%\LumaCast\logs\lumacast.log` (dong "NDI Runtime nap tu ...").
+5. Khong co phan cung: `set LUMACAST_NDI_BACKEND=fake` va `set LUMACAST_CAMERA_BACKEND=fake` cho nguon gia de xem giao dien.
+
 ## 6. Bao loi
 Gui: ban build (commit), lenh da chay, thong bao loi, driver GPU. Neu build loi, dan nguyen van 20 dong loi dau tien.
 

@@ -116,7 +116,7 @@ struct FakeSource {
                         e.a.data.resize(size_t(cfg.audioBlock) * 2);
                         for (int i = 0; i < cfg.audioBlock; ++i) {
                             const float v = 0.25f * float(std::sin(aPhase));
-                            aPhase += 2 * M_PI * cfg.audioHz / 48000.0;
+                            aPhase += 2 * 3.14159265358979323846 * cfg.audioHz / 48000.0;
                             e.a.data[size_t(i) * 2] = v; e.a.data[size_t(i) * 2 + 1] = v;
                         }
                         publish(e);

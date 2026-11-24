@@ -1,6 +1,6 @@
 # LumaCast — Kế hoạch phát triển (PLAN)
 
-**Cập nhật:** sau M5a (nhánh `m5a-audio`, xếp chồng trên `m4b` đã gồm M5c) · Yêu cầu: `SPEC.md` · Thiết kế: `KienTruc.md` · Kiểm thử: `TEST-PLAN.md`
+**Cập nhật:** sau M5b (nhánh `m5b-ndi-camera`, từ `main` đã gồm M4b, M5c, M5a) · Yêu cầu: `SPEC.md` · Thiết kế: `KienTruc.md` · Kiểm thử: `TEST-PLAN.md`
 
 ## 1. Hiện trạng
 | Mốc | Nội dung | Trạng thái | PR |
@@ -14,8 +14,9 @@
 | M4b | Xoay/crop/blend Layer, đồng hồ Scene, keyframe, timeline | 🟡 phần mã xong; còn thử trên Windows | (nhánh `m4b`) |
 | M5a | Âm thanh theo Channel: giải mã, mixer thread, WASAPI/Null, mute/âm lượng, crossfade theo transition, hình theo đồng hồ âm thanh, meter | 🟡 phần mã xong, test Linux (backend Null); còn thử WASAPI/đo lệch 30 phút trên Windows | (nhánh `m5a-audio`, **xếp chồng trên `m4b`**) |
 | M5c | Điều khiển ngoài (HTTP/SSE, OSC), tự khởi động/mở lại project, khoá vận hành, hoàn tác nhập media, timeline nâng cao | 🟡 phần mã xong, test Linux; còn thử trên Windows | (nhánh `m5-control`, **xếp chồng trên `m4b`**) |
+| M5b | NDI vào/ra, camera (Media Foundation), nguồn trực tiếp giữ khung cuối + tự nối lại, bù trôi đồng hồ âm thanh | 🟡 phần mã xong, test Linux (backend giả); còn thử NDI Runtime thật, Media Foundation, độ trễ trên Windows | (nhánh `m5b-ndi-camera`) |
 
-Quy mô mã: khoảng 11.000 dòng C++ (gồm test) · 833 kiểm tra tự động (709 cũ + 124 của M5a) · build được trên Linux và Windows (MSVC 2022, Qt 6.8.3, FFmpeg 9.1).
+Quy mô mã: khoảng 11.000 dòng C++ (gồm test) · 966 kiểm tra tự động (833 cũ + 133 của M5b) · build được trên Linux và Windows (MSVC 2022, Qt 6.8.3, FFmpeg 9.1).
 
 **Chưa được xác nhận trên phần cứng thật** (rủi ro đã biết, xem mục 5): nút Dừng hình trên Windows; fullscreen đúng màn LED;
 4 Output 4K; chạy liên tục nhiều giờ.
@@ -75,10 +76,17 @@ Kích cỡ: **S** vài ngày · **M** 1–2 tuần · **L** vài tuần (ước 
 - [ ] **Chưa làm / chưa thử:** thử WASAPI thật + nghe bằng tai; đo lệch hình–tiếng 30 phút; thiết bị đa kênh/rút thiết bị; mỗi Channel một thiết bị riêng; WASAPI exclusive; macOS (CoreAudio); nhập file chỉ có âm thanh; chuẩn LUFS/true-peak; âm thanh theo timeline (keyframe âm lượng).
 - **Nghiệm thu:** bật/tắt tiếng từng Channel; lệch hình–tiếng < 40 ms sau 30 phút; không vỡ tiếng khi chuyển cảnh. *(Trên Linux/Null đã đo −1…+27 ms qua nhiều vòng lặp và crossfade mượt qua meter; ba tiêu chí trên máy thật xem T-AUD-MUTE, T-AUD-SYNC, T-AUD-XFADE — **chưa thử**.)*
 
-### M5b — NDI và camera · Kích cỡ: M–L
-- [ ] NDI vào (SRC-06) và NDI ra như một `OutputSink`; camera/card capture (SRC-07).
-- **Nghiệm thu:** nhận NDI, độ trễ < 3 khung; webcam hiện hình; NDI ra mở được bằng phần mềm khác.
-- **Lưu ý:** cần NDI SDK (điều khoản đăng ký/ghi thương hiệu) — xem mục 5.
+### M5b — NDI và camera · Kích cỡ: M–L · **phần mã xong; còn thử với NDI thật và trên Windows**
+Làm trên nhánh `m5b-ndi-camera` (từ `main` đã gồm M5a).
+- [x] **Nguồn trực tiếp** (`LiveSource`): thread riêng giữ kết nối, chỉ giữ **một** khung mới nhất (không hàng chờ), **mất nguồn thì giữ khung cuối + báo trạng thái + tự nối lại** (backoff 0,5→2 s), render thread không bao giờ chờ mạng/thiết bị; trạng thái Connecting/Live/Lost/Unavailable hiện trên Media Pool và `GET /api/sources`.
+- [x] **NDI vào** (SRC-06): nạp động runtime NDI (không có header/thư viện NDI trong repo), liệt kê nguồn trên mạng, hình RGBA + âm thanh planar → mixer; nguồn lưu trong project (`type: "ndi"`, không tăng version). Không có runtime → "Chưa cài NDI Runtime", project vẫn mở.
+- [x] **NDI ra** (OUT-13): `NdiOutputSink` — Program → FBO → đọc ngược 2 PBO → thread gửi riêng (không chặn render), Đen/Dừng/Mẫu như màn hình, âm thanh bus Channel qua `AudioMixer::setTap`; thêm lúc đang chạy từ menu File (`RenderEngine::addNdiOutput`), lưu trong project (`outputs[].type = "ndi"`).
+- [x] **Camera/capture** (SRC-07): lớp `CameraBackend` (Media Foundation cho Windows — chỉ Win32/COM, không Qt Multimedia; backend giả cho test; Linux/macOS báo "chưa hỗ trợ"), chọn thiết bị + chế độ (độ phân giải/fps), rút/cắm = như mất nguồn NDI, nhận lại thiết bị theo tên khi id đổi.
+- [x] **Bù trôi đồng hồ âm thanh** (`DriftResampler`): resample tuyến tính tỉ lệ biến thiên chậm (±0,5%) do bộ PI điều khiển theo độ đầy ring; mất đồng bộ thì đặt lại cứng và đếm (xem `KienTruc.md` mục 16).
+- [x] UI: nút *Thêm NDI…*/*Thêm camera…* trên Media Pool (+ menu File), hộp thoại chọn nguồn/thiết bị/chế độ, *Thêm Output NDI…*, trạng thái nguồn (●/○ + tooltip), hàng Output NDI với trạng thái; khoá vận hành chặn thêm nguồn/Output; HTTP `GET /api/sources`, `POST /api/sources/{n}/reconnect` (lệnh sửa → 423 khi khoá), `state.sources`, `outputs[].kind`.
+- [ ] **Chưa làm / chưa thử:** NDI Runtime **thật** (ABI tự khai báo chưa đối chiếu header chính thức); Media Foundation thật (mới kiểm tra cú pháp bằng mingw); độ trễ < 3 khung và lệch hình–tiếng trên mạng thật; NDI ra mở được bằng phần mềm khác; âm thanh từ camera/card capture (WASAPI capture); camera Linux (V4L2)/macOS (AVFoundation); đa kênh > 2 (lấy 2 kênh đầu); NDI HX/NDI|Failover/nhóm (groups); xoá Output NDI lúc đang chạy (sửa file project); hoàn tác thêm Output NDI; ghi nhãn "NDI®" trong giao diện (xem `SPEC.md` mục 5.1).
+- **Nghiệm thu:** nhận NDI, độ trễ < 3 khung; webcam hiện hình; NDI ra mở được bằng phần mềm khác. *(Backend giả: ✅ hình/tiếng/mất nguồn/nối lại/Program thật qua GPU → NDI; độ trễ trong tiến trình đo được ~1 khung render; ba tiêu chí trên máy thật xem T-NDI-IN, T-CAM, T-NDI-OUT — **chưa thử**.)*
+- **Lưu ý:** điều khoản NDI (đăng ký, ghi thương hiệu, không phân phối lại runtime) — `SPEC.md` mục 5.1, R7.
 
 ### M5c — Điều khiển ngoài và vận hành · Kích cỡ: M · **phần mã xong (đợt A), test Linux; còn thử trên Windows**
 Làm trên nhánh `m5-control`, tách từ `m4b` (PR xếp chồng; chưa merge `m4b` vào `main`).
@@ -88,7 +96,7 @@ Làm trên nhánh `m5-control`, tách từ `m4b` (PR xếp chồng; chưa merge 
 - [x] **P0-4** Khoá vận hành (UI-07): vô hiệu điều khiển sửa, giữ điều khiển live, mở khoá bằng giữ nút 1 s, hiện trên thanh trạng thái, theo phiên; API tôn trọng (có cơ chế `edit` → 423).
 - [x] **P1-5** Hoàn tác cho nhập media/tạo Scene từ Media Pool và thuộc tính Scene (PRJ-07, một phần).
 - [x] **P1-6** Timeline: zoom/cuộn ngang, chọn nhiều keyframe, kéo nhóm, sao chép/dán (SCN-07).
-- [ ] **Chưa làm / để đợt sau (cố ý loại khỏi đợt A):** **MIDI** (cần API Windows, không test được trên Linux), **NDI** và **camera** (M5b); chế độ Operator tối giản và Multiview (UI-06); đặt tham số Layer/Effect qua API; hoàn tác đổi tên/xoá Scene và thêm/xoá Output (chưa có giao diện); phím tắt tuỳ chỉnh.
+- [ ] **Chưa làm / để đợt sau (cố ý loại khỏi đợt A):** **MIDI** (cần API Windows, không test được trên Linux), ~~NDI và camera~~ (đã làm ở M5b); chế độ Operator tối giản và Multiview (UI-06); đặt tham số Layer/Effect qua API; hoàn tác đổi tên/xoá Scene và thêm/xoá Output (chưa có giao diện); phím tắt tuỳ chỉnh.
 - **Nghiệm thu:** điều khiển được từ điện thoại/Companion (✅ test socket thật trên Linux; **chưa thử điện thoại/Companion/LAN thật**); thao tác ngoài tuân theo cùng quy tắc an toàn như giao diện (✅ test: Preview không đổi Program, Đen đúng phạm vi, chỉ số sai → 404/400, khoá → 423).
 
 ### M6 — Hiệu năng và phát hành Windows · Kích cỡ: L
@@ -114,7 +122,7 @@ M5a/M5b/M5c có thể đổi thứ tự theo nhu cầu thực tế của buổi 
 | R4 | Plug-in bên thứ ba treo/crash | Sập cả show | Shader plug-in là đường chính, native có hạn chạy và vô hiệu hoá, tách tiến trình sau |
 | R5 | Chuyển Qt/FFmpeg bản mới làm vỡ build (đã gặp: Qt 6.8 yêu cầu `Q_OBJECT`) | Chặn phát triển | Build thử Windows trước mỗi merge; ghi phiên bản đã dùng trong README |
 | R6 | OpenGL bị Apple ngừng phát triển | Chặn macOS | Giữ ranh giới GPU hẹp (nguyên tắc 4), làm M7 qua RHI |
-| R7 | Điều khoản NDI SDK và giấy phép thương mại của Qt khi bán gói Thương mại | Pháp lý | Xác nhận trước M5b/M6; giữ liên kết động LGPL |
+| R7 | Điều khoản NDI SDK và giấy phép thương mại của Qt khi bán gói Thương mại | Pháp lý | **M5b đã làm theo hướng giảm rủi ro:** không commit/không liên kết tĩnh NDI SDK, nạp động runtime, tự tắt khi không có; **vẫn cần bạn xác nhận điều khoản NDI (đăng ký, ghi "NDI®", không phát hành kèm runtime) và đối chiếu ABI trước khi phát hành** (`SPEC.md` 5.1); giữ liên kết động LGPL cho Qt |
 | R8 | Phạm vi lớn so với một người làm | Chậm tiến độ | Làm theo mốc nhỏ, P0 trước; mỗi PR có thể phát hành độc lập |
 | R9 | Chưa có máy LED/bộ gửi tín hiệu thật để kiểm tra trong môi trường phát triển | Lỗi chỉ lộ ra ngoài hiện trường | M3c bắt buộc có buổi thử trên phần cứng thật |
 

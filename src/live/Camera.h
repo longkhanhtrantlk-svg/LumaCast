@@ -1,6 +1,7 @@
 #pragma once
 #include "live/LiveInput.h"
 #include <QString>
+#include <cmath>
 #include <memory>
 #include <vector>
 

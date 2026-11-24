@@ -1,4 +1,5 @@
 #include "PluginManager.h"
+#include "core/AppSettings.h"
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDir>
@@ -51,7 +52,7 @@ void PluginManager::rewatch() {
 }
 
 void PluginManager::setEnabled(const QString& id, bool on) {
-    QSettings st("LumaCast", "LumaCast");
+    QSettings st = appSettings();
     QStringList off = st.value("disabledPlugins").toStringList();
     off.removeAll(id);
     if (!on) off << id;
@@ -61,7 +62,7 @@ void PluginManager::setEnabled(const QString& id, bool on) {
 
 void PluginManager::rescan() {
     ++scanCount_;
-    const QStringList disabled = QSettings("LumaCast", "LumaCast").value("disabledPlugins").toStringList();
+    const QStringList disabled = appSettings().value("disabledPlugins").toStringList();
 
     std::vector<EffectDef> defs = builtinEffects();
     std::vector<PluginInfo> infos;

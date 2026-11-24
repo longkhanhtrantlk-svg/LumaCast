@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 #include "core/Log.h"
+#include "core/AppSettings.h"
 #include "core/Startup.h"
 #include "Theme.h"
 #include <QApplication>
@@ -48,7 +49,13 @@ int main(int argc, char** argv) {
 
     QApplication app(argc, argv);
     app.setApplicationName("LumaCast");
-    initLogging(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/logs");
+    // LUMACAST_CONFIG_DIR: dat thu muc cau hinh + log rieng (ban mang theo/kiem thu); khong dat thi dung vi tri chuan cua he dieu hanh (registry tren Windows).
+    const QString cfgDir = qEnvironmentVariable("LUMACAST_CONFIG_DIR");
+    if (!cfgDir.isEmpty()) {
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, cfgDir);
+    }
+    initLogging(cfgDir.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/logs" : cfgDir + "/logs");
     qInfo() << "LumaCast khoi dong";
     applyDarkTheme(app);
     QCommandLineParser cli;
@@ -66,7 +73,7 @@ int main(int argc, char** argv) {
     cli.process(app);
 
     Project proj;
-    QSettings cfg("LumaCast", "LumaCast");
+    QSettings cfg = appSettings();
     QString startupNotice;
     auto askRestore = [](const QFileInfo& autosave) {
         return QMessageBox::question(nullptr, "Khôi phục project",

@@ -4,6 +4,7 @@
 #include "MonitorWidget.h"
 #include "ParamEditor.h"
 #include "SettingsDialog.h"
+#include "core/AppSettings.h"
 #include "core/Startup.h"
 #include "TimelineWidget.h"
 #include "render/OutputWindow.h"
@@ -80,7 +81,7 @@ MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList plugi
     connect(ctl_, &ControlService::statusChanged, this, [this] { updateControlStatus(); });
     buildMenus();
     defaultState_ = saveState();
-    QSettings st("LumaCast", "LumaCast");
+    QSettings st = appSettings();
     if (st.contains("geometry")) restoreGeometry(st.value("geometry").toByteArray());
     else resize(1500, 900);
     if (st.contains("state")) restoreState(st.value("state").toByteArray());
@@ -95,7 +96,7 @@ MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList plugi
     refresh();
     refreshSlow();
     {
-        QSettings cst("LumaCast", "LumaCast");
+        QSettings cst = appSettings();
         const ControlSettings cs = ControlSettings::load(cst);
         if (cs.httpEnabled || cs.oscEnabled) {
             const QString e = ctl_->apply(cs);
@@ -125,7 +126,7 @@ void MainWindow::setLocked(bool on) {
     importBtn_->setEnabled(!on);
     importAct_->setEnabled(!on);
     openAct_->setEnabled(!on);
-    recentMenu_->setEnabled(!on && !QSettings("LumaCast", "LumaCast").value("recent").toStringList().isEmpty());
+    recentMenu_->setEnabled(!on && !appSettings().value("recent").toStringList().isEmpty());
     settingsAct_->setEnabled(!on);
     updateUndoActions();
     lockLabel_->setText(on ? "🔒 KHOÁ VẬN HÀNH" : "🔓 Mở khoá");
@@ -905,7 +906,7 @@ void MainWindow::saveProject(bool saveAs) {
         const bool ok = lc::saveProject(project_, path, &err);
         QMetaObject::invokeMethod(this, [this, ok, err, path] {
             showMessage(ok ? "Đã lưu: " + path : "Lỗi lưu: " + err);
-            if (ok) { addRecent(path); updateTitle(); QFile::remove(path + ".autosave"); QSettings stl("LumaCast", "LumaCast"); rememberProject(stl, path); }
+            if (ok) { addRecent(path); updateTitle(); QFile::remove(path + ".autosave"); QSettings stl = appSettings(); rememberProject(stl, path); }
         }, Qt::QueuedConnection);
     });
 }
@@ -915,7 +916,7 @@ void MainWindow::updateTitle() {
 }
 
 void MainWindow::addRecent(const QString& path) {
-    QSettings st("LumaCast", "LumaCast");
+    QSettings st = appSettings();
     QStringList l = st.value("recent").toStringList();
     l.removeAll(path);
     l.prepend(path);
@@ -926,7 +927,7 @@ void MainWindow::addRecent(const QString& path) {
 
 void MainWindow::rebuildRecentMenu() {
     recentMenu_->clear();
-    const QStringList l = QSettings("LumaCast", "LumaCast").value("recent").toStringList();
+    const QStringList l = appSettings().value("recent").toStringList();
     for (const QString& p : l) recentMenu_->addAction(p, this, [this, p] { launchProject(p); });
     recentMenu_->setEnabled(!l.isEmpty() && !locked_);
 }
@@ -964,7 +965,7 @@ void MainWindow::closeEvent(QCloseEvent* e) {
         e->ignore();
         return;
     }
-    QSettings st("LumaCast", "LumaCast");
+    QSettings st = appSettings();
     st.setValue("geometry", saveGeometry());
     st.setValue("state", saveState());
     e->accept();

@@ -36,6 +36,7 @@
 #include "LockButton.h"
 #include <QFile>
 #include <QDir>
+#include "core/AppSettings.h"
 #include "core/Startup.h"
 #include <iostream>
 
@@ -128,7 +129,7 @@ int main(int argc, char** argv) {
         pump(100);
         auto* ctlLabel = w.findChild<QLabel*>("ctlLabel");
         CHECK(ctlLabel && ctlLabel->text().contains("HTTP") && ctlLabel->text().contains(QString::number(w.control().httpPort())), "thanh trang thai hien cong HTTP dang mo");
-        QSettings st("LumaCast", "LumaCast");
+        QSettings st = appSettings();
         const ControlSettings saved = ControlSettings::load(st);
         CHECK(saved.httpEnabled && saved.httpPort == w.control().httpPort() && !saved.httpLan, "cai dat duoc luu vao QSettings");
         oscPort->setValue(freePort());
@@ -230,7 +231,7 @@ int main(int argc, char** argv) {
         CHECK(dlg.applyAndSave().isEmpty() && autostartState(reg, exe) == AutostartState::On, "tick 'cung Windows' + OK: ghi registry gia");
         ro->setChecked(false);
         dlg.applyAndSave();
-        QSettings st("LumaCast", "LumaCast");
+        QSettings st = appSettings();
         CHECK(!reopenLastEnabled(st), "bo tick 'tu mo lai project': luu QSettings");
         reg.setValue(kRunValueName, "\"/da/di/chuyen/lumacast.exe\"");
         SettingsDialog dlg2(w.control(), nullptr, &reg, exe);
@@ -248,10 +249,10 @@ int main(int argc, char** argv) {
 
     // ================= P0-3: luu project => nho la project gan nhat =================
     {
-        QSettings st("LumaCast", "LumaCast");
+        QSettings st = appSettings();
         st.remove(kKeyLastProject);
         w.saveProject(false);
-        CHECK(waitFor([&] { QSettings s2("LumaCast", "LumaCast"); return lastProjectPath(s2) == QFileInfo(p.filePath).absoluteFilePath(); }), "Luu project: nho lam project gan nhat");
+        CHECK(waitFor([&] { QSettings s2 = appSettings(); return lastProjectPath(s2) == QFileInfo(p.filePath).absoluteFilePath(); }), "Luu project: nho lam project gan nhat");
     }
 
     // ================= P0-3: chay that lumacast voi/khong project gan nhat (tien trinh con) =================
@@ -259,8 +260,7 @@ int main(int argc, char** argv) {
         auto runApp = [&](const QString& cfgHome, const QStringList& args, int keepMs) {
             QProcess pr;
             QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-            env.insert("XDG_CONFIG_HOME", cfgHome + "/config");
-            env.insert("XDG_DATA_HOME", cfgHome + "/data");
+            env.insert("LUMACAST_CONFIG_DIR", cfgHome + "/config");           // cau hinh + log rieng; khong dung vao registry/cau hinh that
             pr.setProcessEnvironment(env);
             pr.start(LUMACAST_EXE, args);
             pr.waitForStarted(5000);
@@ -272,12 +272,12 @@ int main(int argc, char** argv) {
             return alive;
         };
         auto readLog = [&](const QString& home) {
-            QFile f(home + "/data/LumaCast/logs/lumacast.log");
+            QFile f(home + "/config/logs/lumacast.log");
             return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString();
         };
         auto writeCfg = [&](const QString& home, const QString& lastPath) {
             QDir().mkpath(home + "/config/LumaCast");
-            QSettings c(home + "/config/LumaCast/LumaCast.conf", QSettings::IniFormat);
+            QSettings c(home + "/config/LumaCast/LumaCast.ini", QSettings::IniFormat);
             c.setValue(kKeyLastProject, lastPath);
             c.sync();
         };
@@ -316,7 +316,7 @@ int main(int argc, char** argv) {
         const QString h4 = dir.filePath("home4");
         writeCfg(h4, pj);
         {
-            QSettings c(h4 + "/config/LumaCast/LumaCast.conf", QSettings::IniFormat);
+            QSettings c(h4 + "/config/LumaCast/LumaCast.ini", QSettings::IniFormat);
             c.setValue(kKeyReopenLast, false);
             c.sync();
         }
@@ -501,7 +501,7 @@ int main(int argc, char** argv) {
         undoA->trigger();                                        // tra ve trang thai ban dau (bo key X + Y)
         pump(200);
         // Ctrl+L khoa
-        QSettings stLock("LumaCast", "LumaCast");
+        QSettings stLock = appSettings();
         bool savedLock = false;
         for (const QString& k : stLock.allKeys()) savedLock = savedLock || k.contains("lock", Qt::CaseInsensitive);
         CHECK(!savedLock, "trang thai khoa KHONG luu vao QSettings (chi theo phien)");

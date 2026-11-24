@@ -1,4 +1,5 @@
 #include "SettingsDialog.h"
+#include "core/AppSettings.h"
 #include <QCheckBox>
 #include <QCoreApplication>
 #include <QDir>
@@ -106,7 +107,7 @@ SettingsDialog::SettingsDialog(ControlService& control, QWidget* parent, QSettin
 }
 
 void SettingsDialog::loadFromSettings() {
-    QSettings st("LumaCast", "LumaCast");
+    QSettings st = appSettings();
     reopen_->setChecked(reopenLastEnabled(st));
     const QString last = lastProjectPath(st);
     QString hint = last.isEmpty() ? "Chưa có project nào được nhớ." : "Project gần nhất: " + QDir::toNativeSeparators(last);
@@ -161,7 +162,7 @@ QString SettingsDialog::applyAndSave() {
     const ControlSettings s = collect();
     QString err = control_.apply(s);                       // tu log bat/tat; LAN khong token se bi tu choi tai day
     {
-        QSettings stp("LumaCast", "LumaCast");
+        QSettings stp = appSettings();
         setReopenLast(stp, reopen_->isChecked());
     }
     if (runKey_) {
@@ -177,7 +178,7 @@ QString SettingsDialog::applyAndSave() {
         }
     }
     err_->setText(err);
-    QSettings st("LumaCast", "LumaCast");
+    QSettings st = appSettings();
     s.save(st);                                            // luu ca khi cong bi chiem: de nguoi dung sua tiep, khong mat nhap
     return err;
 }

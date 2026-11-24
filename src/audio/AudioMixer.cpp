@@ -28,6 +28,15 @@ void AudioMixer::setPlan(std::shared_ptr<const AudioPlan> plan) {
     dirty_ = true;
 }
 
+void AudioMixer::setTap(int ch, std::shared_ptr<AudioStream> tap) {
+    if (ch < 0 || ch >= kMaxAudioChannels) return;
+    std::lock_guard lk(tapMu_);
+    taps_[size_t(ch)] = std::move(tap);
+    int n = 0;
+    for (const auto& t : taps_) n += t != nullptr;
+    tapCount_ = n;
+}
+
 QString AudioMixer::deviceName() const { return dev_ ? dev_->name() : QString(); }
 
 void AudioMixer::adoptPlan() {
@@ -105,6 +114,12 @@ void AudioMixer::renderBlock(float* out, int frames) {
                 }
             }
             prev_.assign(now.begin(), now.end());
+        }
+        // 2b) tap bus (NDI ra): chi khi co tap nao
+        if (tapCount_.load(std::memory_order_relaxed) > 0) {
+            std::lock_guard lk(tapMu_);
+            for (int c = 0; c < nch; ++c)
+                if (taps_[size_t(c)]) taps_[size_t(c)]->push(bus_[size_t(c)].data(), size_t(n));
         }
         // 3) meter tung bus + cong vao master
         const float decay = std::exp(-float(n) / float(kAudioRate) / 0.4f);

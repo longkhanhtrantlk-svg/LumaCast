@@ -12,6 +12,8 @@ Mã nguồn tham chiếu: `src/core/Project.cpp` (`saveProject`, `loadProject`).
 
 **Thêm ở M5a (tất cả tuỳ chọn, `version` vẫn 1, project cũ mở bình thường):** `audio.device` ở gốc, `volume`/`mute` ở `channels[]`, `volume` ở `layers[]`. Giá trị mặc định (100 %, không mute, thiết bị mặc định) **không được ghi ra** nên file không đổi nếu không dùng âm thanh.
 
+**Thêm ở M5b (tất cả tuỳ chọn, `version` vẫn 1):** nguồn `type: "ndi"` và `"camera"` ở `sources[]`, và Output `type: "ndi"` ở `outputs[]` (xem bảng). Project cũ mở bình thường; project có nguồn/Output NDI mở được cả trên máy **không có** NDI Runtime/camera (nguồn ở trạng thái "không khả dụng", Output NDI chờ — không phải lỗi nạp). Bản LumaCast cũ (trước M5b) mở project mới sẽ báo "Loai nguon khong biet" ở nguồn trực tiếp.
+
 **Không đổi ở M5c:** vẫn `version` 1, không thêm trường. Cài đặt điều khiển ngoài (cổng, LAN, token), Khoá vận hành, tuỳ chọn tự khởi động và "project gần nhất" là **cài đặt theo máy/phiên** (`QSettings`), cố ý **không** lưu vào file project để mở project trên máy khác không mang theo token hay mở cổng mạng.
 
 ## 2. Cấu trúc
@@ -39,11 +41,17 @@ Mã nguồn tham chiếu: `src/core/Project.cpp` (`saveProject`, `loadProject`).
 | Trường | Kiểu | Ghi chú |
 |---|---|---|
 | `id` | chuỗi | **duy nhất, không rỗng**; Layer tham chiếu theo `id` |
-| `type` | chuỗi | `video` · `image` · `color` · `testpattern` |
+| `type` | chuỗi | `video` · `image` · `color` · `testpattern` · `ndi` · `camera` |
 | `path` | chuỗi | `video`/`image`: đường dẫn tương đối |
 | `color` | chuỗi `#AARRGGBB` | `color` |
 | `label` | chuỗi | `color`, `testpattern` |
-| `width`, `height` | số nguyên | `testpattern`, mặc định 1920×1080 |
+| `width`, `height` | số nguyên | `testpattern`, mặc định 1920×1080; `camera`: độ phân giải yêu cầu (mặc định 0×0 = để thiết bị chọn; giá trị âm/> 16384 bị đưa về 0×0) |
+| `ndiName` | chuỗi | `ndi`: tên nguồn NDI như NDI báo (`MÁY (Tên)`); **bắt buộc, rỗng là lỗi nạp** |
+| `ndiUrl` | chuỗi | `ndi`: địa chỉ nguồn (tuỳ chọn) |
+| `device` | chuỗi | `camera`: id thiết bị (Windows: symbolic link của Media Foundation) |
+| `deviceName` | chuỗi | `camera`: tên hiển thị; dùng nhận lại thiết bị khi `device` đổi (cổng USB khác). Cần ít nhất một trong `device`/`deviceName` |
+| `fps` | số | `camera`: fps yêu cầu (0 = để thiết bị chọn; giá trị không hợp lệ → 0) |
+| `label` | chuỗi | cũng dùng cho `ndi`/`camera` (tên hiển thị trong Media Pool) |
 
 ### 2.2 `scenes[]`
 | Trường | Kiểu | Mặc định | Ghi chú |
@@ -103,11 +111,14 @@ Chưa lưu trong project: Transition đang chọn (kiểu, tham số, easing, St
 | Trường | Kiểu | Mặc định | Ghi chú |
 |---|---|---|---|
 | `name` | chuỗi | `"Output N"` | |
+| `type` | chuỗi | (không có = màn hình) | `"ndi"`: Output NDI (M5b). Không ghi ra cho Output màn hình |
+| `ndiName` | chuỗi | (dùng `name`) | `type: "ndi"`: tên nguồn hiện trên mạng NDI |
+| `ndiAudio` | bool | true | `type: "ndi"`: gửi kèm âm thanh bus của Channel (chỉ ghi ra khi `false`) |
 | `channel` | số nguyên | 0 | chỉ số `channels[]`; sai là lỗi nạp |
 | `screen` | số nguyên | -1 | chỉ số màn hình hệ điều hành (khi toàn màn hình); chỉ dùng khi không có `screenName`; chỉ số vượt quá số màn = Output **không hiển thị** |
 | `screenName` | chuỗi | (rỗng) | tên màn hình (`QScreen::name()`, ví dụ `\\.\DISPLAY2`), **ưu tiên hơn `screen`**; tự ghi nhớ khi Output khởi động toàn màn hình. Không còn màn đó = không hiển thị |
 | `fullscreen` | bool | false | |
-| `width`, `height` | số nguyên | 1920, 1080 | kích thước khi chạy ở chế độ cửa sổ |
+| `width`, `height` | số nguyên | 1920, 1080 | kích thước khi chạy ở chế độ cửa sổ; Output NDI: kích thước khung gửi (16…8192, ngoài khoảng là lỗi nạp) |
 | `scale` | chuỗi | `fit` | `fit` · `fill` · `stretch` · `pixel` |
 | `rotation` | số | 0 | được đưa về bội số của 90 (0/90/180/270), chiều kim đồng hồ |
 | `crop` | `[x, y, w, h]` | `[0,0,1,1]` | vùng của Channel, chuẩn hoá, gốc trên-trái; `w`,`h` phải > 0 |

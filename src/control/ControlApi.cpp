@@ -1,4 +1,6 @@
 #include "ControlApi.h"
+#include "live/LiveSource.h"
+#include "render/NdiOutput.h"
 #include "control/ControlPage.h"
 #include <QDateTime>
 #include <QJsonArray>
@@ -86,6 +88,8 @@ ControlApi::ControlApi(Project& p, RenderEngine& e, OutputSupervisor* s, QObject
 void ControlApi::refreshProject() {
     channels_ = project_.channels;
     scenes_ = project_.scenes;
+    sources_.clear();
+    for (const auto& d : project_.sources) sources_.push_back(d.source);
     chScenes_.clear();
     for (const auto& c : channels_) chScenes_.push_back(c->scenes);
     const size_t keepFps = outs_.size();
@@ -95,7 +99,7 @@ void ControlApi::refreshProject() {
         const OutputConfig& c = engine_.output(i)->config();
         OutInfo o;
         if (size_t(i) < keepFps) o = old[i];
-        o.name = c.name; o.channel = c.channel; o.size = c.size;
+        o.name = c.name; o.channel = c.channel; o.size = c.size; o.ndi = c.kind == OutputKind::Ndi;
         outs_.push_back(o);
     }
 }
@@ -295,6 +299,38 @@ CmdResult ControlApi::sceneTransport(int scene, Transport t, double seconds) {
     return CmdResult::success({{"scene", scene}});
 }
 
+CmdResult ControlApi::liveSources() {
+    QJsonArray arr;
+    for (size_t i = 0; i < sources_.size(); ++i) {
+        auto* ls = dynamic_cast<LiveSource*>(sources_[i].get());
+        if (!ls) continue;
+        const LiveSource::Stats st = ls->stats();
+        QJsonObject o;
+        o["index"] = int(i + 1);
+        o["name"] = ls->name();
+        o["kind"] = ls->kind();
+        o["state"] = liveStateId(ls->state());
+        o["status"] = ls->statusText();
+        o["width"] = st.width;
+        o["height"] = st.height;
+        o["fps"] = std::round(st.fps);
+        o["reconnects"] = double(st.reconnects);
+        if (ls->kind() == "ndi")                               // bu troi dong ho am thanh: do dem (ms), lech ti le (ppm), so lan mat dong bo
+            o["audio"] = QJsonObject{{"fillMs", std::round(st.audioFillMs)}, {"driftPpm", std::round(st.audioRatioPpm)}, {"resyncs", double(st.audioResyncs)}};
+        arr.append(o);
+    }
+    return CmdResult::success({{"sources", arr}});
+}
+
+CmdResult ControlApi::reconnectSource(int index) {
+    if (index < 1 || index > int(sources_.size()))
+        return CmdResult::error(404, "source_not_found", QString("Không có nguồn %1 (có %2 nguồn)").arg(index).arg(sources_.size()));
+    auto* ls = dynamic_cast<LiveSource*>(sources_[size_t(index - 1)].get());
+    if (!ls) return CmdResult::error(400, "not_live", "Nguồn này không phải nguồn trực tiếp (NDI/camera)");
+    ls->reconnect();
+    return CmdResult::success({{"source", index}});
+}
+
 // ---------------------------------------------------------------- trang thai
 
 QJsonObject ControlApi::state() {
@@ -357,9 +393,14 @@ QJsonObject ControlApi::state() {
         o["pattern"] = s->testPattern.load();
         o["health"] = healthId(sup_ ? sup_->health(int(i)) : OutputHealth::Ok);
         o["fps"] = std::round(outs_[i].fps);
+        o["kind"] = outs_[i].ndi ? "ndi" : "screen";
+        if (auto* nd = dynamic_cast<NdiOutputSink*>(s)) {
+            o["ndi"] = QJsonObject{{"name", nd->sourceName()}, {"sending", nd->sending()}, {"connections", std::max(0, nd->connections())}, {"status", nd->statusText()}};
+        }
         outs.append(o);
     }
     root["outputs"] = outs;
+    root["sources"] = liveSources().data["sources"];
     return root;
 }
 
@@ -418,6 +459,11 @@ void ControlApi::buildDefaultRoutes() {
         }
         if (!b["volume"].isDouble()) return CmdResult::error(400, "bad_request", "Cần trường số 'volume' (0–2) hoặc 'db'");
         return audioVolume(n, b["volume"].toDouble());
+    });
+    addRoute("GET", "/api/sources", false, [this](const QStringList&, const QJsonObject&) { return liveSources(); });
+    addRoute("POST", "/api/sources/{n}/reconnect", true, [this, idx](const QStringList& p, const QJsonObject&) {
+        int n; CmdResult e;
+        return idx(p[0], n, e) ? reconnectSource(n) : e;
     });
     addRoute("GET", "/api/audio", false, [this](const QStringList&, const QJsonObject&) { return audioInfo(); });
     for (const auto& [name, flag] : {std::pair<const char*, OutFlag>{"black", OutFlag::Black}, {"freeze", OutFlag::Freeze}, {"pattern", OutFlag::Pattern}})

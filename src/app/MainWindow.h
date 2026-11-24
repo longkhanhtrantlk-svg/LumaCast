@@ -4,6 +4,7 @@
 #include "render/OutputSupervisor.h"
 #include "render/PluginManager.h"
 #include "core/Transition.h"
+#include "live/Camera.h"
 #include <QMainWindow>
 #include <QMap>
 #include <QTimer>
@@ -19,6 +20,7 @@ class QPushButton;
 class QSlider;
 class QToolButton;
 class QUndoCommand;
+class QVBoxLayout;
 
 
 namespace lc {
@@ -52,6 +54,14 @@ public:
     void saveProject(bool saveAs);
     void autosaveNow();
     bool addMediaFile(const QString& path);        // them nguon + Scene tu file; false neu loi
+    // M5b: nguon truc tiep (them nguon + Scene giong nhap media, hoan tac duoc) va Output NDI. Nguon luon them duoc ke ca khi chua co NDI/camera
+    // (trang thai "khong kha dung"). Tra false khi bi khoa van hanh / du lieu sai.
+    bool addNdiSource(const QString& name, const QString& url = {}, const QString& label = {});
+    bool addCameraSource(const QString& deviceId, const QString& deviceName, CameraFormat fmt, const QString& label = {});
+    bool addNdiOutput(const QString& name, int channel, QSize size, bool audio);   // khong hoan tac duoc; false neu loi
+    void showAddNdiSource();
+    void showAddCamera();
+    void showAddNdiOutput();
     QString autosavePath() const;
     InspectorPanel* inspector() const { return inspector_; }
     AudioPanel* audioPanel() const { return audioPanel_; }
@@ -83,6 +93,8 @@ private:
     void onProjectChanged();
     void rebuildSceneList();
     void rebuildMediaList();
+    void addOutputRow(int i);
+    void updateLiveStatus();
     int channelIdx() const;
     QString sceneName(int ch, int idx) const;
     void take();
@@ -125,6 +137,9 @@ private:
     QLabel* statusLabel_ = nullptr;
     QMenu* recentMenu_ = nullptr;
     std::vector<OutRow> outRows_;
+    QVBoxLayout* outRowsLayout_ = nullptr;
+    QAction *addNdiAct_ = nullptr, *addCamAct_ = nullptr, *addNdiOutAct_ = nullptr;
+    QPushButton *addNdiBtn_ = nullptr, *addCamBtn_ = nullptr;
     std::vector<std::vector<QString>> sceneNames_;     // theo kenh; snapshot de timer khong cham du lieu render thread
     QTimer fastTimer_, slowTimer_, autosaveTimer_;
     QByteArray defaultState_;

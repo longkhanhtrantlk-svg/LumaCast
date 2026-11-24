@@ -7,11 +7,15 @@ namespace lc {
 // Mo ta mot nguon de luu/mo project (id on dinh de Layer tham chieu).
 struct SourceDef {
     QString id;
-    QString type;               // "video" | "image" | "color" | "testpattern"
+    QString type;               // "video" | "image" | "color" | "testpattern" | "ndi" | "camera"
     QString path;               // duong dan tuyet doi (video/image)
     QString label;
     QColor color{Qt::black};
-    QSize size{1920, 1080};     // testpattern
+    QSize size{1920, 1080};     // testpattern; camera: do phan giai yeu cau (0x0 = de thiet bi chon)
+    QString device;             // ndi: ten nguon NDI; camera: id thiet bi (Windows: symbolic link)
+    QString deviceName;         // camera: ten hien thi, de nhan ra lai khi id doi
+    QString url;                // ndi: dia chi nguon (tuy chon)
+    double fps = 0;             // camera: fps yeu cau (0 = de thiet bi chon)
     std::shared_ptr<Source> source;
 };
 

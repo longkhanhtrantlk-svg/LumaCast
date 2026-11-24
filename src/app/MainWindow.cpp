@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 #include "AudioPanel.h"
 #include "InspectorPanel.h"
+#include "LiveDialogs.h"
 #include "LockButton.h"
 #include "MonitorWidget.h"
 #include "ParamEditor.h"
@@ -8,6 +9,8 @@
 #include "core/AppSettings.h"
 #include "core/Startup.h"
 #include "TimelineWidget.h"
+#include "live/LiveSource.h"
+#include "render/NdiOutput.h"
 #include "render/OutputWindow.h"
 #include "Theme.h"
 #include <QAction>
@@ -127,6 +130,8 @@ void MainWindow::setLocked(bool on) {
     audioPanel_->setEditLocked(on);
     importBtn_->setEnabled(!on);
     importAct_->setEnabled(!on);
+    for (QWidget* w : {static_cast<QWidget*>(addNdiBtn_), static_cast<QWidget*>(addCamBtn_)}) w->setEnabled(!on);
+    for (QAction* a : {addNdiAct_, addCamAct_, addNdiOutAct_}) a->setEnabled(!on);
     openAct_->setEnabled(!on);
     recentMenu_->setEnabled(!on && !appSettings().value("recent").toStringList().isEmpty());
     settingsAct_->setEnabled(!on);
@@ -308,36 +313,9 @@ void MainWindow::buildDocks() {
     outDock->setObjectName("dockOutputs");
     auto* outW = new QWidget;
     auto* ov = new QVBoxLayout(outW);
-    for (int i = 0; i < engine_.outputCount(); ++i) {
-        OutputSink* sink = engine_.output(i);
-        const OutputConfig& c = sink->config();
-        OutRow r;
-        auto* row = new QHBoxLayout;
-        r.dot = new QLabel("●");
-        r.info = new QLabel(QString("<b>%1</b><br><small>%2x%3 · kênh %4</small>")
-                                .arg(c.name).arg(c.size.width()).arg(c.size.height()).arg(c.channel + 1));
-        r.black = new QToolButton;
-        r.black->setText("Đen");
-        r.black->setCheckable(true);
-        r.freeze = new QToolButton;
-        r.freeze->setText("Dừng");
-        r.freeze->setCheckable(true);
-        r.freeze->setToolTip("Dừng hình: giữ nguyên khung hình cuối trên màn hình này");
-        r.pattern = new QToolButton;
-        r.pattern->setText("Mẫu");
-        r.pattern->setCheckable(true);
-        r.pattern->setToolTip("Mẫu thử: hiện lưới, thanh màu, thước điểm ảnh và toạ độ 4 góc đúng độ phân giải thật của màn hình này");
-        row->addWidget(r.dot);
-        row->addWidget(r.info, 1);
-        row->addWidget(r.black);
-        row->addWidget(r.freeze);
-        row->addWidget(r.pattern);
-        ov->addLayout(row);
-        connect(r.black, &QToolButton::toggled, this, [sink](bool on) { sink->black = on; });
-        connect(r.freeze, &QToolButton::toggled, this, [sink](bool on) { sink->freeze = on; });
-        connect(r.pattern, &QToolButton::toggled, this, [sink](bool on) { sink->testPattern = on; });
-        outRows_.push_back(r);
-    }
+    outRowsLayout_ = new QVBoxLayout;
+    ov->addLayout(outRowsLayout_);
+    for (int i = 0; i < engine_.outputCount(); ++i) addOutputRow(i);
     auto* allPattern = new QPushButton("Mẫu thử tất cả Output");
     allPattern->setObjectName("allPattern");
     allPattern->setCheckable(true);
@@ -373,6 +351,16 @@ void MainWindow::buildDocks() {
     auto* importB = new QPushButton("Nhập media...");
     importBtn_ = importB;
     mtop->addWidget(importB);
+    addNdiBtn_ = new QPushButton("Thêm NDI...");
+    addNdiBtn_->setObjectName("addNdiBtn");
+    addNdiBtn_->setToolTip("Thêm nguồn NDI từ mạng (cần NDI Runtime)");
+    addCamBtn_ = new QPushButton("Thêm camera...");
+    addCamBtn_->setObjectName("addCamBtn");
+    addCamBtn_->setToolTip("Thêm webcam / card capture");
+    mtop->addWidget(addNdiBtn_);
+    mtop->addWidget(addCamBtn_);
+    connect(addNdiBtn_, &QPushButton::clicked, this, [this] { showAddNdiSource(); });
+    connect(addCamBtn_, &QPushButton::clicked, this, [this] { showAddCamera(); });
     mtop->addWidget(new QLabel("Nhấp đúp để tạo Scene từ nguồn"));
     mtop->addStretch();
     mv->addLayout(mtop);
@@ -462,6 +450,37 @@ void MainWindow::buildDocks() {
     rebuildMediaList();
 }
 
+void MainWindow::addOutputRow(int i) {
+    OutputSink* sink = engine_.output(i);
+    const OutputConfig& c = sink->config();
+    OutRow r;
+    auto* row = new QHBoxLayout;
+    r.dot = new QLabel("●");
+    r.info = new QLabel(QString("<b>%1</b><br><small>%2x%3 · kênh %4</small>")
+                            .arg(c.name).arg(c.size.width()).arg(c.size.height()).arg(c.channel + 1));
+    r.black = new QToolButton;
+    r.black->setText("Đen");
+    r.black->setCheckable(true);
+    r.freeze = new QToolButton;
+    r.freeze->setText("Dừng");
+    r.freeze->setCheckable(true);
+    r.freeze->setToolTip("Dừng hình: giữ nguyên khung hình cuối trên màn hình này");
+    r.pattern = new QToolButton;
+    r.pattern->setText("Mẫu");
+    r.pattern->setCheckable(true);
+    r.pattern->setToolTip("Mẫu thử: hiện lưới, thanh màu, thước điểm ảnh và toạ độ 4 góc đúng độ phân giải thật của màn hình này");
+    row->addWidget(r.dot);
+    row->addWidget(r.info, 1);
+    row->addWidget(r.black);
+    row->addWidget(r.freeze);
+    row->addWidget(r.pattern);
+    outRowsLayout_->addLayout(row);
+    connect(r.black, &QToolButton::toggled, this, [sink](bool on) { sink->black = on; });
+    connect(r.freeze, &QToolButton::toggled, this, [sink](bool on) { sink->freeze = on; });
+    connect(r.pattern, &QToolButton::toggled, this, [sink](bool on) { sink->testPattern = on; });
+    outRows_.push_back(r);
+}
+
 void MainWindow::rebuildPluginList() {
     QSignalBlocker b(pluginList_);
     pluginList_->clear();
@@ -498,6 +517,9 @@ void MainWindow::buildMenus() {
     importAct_ = file->addAction("Nhập media...", this, [this] {
         for (const QString& f : QFileDialog::getOpenFileNames(this, "Nhập media", QString(), kMediaFilter)) addMediaFile(f);
     });
+    addNdiAct_ = file->addAction("Thêm nguồn NDI...", this, [this] { showAddNdiSource(); });
+    addCamAct_ = file->addAction("Thêm camera...", this, [this] { showAddCamera(); });
+    addNdiOutAct_ = file->addAction("Thêm Output NDI...", this, [this] { showAddNdiOutput(); });
     file->addSeparator();
     file->addAction("Thoát", QKeySequence::Quit, this, [this] { close(); });
     rebuildRecentMenu();
@@ -690,11 +712,14 @@ void MainWindow::refreshSlow() {
         const double fps = dt > 0 ? double(pr - r.lastPresented) / dt : 0;
         r.lastPresented = pr;
         if (exposed) ++ready;
+        auto* ndiSink = dynamic_cast<NdiOutputSink*>(sink);
         const char* col = !exposed ? colors::kProgram : sink->black ? "#8a90a2" : sink->freeze ? colors::kWarn : colors::kPreview;
+        if (ndiSink && !ndiSink->sending()) col = colors::kWarn;
         r.dot->setStyleSheet(QString("color:%1;font-size:16px").arg(col));
         const OutputConfig& c = sink->config();
         QString extra;
-        if (!exposed) extra = " · " + sup_.text(i);
+        if (ndiSink) extra = " · NDI: " + ndiSink->statusText().toHtmlEscaped() + (sink->testPattern ? " · MẪU THỬ" : sink->freeze ? " · DỪNG HÌNH" : "");
+        else if (!exposed) extra = " · " + sup_.text(i);
         else if (sink->testPattern) extra = " · MẪU THỬ";
         else if (sink->freeze) extra = " · DỪNG HÌNH";
         r.info->setText(QString("<b>%1</b><br><small>%2x%3 · kênh %4 · %5 fps%6</small>")
@@ -718,12 +743,14 @@ void MainWindow::refreshSlow() {
                               .arg(engine_.gpuName().isEmpty() ? "-" : engine_.gpuName())
                               .arg(engine_.fps(), 0, 'f', 1).arg(engine_.droppedFrames()).arg(ready).arg(engine_.outputCount())
                               .arg(engine_.frameP50(), 0, 'f', 1).arg(engine_.frameP99(), 0, 'f', 1));
+    updateLiveStatus();
     // anh thu nho cua nguon dong (video) cap nhat cham
     static int tick = 0;
     if (++tick % 4 == 0)
         for (int i = 0; i < mediaList_->count(); ++i) {
             const int k = mediaList_->item(i)->data(Qt::UserRole).toInt();
-            if (k >= 0 && k < int(project_.sources.size()) && project_.sources[k].type == "video") {
+            if (k >= 0 && k < int(project_.sources.size()) && (project_.sources[k].type == "video" ||
+                (dynamic_cast<LiveSource*>(project_.sources[k].source.get()) && dynamic_cast<LiveSource*>(project_.sources[k].source.get())->isLive()))) {
                 const QImage im = project_.sources[k].source->snapshot(160);
                 if (!im.isNull()) mediaList_->item(i)->setIcon(QIcon(QPixmap::fromImage(im)));
             }
@@ -783,6 +810,117 @@ bool MainWindow::addMediaFile(const QString& path) {
     e->scene->layers.push_back({src, {0, 0, 1, 1}, 1.0f, LayerFit::Fit, true});
     pushImport(e, "Nhập media: " + src->name());
     return true;
+}
+
+static std::shared_ptr<MainWindow::ImportEntry> liveImportEntry(const SourceDef& d, std::shared_ptr<Source> src, QSize canvas) {
+    auto e = std::make_shared<MainWindow::ImportEntry>();
+    e->def = d;
+    e->def.source = src;
+    e->scene = std::make_shared<Scene>();
+    e->scene->name = src->name();
+    e->scene->size = canvas;
+    e->scene->layers.push_back({src, {0, 0, 1, 1}, 1.0f, LayerFit::Fit, true});
+    return e;
+}
+
+bool MainWindow::addNdiSource(const QString& name, const QString& url, const QString& label) {
+    if (locked_) { showMessage("Đang khoá vận hành: không thêm nguồn được"); return false; }
+    if (name.trimmed().isEmpty()) { showMessage("Chưa chọn nguồn NDI"); return false; }
+    SourceDef d;
+    d.type = "ndi";
+    d.device = name.trimmed();
+    d.url = url;
+    d.label = label;
+    QString err;
+    auto src = createSource(d, &err);
+    if (!src) { showMessage("Không thêm được nguồn NDI: " + err); return false; }
+    pushImport(liveImportEntry(d, src, project_.channels[0]->size), "Thêm nguồn NDI: " + src->name());
+    return true;
+}
+
+bool MainWindow::addCameraSource(const QString& deviceId, const QString& deviceName, CameraFormat fmt, const QString& label) {
+    if (locked_) { showMessage("Đang khoá vận hành: không thêm nguồn được"); return false; }
+    SourceDef d;
+    d.type = "camera";
+    d.device = deviceId;
+    d.deviceName = deviceName;
+    d.size = QSize(fmt.w, fmt.h);
+    d.fps = fmt.fps;
+    d.label = label;
+    QString err;
+    auto src = createSource(d, &err);
+    if (!src) { showMessage("Không thêm được camera: " + err); return false; }
+    pushImport(liveImportEntry(d, src, project_.channels[0]->size), "Thêm camera: " + src->name());
+    return true;
+}
+
+bool MainWindow::addNdiOutput(const QString& name, int channel, QSize size, bool audio) {
+    if (locked_) { showMessage("Đang khoá vận hành: không thêm Output được"); return false; }
+    if (channel < 0 || channel >= int(project_.channels.size()) || size.width() < 16 || size.height() < 16 || size.width() > 8192 || size.height() > 8192) {
+        showMessage("Output NDI: kênh hoặc kích thước không hợp lệ");
+        return false;
+    }
+    OutputConfig c;
+    c.kind = OutputKind::Ndi;
+    c.name = name.isEmpty() ? QString("NDI %1").arg(engine_.outputCount() + 1) : name;
+    c.ndiName = name;
+    c.channel = channel;
+    c.size = size;
+    c.scale = ScaleMode::Stretch;
+    c.ndiAudio = audio;
+    const int i = engine_.addNdiOutput(c);
+    if (i < 0) { showMessage("Không thêm được Output NDI"); return false; }
+    addOutputRow(i);
+    ctlApi_->refreshProject();
+    qInfo().noquote() << QString("Thêm Output NDI '%1' (kênh %2, %3x%4)").arg(c.name).arg(channel + 1).arg(size.width()).arg(size.height());
+    showMessage("Đã thêm Output NDI: " + c.name);
+    return true;
+}
+
+void MainWindow::showAddNdiSource() {
+    if (locked_) { showMessage("Đang khoá vận hành: không thêm nguồn được"); return; }
+    NdiSourceDialog dlg(this);
+    if (dlg.exec() == QDialog::Accepted) addNdiSource(dlg.name(), dlg.url(), dlg.label());
+}
+
+void MainWindow::showAddCamera() {
+    if (locked_) { showMessage("Đang khoá vận hành: không thêm nguồn được"); return; }
+    CameraSourceDialog dlg(this);
+    if (dlg.exec() == QDialog::Accepted && !dlg.deviceId().isEmpty()) addCameraSource(dlg.deviceId(), dlg.deviceName(), dlg.format(), dlg.label());
+}
+
+void MainWindow::showAddNdiOutput() {
+    if (locked_) { showMessage("Đang khoá vận hành: không thêm Output được"); return; }
+    QStringList names;
+    for (const auto& c : project_.channels) names << c->name;
+    NdiOutputDialog dlg(names, this);
+    if (dlg.exec() == QDialog::Accepted) addNdiOutput(dlg.name(), dlg.channel(), dlg.size(), dlg.audio());
+}
+
+// Trang thai nguon truc tiep tren Media Pool (UI thread, ~2 lan/giay): chi doc cac atomic/mutex ngan cua LiveSource.
+void MainWindow::updateLiveStatus() {
+    for (int i = 0; i < mediaList_->count(); ++i) {
+        const int k = mediaList_->item(i)->data(Qt::UserRole).toInt();
+        if (k < 0 || k >= int(project_.sources.size())) continue;
+        auto* ls = dynamic_cast<LiveSource*>(project_.sources[size_t(k)].source.get());
+        if (!ls) continue;
+        const char* dot = "●";
+        QColor col(colors::kPreview);
+        switch (ls->state()) {
+        case LiveState::Live: break;
+        case LiveState::Connecting: col = QColor(colors::kWarn); break;
+        case LiveState::Lost: col = QColor(colors::kProgram); break;
+        case LiveState::Unavailable: col = QColor(0x8a, 0x90, 0xa2); dot = "○"; break;
+        }
+        QListWidgetItem* it = mediaList_->item(i);
+        it->setText(QString("%1 %2").arg(dot, ls->name()));
+        it->setForeground(col);
+        it->setToolTip(QString("%1: %2").arg(ls->kind() == "ndi" ? "NDI" : "Camera", ls->statusText()));
+        if (ls->state() != LiveState::Live) {                    // mat nguon: icon la khung cuoi, nhung nhat mau de nhin thay
+            const QImage im = ls->snapshot(160);
+            if (!im.isNull()) it->setIcon(QIcon(QPixmap::fromImage(im)));
+        }
+    }
 }
 
 void MainWindow::pushImport(std::shared_ptr<ImportEntry> e, const QString& text) { undo_.push(new ImportCmd(this, std::move(e), text)); }

@@ -2,6 +2,7 @@
 #include "render/Engine.h"
 #include <QTabWidget>
 #include <QVBoxLayout>
+#include <functional>
 
 class QCheckBox;
 class QComboBox;
@@ -20,6 +21,7 @@ class ParamEditor;
 // QUndoStack (Hoan tac / Lam lai; cac chinh sua lien tiep cung mot truong gop thanh mot buoc).
 // UI giu ban sao (cache) Layer/Output de khong doc du lieu render thread dang ghi.
 class InspectorPanel : public QTabWidget {
+    Q_OBJECT
 public:
     InspectorPanel(Project& project, RenderEngine& engine, QUndoStack* undo, QWidget* parent = nullptr);
     void refreshFromProject();            // goi tren UI thread sau khi them scene/nguon
@@ -29,7 +31,21 @@ public:
     void applyOutput(int outIdx, const OutputConfig& cfg);
 
     QListWidget* layerList() const { return layerList_; }       // cho test
+
+    // --- Dung chung voi Timeline (moi chinh sua di qua editLayers => co Hoan tac/Lam lai) ---
+    int currentSceneIndex() const { return currentScene(); }
+    int currentLayerIndex() const { return currentLayerIdx(); }
+    std::shared_ptr<Scene> currentScenePtr() const;
+    const Layer* currentLayerData() const;
+    double playheadTime() const;                                   // thoi gian dong ho cua Scene dang chon
+    void editCurrentLayer(const std::function<void(Layer&)>& mutate, const QString& text, int mergeId = -1);
+    void refreshProps() { syncProps(); }                           // doc lai o nhap (gia tri hieu dung tai playhead)
     QListWidget* effectList() const { return fxList_; }
+
+signals:
+    void layerDataChanged();       // moi khi du lieu/lua chon layer doi (de Timeline ve lai)
+
+public:
 
     // Danh sach Effect co the them + ghi chu loi: goi khi kho Effect/plug-in thay doi.
     void refreshEffectCatalog();
@@ -46,6 +62,7 @@ private:
     void syncLayerList(int selectIdx);
     void syncProps();
     void pushLayers(int sceneIdx);
+    void setLayerProp(AnimProp p, double value);                   // gia tri tinh, hoac tu dat keyframe tai playhead neu thuoc tinh co track
     void pushOutput(int outIdx);
     void editLayers(int si, std::vector<Layer> after, const QString& text, int mergeId = -1);
     void editOutput(int i, OutputConfig after, const QString& text, int mergeId = -1);
@@ -69,9 +86,10 @@ private:
     QComboBox* addSrcCombo_ = nullptr;
     QListWidget* layerList_ = nullptr;
     QGroupBox* propBox_ = nullptr;
-    QDoubleSpinBox* rectSpin_[4] = {};
-    QDoubleSpinBox* alphaSpin_ = nullptr;
+    QDoubleSpinBox* propSpin_[kAnimPropCount] = {};                // x, y, w, h, alpha, xoay (theo AnimProp)
+    QDoubleSpinBox* cropSpin_[4] = {};
     QComboBox* fitCombo_ = nullptr;
+    QComboBox* blendCombo_ = nullptr;
 
     // tab Effect
     QLabel* fxTitle_ = nullptr;

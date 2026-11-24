@@ -46,6 +46,9 @@ Mã nguồn tham chiếu: `src/core/Project.cpp` (`saveProject`, `loadProject`).
 | `name` | chuỗi | `"Scene"` | |
 | `width`, `height` | số nguyên ≥ 1 | 1920, 1080 | độ phân giải thiết kế |
 | `background` | `#AARRGGBB` | `#ff000000` | |
+| `duration` | số ≥ 0,1 | 10 | giây; thời lượng đồng hồ Scene dùng cho keyframe (giá trị không hợp lệ → 10) |
+| `loop` | bool | true | lặp lại khi hết thời lượng |
+| `restartOnAir` | bool | true | chạy lại đồng hồ từ 0 mỗi khi Scene lên Program / bắt đầu chuyển vào |
 | `layers[]` | mảng | — | **thứ tự vẽ từ dưới lên**: phần tử cuối nằm trên cùng |
 
 `layers[]`:
@@ -64,6 +67,19 @@ Mã nguồn tham chiếu: `src/core/Project.cpp` (`saveProject`, `loadProject`).
 | `id` | chuỗi | — | `builtin.blur`, `builtin.glow`, `builtin.colorgrade`, `builtin.rgbsplit`, `builtin.pixelate`, `builtin.noise` hoặc `id` của plug-in; thiếu plug-in **không** làm lỗi nạp (Effect bị bỏ qua, dữ liệu được giữ) |
 | `enabled` | bool | true | |
 | `params` | đối tượng | (mặc định của Effect) | tên tham số → giá trị: số (`float`/`int`/`choice` theo chỉ số), `true/false`, `"#AARRGGBB"` (màu), `[x, y]` (điểm). Giá trị lạ/thiếu được kẹp hoặc lấy mặc định khi dùng |
+
+Các trường tuỳ chọn của Layer thêm ở M4b (mặc định = không đổi):
+| Trường | Kiểu | Mặc định | Ghi chú |
+|---|---|---|---|
+| `rotation` | số | 0 | độ, **theo chiều kim đồng hồ**, quanh tâm layer |
+| `crop` | `[x, y, w, h]` | `[0,0,1,1]` | vùng của nguồn được dùng, chuẩn hoá, gốc trên-trái, **tính theo hình đã xoay** (video điện thoại); `w`,`h` ≤ 0 → bỏ qua |
+| `blend` | chuỗi | `normal` | `normal` · `add` · `multiply` · `screen` (giá trị lạ → `normal`) |
+| `tracks[]` | mảng | (rỗng) | keyframe, xem dưới |
+
+`tracks[]`: mỗi phần tử `{ "prop": "x"|"y"|"w"|"h"|"opacity"|"rotation", "keys": [ { "t": giây, "v": giá trị, "i": kiểu nối } ] }`.
+`i` là cách nối từ key này đến key kế tiếp: `linear` (mặc định) · `easein` · `easeout` · `easeinout` · `hold`.
+Thuộc tính có track thì **track ghi đè** giá trị tĩnh; trước key đầu và sau key cuối giữ giá trị của key đó. Khi nạp: key tự sắp xếp theo `t`, `t` âm → 0,
+giá trị không phải số bị bỏ, `prop` lạ hoặc trùng và track rỗng bị bỏ, `i` lạ → `linear`.
 
 Chưa lưu trong project: Transition đang chọn (kiểu, tham số, easing, Stinger) — chỉ là trạng thái phiên làm việc.
 

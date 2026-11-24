@@ -25,6 +25,8 @@ endif()
 add_library(lumacast_core STATIC
   src/core/Channel.cpp
   src/core/Project.cpp
+  src/core/Animation.cpp
+  src/core/Scene.cpp
   src/core/Log.cpp
   src/render/GlHelpers.cpp
   src/render/Compositor.cpp
@@ -53,6 +55,7 @@ add_library(lumacast_ui STATIC
   src/app/MonitorWidget.h src/app/MonitorWidget.cpp
   src/app/InspectorPanel.h src/app/InspectorPanel.cpp
   src/app/ParamEditor.h src/app/ParamEditor.cpp
+  src/app/TimelineWidget.h src/app/TimelineWidget.cpp
   src/app/MainWindow.h src/app/MainWindow.cpp
 )
 target_include_directories(lumacast_ui PUBLIC src src/app)
@@ -82,3 +85,7 @@ add_executable(lumacast_effects_tests tests/test_effects.cpp)
 target_link_libraries(lumacast_effects_tests PRIVATE lumacast_core)
 target_compile_definitions(lumacast_effects_tests PRIVATE LUMACAST_PLUGINS_DIR="${CMAKE_SOURCE_DIR}/plugins")
 add_test(NAME effects COMMAND lumacast_effects_tests)
+
+add_executable(lumacast_anim_tests tests/test_anim.cpp)
+target_link_libraries(lumacast_anim_tests PRIVATE lumacast_core)
+add_test(NAME animation COMMAND lumacast_anim_tests)

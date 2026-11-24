@@ -6,9 +6,10 @@ Liên quan: `SPEC.md` (tiêu chí nghiệm thu), `PLAN.md` (Definition of Done),
 | Tầng | Công cụ | Chạy ở đâu | Số kiểm tra |
 |---|---|---|---|
 | Tự động — render/lõi | `lumacast_tests` | Linux (GPU phần mềm llvmpipe), Windows | 60 |
-| Tự động — giao diện | `lumacast_ui_tests` | Linux (xvfb), Windows | 72 |
+| Tự động — giao diện | `lumacast_ui_tests` | Linux (xvfb), Windows | 106 |
 | Tự động — độ tin cậy | `lumacast_m3c_tests` | Linux (xvfb), Windows | 28 |
 | Tự động — Effect/Transition/plug-in | `lumacast_effects_tests` | Linux (xvfb), Windows | 65 |
+| Tự động — hoạt hoạ/Layer | `lumacast_anim_tests` | Linux (xvfb), Windows | 67 |
 | Thử tay trên phần cứng thật | Checklist mục 3 | Windows, màn LED/bộ gửi tín hiệu thật | theo bảng |
 | Benchmark hiệu năng | Mục 4 | Windows, máy mục tiêu | theo bảng |
 
@@ -63,6 +64,9 @@ Trạng thái: **Đạt** · **Lỗi** · **Chưa thử**. Cập nhật cột n�
 | T-TRX | Thử TAKE với Push (4 hướng), Slide, Zoom, Luma wipe (5 mẫu), plug-in Quét xoay; đổi easing và thời lượng | Hiệu ứng đúng hướng/kiểu, chạy hết rồi Program/Preview hoán đổi | Chưa thử |
 | T-STG | Nhập một video có kênh alpha (ví dụ .mov ProRes 4444 hoặc WebM VP9 alpha), chọn Stinger, TAKE | Video chạy đè từ đầu, đổi cảnh ở điểm cắt, tự kết thúc; lần TAKE sau lại phát từ đầu | **Chưa thử** (mới có test với nguồn tổng hợp) |
 | T-PLG | Chép plug-in mẫu vào `%AppData%\LumaCast\plugins`, sửa file `.frag` khi đang chạy; thử plug-in cố tình sai | Tự nạp lại sau ~0,3 s; sai thì Effect bị bỏ qua, có lỗi trong dock Plug-in/tab Effect/log, ứng dụng không sập | Chưa thử |
+| T-ANI | Đặt keyframe X/alpha/xoay cho một Layer (nhấp đúp trên làn, nút ◆, hoặc sửa ô giá trị khi đã có key); bấm Phát; kéo playhead trên thước khi đang chạy video | Chuyển động mượt đúng thời điểm, đúng kiểu nội suy; tua không làm giật hình ra Output; lặp đúng; kéo key bằng chuột đúng chỗ | Chưa thử |
+| T-AIR | Đưa Scene có keyframe lên Program bằng CUT, TAKE và T-bar | Chạy lại từ 0 mỗi lần lên sóng; tắt "Phát lại khi lên Program" thì giữ nguyên; timeline hiện cảnh báo "đang ở PROGRAM" khi chọn đúng Scene đó | Chưa thử |
+| T-LYR | Xoay, crop (kể cả với video dọc quay bằng điện thoại), đổi blend (Add/Multiply/Screen) cho Layer; hoàn tác | Hình đúng trên Output; crop theo hình đã xoay | Chưa thử |
 | T-LOG | Mở `%AppData%\LumaCast\logs\lumacast.log` sau một phiên chạy | Có dòng khởi động, GPU, sự kiện Output; thanh trạng thái hiện p50/p99 | Chưa thử |
 
 ## 4. Benchmark hiệu năng

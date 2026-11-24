@@ -3,16 +3,19 @@
 #include "InspectorPanel.h"
 #include "MainWindow.h"
 #include "MonitorWidget.h"
+#include "TimelineWidget.h"
 #include "media/StaticSources.h"
 #include <QApplication>
 #include <QDoubleSpinBox>
 #include <QElapsedTimer>
+#include <QLabel>
 #include <QListWidget>
 #include <QAction>
 #include <QComboBox>
 #include <QDir>
 #include <QFile>
 #include <QMenuBar>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QSlider>
 #include <QUndoStack>
@@ -394,6 +397,193 @@ int main(int argc, char** argv) {
         insp->setCurrentIndex(0);
     }
 
+
+    // ---- M4b: thuoc tinh Layer moi (xoay, cat, blend) ----
+    {
+        emit scenes->itemDoubleClicked(scenes->item(0));
+        pump(300);
+        insp->setCurrentIndex(0);
+        auto* rot = insp->findChild<QDoubleSpinBox*>("layerRot");
+        auto* cropW = insp->findChild<QDoubleSpinBox*>("layerCropW");
+        auto* blend = insp->findChild<QComboBox*>("layerBlend");
+        CHECK(rot && cropW && blend && insp->findChild<QDoubleSpinBox*>("layerCropX") && blend->count() == 4, "Inspector co o xoay, cat x/y/w/h va chon che do hoa tron");
+        rot->setValue(30);
+        pump(200);
+        CHECK(std::abs(p.scenes[0]->layers[0].rotation - 30.0f) < 1e-4, "Doi 'xoay' tren UI -> Layer.rotation = 30");
+        us->undo();
+        pump(200);
+        CHECK(p.scenes[0]->layers[0].rotation == 0.0f && std::abs(rot->value()) < 1e-9, "Hoan tac xoay (engine + o nhap)");
+        us->redo();
+        pump(100);
+        cropW->setValue(0.5);
+        blend->setCurrentIndex(1);
+        pump(200);
+        CHECK(std::abs(p.scenes[0]->layers[0].crop.width() - 0.5) < 1e-9 && p.scenes[0]->layers[0].blend == BlendMode::Add, "Doi cat w = 0.5 va blend = Add");
+        blend->setCurrentIndex(0);
+        cropW->setValue(1.0);
+        rot->setValue(0);
+        pump(200);
+        CHECK(p.scenes[0]->layers[0].blend == BlendMode::Normal && std::abs(p.scenes[0]->layers[0].crop.width() - 1.0) < 1e-9, "Tra ve mac dinh");
+    }
+
+    // ---- M4b: Timeline ----
+    {
+        auto* tl = w.timeline();
+        auto* alphaSpin = insp->findChild<QDoubleSpinBox*>("layerAlpha");
+        CHECK(w.findChild<QLabel*>("tlWarn")->text().contains("PROGRAM"), "Timeline canh bao khi Scene dang chon dang o Program (thao tac tac dong truc tiep len man hinh)");
+        tl->setRestartOnAir(false);                                   // Scene vua len Program nen dang tu chay; dung lai de thu co kiem soat
+        tl->pause();
+        tl->seek(0.0);
+        pump(300);
+        CHECK(tl != nullptr && std::abs(tl->duration() - 10.0) < 1e-9 && !tl->playing(), "Co Timeline: thoi luong mac dinh 10 s, dang dung");
+        auto layer = [&]() -> Layer& { return p.scenes[0]->layers[0]; };
+
+        // dat keyframe opacity 0 -> 1 (them key roi sua gia tri tai playhead = tu dat key)
+        tl->seek(0.0);
+        pump(200);
+        tl->addKey(AnimProp::Opacity, 0.0);
+        tl->addKey(AnimProp::Opacity, 1.0);
+        pump(200);
+        const Track* ot = layer().track(AnimProp::Opacity);
+        CHECK(ot && ot->keys.size() == 2 && ot->keys[0].time == 0.0 && ot->keys[1].time == 1.0, "Them 2 keyframe opacity tai 0 s va 1 s");
+        CHECK(alphaSpin->styleSheet().contains("e0a526"), "O alpha co vien vang khi thuoc tinh co keyframe");
+        alphaSpin->setValue(0.0);                                     // playhead = 0 -> sua key tai 0
+        pump(200);
+        tl->seek(1.0);
+        pump(300);
+        alphaSpin->setValue(1.0);                                     // playhead = 1 -> sua key tai 1
+        pump(200);
+        ot = layer().track(AnimProp::Opacity);
+        CHECK(ot->keys.size() == 2 && std::abs(ot->keys[0].value) < 1e-9 && std::abs(ot->keys[1].value - 1.0) < 1e-9,
+              "Sua gia tri o nhap khi thuoc tinh co keyframe: tu dat/sua KEYFRAME tai playhead (khong doi gia tri tinh)");
+        CHECK(std::abs(layer().opacity - 0.4f) < 1e-4, "Gia tri tinh cua layer khong bi doi");
+
+        // hinh Program that o cac thoi diem
+        tl->seek(0.5);
+        pump(900);
+        QColor mid = engine.monitor(0).program.pixelColor(5, 5);
+        CHECK(std::abs(mid.red() - 127) <= 10 && mid.green() < 10 && mid.blue() < 10, "t=0.5 s: Program tren monitor ~ do 50% (opacity 0.5 tren nen den)");
+        tl->seek(0.0);
+        pump(600);
+        CHECK(engine.monitor(0).program.pixelColor(5, 5).red() < 10, "t=0: Program den (opacity 0)");
+        tl->seek(1.0);
+        pump(600);
+        CHECK(engine.monitor(0).program.pixelColor(5, 5).red() > 245, "t=1 s: Program do day du (opacity 1)");
+
+        // phat / tam dung / ve 0
+        tl->seek(0.0);
+        pump(300);
+        tl->play();
+        pump(600);
+        CHECK(tl->playing() && p.scenes[0]->clock.time > 0.3, "Play: dong ho Scene chay");
+        tl->pause();
+        pump(300);
+        const double held = p.scenes[0]->clock.time;
+        pump(400);
+        CHECK(!tl->playing() && std::abs(p.scenes[0]->clock.time - held) < 1e-9, "Pause: dong ho dung han");
+        tl->stopTransport();
+        pump(400);
+        CHECK(p.scenes[0]->clock.time == 0.0 && !tl->playing(), "Ve 0");
+        tl->setDuration(1.0);
+        tl->setLoop(false);
+        pump(200);
+        tl->play();
+        pump(1600);
+        CHECK(!tl->playing() && std::abs(p.scenes[0]->clock.time - 1.0) < 1e-9, "Het thoi luong 1 s, khong lap: tu dung o cuoi");
+        tl->setLoop(true);
+        tl->setDuration(10.0);
+        tl->stopTransport();
+        pump(300);
+
+        // thao tac keyframe: doi, doi kieu noi, xoa, hoan tac
+        const size_t undoCount = us->count();
+        const int mi = tl->moveKey(AnimProp::Opacity, 1, 0.5, false);
+        pump(200);
+        CHECK(mi == 1 && std::abs(layer().track(AnimProp::Opacity)->keys[1].time - 0.5) < 1e-9, "Doi keyframe tu 1 s ve 0.5 s");
+        tl->setKeyInterp(AnimProp::Opacity, 1, Interp::Hold);
+        pump(200);
+        CHECK(layer().track(AnimProp::Opacity)->keys[1].interp == Interp::Hold, "Doi kieu noi sang Hold");
+        us->undo();
+        pump(200);
+        CHECK(layer().track(AnimProp::Opacity)->keys[1].interp == Interp::Linear, "Hoan tac doi kieu noi");
+        us->undo();
+        pump(200);
+        CHECK(std::abs(layer().track(AnimProp::Opacity)->keys[1].time - 1.0) < 1e-9, "Hoan tac doi keyframe: tro ve 1 s");
+        us->redo(); us->redo();
+        pump(200);
+        CHECK(us->count() == undoCount + 2, "Moi thao tac keyframe la mot buoc trong ngan xep Hoan tac");
+        tl->deleteKey(AnimProp::Opacity, 1);
+        pump(200);
+        CHECK(layer().track(AnimProp::Opacity)->keys.size() == 1, "Xoa keyframe");
+        tl->deleteKey(AnimProp::Opacity, 0);
+        pump(200);
+        CHECK(!layer().track(AnimProp::Opacity) && std::abs(layer().opacity - 0.0f) < 1e-4,
+              "Xoa key cuoi cung: track bi go, thuoc tinh giu gia tri cua key vua xoa (khong nhay hinh)");
+        tl->seek(0.5);
+        pump(300);
+        tl->toggleKeyAtPlayhead(AnimProp::Rotation);
+        pump(200);
+        CHECK(layer().track(AnimProp::Rotation) && layer().track(AnimProp::Rotation)->keys.size() == 1 && std::abs(layer().track(AnimProp::Rotation)->keys[0].time - 0.5) < 0.01,
+              "Nut ◆ (toggleKeyAtPlayhead): them key tai playhead");
+        tl->toggleKeyAtPlayhead(AnimProp::Rotation);
+        pump(200);
+        CHECK(!layer().track(AnimProp::Rotation), "Bam lai: xoa key tai playhead");
+
+        // chuot that tren TrackView: nhap doi them key, keo key, tua tren thuoc, Delete
+        QWidget* tv = tl->trackView();
+        auto sendMouse = [&](QEvent::Type type, QPoint pos, Qt::MouseButton btn = Qt::LeftButton) {
+            QMouseEvent ev(type, QPointF(pos), QPointF(tv->mapToGlobal(pos)), btn, type == QEvent::MouseButtonRelease ? Qt::NoButton : btn, Qt::NoModifier);
+            QApplication::sendEvent(tv, &ev);
+        };
+        const int rowRot = int(AnimProp::Rotation), rowX = int(AnimProp::X);
+        const QPoint lane(tl->timeToX(2.0), tl->rowTop(rowX) + 10);
+        sendMouse(QEvent::MouseButtonDblClick, lane);
+        pump(200);
+        CHECK(layer().track(AnimProp::X) && layer().track(AnimProp::X)->keys.size() == 1 && std::abs(layer().track(AnimProp::X)->keys[0].time - 2.0) < 0.06,
+              "Nhap doi tren lan X: them keyframe dung thoi diem (lam tron 0.05 s)");
+        const QPoint onKey(tl->timeToX(layer().track(AnimProp::X)->keys[0].time), tl->rowTop(rowX) + 12);
+        sendMouse(QEvent::MouseButtonPress, onKey);
+        sendMouse(QEvent::MouseMove, QPoint(tl->timeToX(4.0), onKey.y()));
+        sendMouse(QEvent::MouseButtonRelease, QPoint(tl->timeToX(4.0), onKey.y()));
+        pump(200);
+        CHECK(std::abs(layer().track(AnimProp::X)->keys[0].time - 4.0) < 0.06, "Keo keyframe bang chuot den 4 s");
+        const size_t afterDrag = us->count();
+        sendMouse(QEvent::MouseButtonPress, QPoint(tl->timeToX(layer().track(AnimProp::X)->keys[0].time), onKey.y()));
+        sendMouse(QEvent::MouseMove, QPoint(tl->timeToX(5.0), onKey.y()));
+        sendMouse(QEvent::MouseMove, QPoint(tl->timeToX(6.0), onKey.y()));
+        sendMouse(QEvent::MouseMove, QPoint(tl->timeToX(7.0), onKey.y()));
+        sendMouse(QEvent::MouseButtonRelease, QPoint(tl->timeToX(7.0), onKey.y()));
+        pump(200);
+        CHECK(us->count() == afterDrag + 1 && std::abs(layer().track(AnimProp::X)->keys[0].time - 7.0) < 0.06, "Keo lien tuc mot keyframe = MOT buoc hoan tac (gop)");
+        QKeyEvent del(QEvent::KeyPress, Qt::Key_Delete, Qt::NoModifier);
+        QApplication::sendEvent(tv, &del);
+        pump(200);
+        CHECK(!layer().track(AnimProp::X), "Phim Delete xoa keyframe dang chon");
+        sendMouse(QEvent::MouseButtonPress, QPoint(tl->timeToX(3.0), 8));            // tren thuoc: tua
+        sendMouse(QEvent::MouseButtonRelease, QPoint(tl->timeToX(3.0), 8));
+        pump(300);
+        CHECK(std::abs(p.scenes[0]->clock.time - 3.0) < 0.2, "Bam len thuoc thoi gian: playhead nhay den ~3 s");
+        (void)rowRot;
+        tl->seek(0.0);
+        pump(200);
+    }
+    {
+        // Scene tu phat lai khi len Program
+        w.timeline()->setRestartOnAir(true);
+        emit scenes->itemDoubleClicked(scenes->item(1));
+        pump(300);
+        p.scenes[0]->clock.stop();
+        emit scenes->itemClicked(scenes->item(0));
+        pump(200);
+        button(&w, "CUT")->click();
+        pump(300);
+        CHECK(ch->program == 0 && p.scenes[0]->clock.playing, "Scene len Program (CUT): dong ho tu chay lai");
+        w.timeline()->stopTransport();
+        pump(300);
+        w.timeline()->addKey(AnimProp::Rotation, 1.0);                 // de lai mot keyframe de kiem tra luu/mo o cuoi
+        pump(200);
+    }
+
     // ---- Nhap media -> Scene moi ----
     QImage img(32, 18, QImage::Format_RGBA8888); img.fill(Qt::green);
     const QString png = dir.filePath("g.png");
@@ -414,7 +604,12 @@ int main(int argc, char** argv) {
     QString err;
     CHECK(loadProject(q, p.filePath, &err), "Project luu tu UI mo lai duoc: " + err.toStdString());
     CHECK(q.scenes.size() == 3 && q.sources.size() == 3 && std::abs(q.outputs[0].cal.brightness - 0.8f) < 1e-4 &&
-              std::abs(q.scenes[0]->layers[0].opacity - 0.4f) < 1e-4, "File luu chua scene moi + hieu chinh mau + alpha sau Undo/Redo");
+              std::abs(q.scenes[0]->layers[0].opacity - 0.0f) < 1e-4, "File luu chua scene moi + hieu chinh mau + alpha sau Undo/Redo");
+    {
+        const Layer& sl = q.scenes[0]->layers[0];
+        CHECK(sl.track(AnimProp::Rotation) && sl.track(AnimProp::Rotation)->keys.size() == 1 && std::abs(sl.track(AnimProp::Rotation)->keys[0].time - 1.0) < 1e-9 &&
+                  std::abs(q.scenes[0]->duration - 10.0) < 1e-9 && q.scenes[0]->restartOnAir, "File luu chua keyframe tao tu giao dien + thuoc tinh Scene");
+    }
     Project r;
     CHECK(loadProject(r, p.filePath + ".autosave", &err) && r.scenes.size() == 3, "Autosave: file duoc tao va mo lai duoc");
 

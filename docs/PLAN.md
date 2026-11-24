@@ -10,9 +10,10 @@
 | M3a | Giao diện Live Control: monitor, Scene list, Media Pool, Outputs, Inspector, FTB, Đen/Dừng, tự lưu | ✅ xong | #1 |
 | M3b | Hoàn tác/làm lại, T-bar, AUTO, panel Layer kéo-thả | ✅ xong | #2 |
 | M3c | Độ tin cậy: log, watchdog, mất màn, mẫu thử theo Output, thống kê khung | 🟡 phần mã xong; còn thử trên phần cứng thật | #4 |
-| M4a | Effect trên Layer, Transition mới + Stinger + easing, plug-in shader, Plugin Manager | 🟡 phần mã xong; còn thử trên Windows | (nhánh `m4a`) |
+| M4a | Effect trên Layer, Transition mới + Stinger + easing, plug-in shader, Plugin Manager | 🟡 phần mã xong; còn thử trên Windows | #5 |
+| M4b | Xoay/crop/blend Layer, đồng hồ Scene, keyframe, timeline | 🟡 phần mã xong; còn thử trên Windows | (nhánh `m4b`) |
 
-Quy mô mã: khoảng 6.500 dòng C++ (gồm test) · 225 kiểm tra tự động · build được trên Linux và Windows (MSVC 2022, Qt 6.8.3, FFmpeg 9.1).
+Quy mô mã: khoảng 6.500 dòng C++ (gồm test) · 326 kiểm tra tự động · build được trên Linux và Windows (MSVC 2022, Qt 6.8.3, FFmpeg 9.1).
 
 **Chưa được xác nhận trên phần cứng thật** (rủi ro đã biết, xem mục 5): nút Dừng hình trên Windows; fullscreen đúng màn LED;
 4 Output 4K; chạy liên tục nhiều giờ.
@@ -54,13 +55,16 @@ Kích cỡ: **S** vài ngày · **M** 1–2 tuần · **L** vài tuần (ước 
 - **Nghiệm thu:** thêm một Effect vào Layer, chỉnh tham số, thấy đổi ở Program (✅ test); thả một file shader mới vào thư mục plug-in thì dùng được không cần khởi động lại (✅ test hot reload); shader lỗi không làm sập ứng dụng (✅ test); test render cho từng Effect/Transition (✅). **Còn lại:** chạy thử trên Windows (T-FX, T-TRX, T-PLG, T-STG) và đo B5.
 - **Phụ thuộc:** M3c. **Rủi ro:** hiệu năng nhiều Effect ở 4K (chưa đo); shader plug-in nặng có thể treo GPU.
 
-### M4b — Timeline và keyframe · Kích cỡ: L
-- [ ] Thêm xoay và crop cho Layer (SCN-04), blend mode (SCN-05) — là thuộc tính cần animate.
-- [ ] Đồng hồ Scene trong engine; thuộc tính Layer theo thời gian (track + keyframe, nội suy tuyến tính/ease).
-- [ ] Điều khiển phát (Play/Pause/Loop) theo Scene; giao diện timeline (thêm/kéo keyframe, scrub).
-- [ ] Lưu keyframe vào project (nâng phiên bản định dạng nếu cần).
-- **Nghiệm thu:** keyframe vị trí/alpha/xoay phát lại đúng thời điểm (test render theo mốc thời gian); scrub không làm giật Program; hoàn tác được thao tác keyframe.
-- **Phụ thuộc:** M4a (Effect có thể là thuộc tính animate).
+### M4b — Timeline và keyframe · Kích cỡ: L · **phần mã xong; còn thử trên Windows**
+- [x] Xoay Layer (quanh tâm, chiều kim đồng hồ), crop Layer (theo hình đã xoay), blend mode (Normal/Add/Multiply/Screen) (SCN-04, SCN-05).
+- [x] Đồng hồ Scene trong engine (`SceneClock`, tick mỗi khung trên render thread, atomic để UI đọc); thuộc tính Layer theo thời gian: track + keyframe, 5 kiểu nội suy (tuyến tính, êm đầu/cuối/hai đầu, giữ bậc).
+- [x] Phát/Tạm dừng/Về 0/Tua; thời lượng, lặp; **Scene tự phát lại từ đầu khi lên Program** (CUT, bắt đầu TAKE/AUTO, bắt đầu kéo T-bar), có thể tắt.
+- [x] Giao diện timeline: thước thời gian, playhead (kéo trên thước để tua), 6 làn (X, Y, Rộng, Cao, Alpha, Xoay), nút ◆ thêm/xoá key tại playhead, nhấp đúp thêm key, kéo key (làm tròn 0,05 s), Delete xoá, chuột phải đổi kiểu nội suy; **tự đặt keyframe khi sửa giá trị của thuộc tính đã có track**; mọi thao tác là một bước Hoàn tác (kéo liên tục một lần = một bước).
+- [x] Lưu trong project (thuộc tính tuỳ chọn, vẫn `version` 1); đọc file viết tay có dữ liệu xấu không crash (key sắp xếp lại, giá trị hỏng bị bỏ).
+- [x] **Cảnh báo an toàn:** timeline hiện "Scene đang ở PROGRAM" khi Scene đang chọn đang lên sóng (phát/tua/sửa tác động trực tiếp lên màn hình).
+- [ ] **Chưa làm:** zoom/cuộn timeline, chọn nhiều key và sao chép/dán, keyframe cho crop/blend/tham số Effect, đường cong Bézier, hoàn tác cho thuộc tính Scene (thời lượng/lặp/tự phát lại), âm thanh theo timeline.
+- **Nghiệm thu:** keyframe vị trí/alpha/xoay phát lại đúng thời điểm (✅ test render theo mốc thời gian, cả hình Program thật trên monitor); tua không làm giật Program (**chưa đo trên phần cứng**: T-ANI); hoàn tác được thao tác keyframe (✅ test).
+- **Phụ thuộc:** M4a. **Rủi ro:** thao tác timeline trên Scene đang On Air tác động trực tiếp lên màn hình (đã có cảnh báo, chưa có khoá).
 
 ### M5a — Âm thanh theo Channel · Kích cỡ: L
 - [ ] Giải mã âm thanh FFmpeg, mixer thread riêng, bus mỗi Channel, WASAPI ra thiết bị chọn được (AUD-01).

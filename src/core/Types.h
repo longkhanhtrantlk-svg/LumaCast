@@ -7,6 +7,17 @@ namespace lc {
 
 enum class ScaleMode { Fit, Fill, Stretch, Pixel };   // Pixel = 1:1, can giua
 enum class LayerFit  { Stretch, Fit, Fill };
+enum class BlendMode { Normal, Add, Multiply, Screen };
+
+inline const char* blendId(BlendMode b) {
+    switch (b) {
+    case BlendMode::Normal: return "normal";
+    case BlendMode::Add: return "add";
+    case BlendMode::Multiply: return "multiply";
+    case BlendMode::Screen: return "screen";
+    }
+    return "normal";
+}
 enum class TransitionType { Cut, Fade, DipToBlack, WipeLeft, WipeRight, WipeUp, WipeDown, Plugin, Stinger };
 
 inline const char* transitionName(TransitionType t) {

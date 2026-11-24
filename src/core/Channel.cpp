@@ -23,18 +23,19 @@ void Channel::setManual(const TransitionSpec& spec, float t) {
     if (t >= 1.0f) { finish(); return; }                           // keo het = hoan tat
     spec_ = spec;
     if (spec_.type == TransitionType::Cut || spec_.type == TransitionType::Stinger) spec_.type = TransitionType::Fade;   // T-bar khong ho tro Stinger
+    if (!active_) enterScene(sceneAt(preview), -1);        // vua bat dau keo T-bar
     manualT_ = t;
     manual_ = true;
     active_ = true;
 }
 
-void Channel::cut() {
-    if (sceneAt(preview)) finish();
+void Channel::cut(double now) {
+    if (sceneAt(preview)) { enterScene(sceneAt(preview), now); finish(); }
 }
 
 void Channel::startTransition(const TransitionSpec& spec, double now) {
     if (active_ || !sceneAt(preview)) return;
-    if (spec.type == TransitionType::Cut || spec.duration <= 0 || !sceneAt(program)) { finish(); return; }
+    if (spec.type == TransitionType::Cut || spec.duration <= 0 || !sceneAt(program)) { cut(now); return; }
     spec_ = spec;
     if (spec_.type == TransitionType::Stinger) {
         if (!spec_.stinger) spec_.type = TransitionType::Fade;           // thieu video stinger -> Fade
@@ -42,6 +43,7 @@ void Channel::startTransition(const TransitionSpec& spec, double now) {
     }
     start_ = now;
     active_ = true;
+    enterScene(sceneAt(preview), now);            // Scene moi bat dau chay hoat hoa ngay khi bat dau chuyen
 }
 
 RenderTarget* Channel::render(Compositor& comp, TargetPool& pool, double now) {

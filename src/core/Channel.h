@@ -23,7 +23,7 @@ public:
     void setManual(TransitionType type, float t) { TransitionSpec s; s.type = type; setManual(s, t); }
     bool manualActive() const { return manual_; }
     void setPreview(int idx);
-    void cut();
+    void cut(double now = -1);                     // now: dung de phat lai Scene moi len Program (restartOnAir)
     void startTransition(const TransitionSpec& spec, double now);
     void startTransition(TransitionType type, double seconds, double now) {
         TransitionSpec s; s.type = type; s.duration = seconds; startTransition(s, now);
@@ -40,6 +40,7 @@ public:
     RenderTarget* renderPreview(Compositor& comp, TargetPool& pool);
 
 private:
+    void enterScene(Scene* s, double now) { if (s && s->restartOnAir) s->clock.restart(now); }
     Scene* sceneAt(int i) const { return i >= 0 && i < int(scenes.size()) ? scenes[i].get() : nullptr; }
     void finish();
     RenderTarget* renderProgram(Compositor& comp, TargetPool& pool, double now);

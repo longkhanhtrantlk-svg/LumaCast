@@ -37,6 +37,9 @@ public:
     void setLoop(bool on);
     void setRestartOnAir(bool on);
 
+    // Khoa van hanh: chan sua keyframe/thoi luong/lap va keo thuoc tua; Phat/Tam dung/Ve 0 van dung duoc.
+    void setLocked(bool on) { locked_ = on; refresh(); }
+    bool locked() const { return locked_; }
     double duration() const;
     double playhead() const;
     bool playing() const;
@@ -75,6 +78,7 @@ private:
     QTimer timer_;
     double scrubTime_ = 0;
     bool scrubbing_ = false;
+    bool locked_ = false;
     int dragSession_ = 0;
     int lastScene_ = -2, lastLayer_ = -2;
 };

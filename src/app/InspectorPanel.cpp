@@ -83,6 +83,7 @@ InspectorPanel::InspectorPanel(Project& project, RenderEngine& engine, QUndoStac
 }
 
 void InspectorPanel::editLayers(int si, std::vector<Layer> after, const QString& text, int mergeId) {
+    if (locked_) return;                                        // khoa van hanh
     auto before = layerCache_[si];
     layerCache_[si] = after;
     pushLayers(si);
@@ -91,6 +92,7 @@ void InspectorPanel::editLayers(int si, std::vector<Layer> after, const QString&
 }
 
 void InspectorPanel::editOutput(int i, OutputConfig after, const QString& text, int mergeId) {
+    if (locked_) return;
     OutputConfig before = outCache_[i];
     outCache_[i] = after;
     pushOutput(i);

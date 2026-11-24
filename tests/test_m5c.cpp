@@ -22,6 +22,12 @@
 #include <QThread>
 #include <QToolButton>
 #include <QProcess>
+#include <QMouseEvent>
+#include <QKeyEvent>
+#include <QSlider>
+#include <QUndoStack>
+#include <QDockWidget>
+#include "LockButton.h"
 #include <QFile>
 #include <QDir>
 #include "core/Startup.h"
@@ -316,6 +322,187 @@ int main(int argc, char** argv) {
         writeCfg(h5, dir.filePath("hong.json"));
         const bool alive5 = runApp(h5, {}, 3500);
         CHECK(alive5 && readLog(h5).contains("Không mở lại được project gần nhất"), "project gan nhat bi hong: chay binh thuong kem thong bao, KHONG thoat");
+    }
+
+    // ================= P0-4: khoa van hanh (UI-07) =================
+    {
+        auto* lockBtn = w.findChild<LockButton*>("lockButton");
+        auto* lockLabel = w.findChild<QLabel*>("lockLabel");
+        auto* insp = w.inspector();
+        auto* tl = w.timeline();
+        auto* tlDur = tl->findChild<QDoubleSpinBox*>("tlDuration");
+        auto* tlLoop = tl->findChild<QCheckBox*>("tlLoop");
+        auto* tlPlay = tl->findChild<QPushButton*>("tlPlay");
+        auto* tlStop = tl->findChild<QPushButton*>("tlStop");
+        auto* importB = button(&w, "Nhập media...");
+        auto actionByPrefix = [&](const QString& prefix) -> QAction* {
+            for (auto* m : w.menuBar()->findChildren<QMenu*>()) for (auto* a : m->actions()) if (a->text().startsWith(prefix)) return a;
+            return nullptr;
+        };
+        auto* undoA = actionByPrefix("Hoàn tác");
+        auto* redoA = actionByPrefix("Làm lại");
+        auto* openA = actionByPrefix("Mở project");
+        auto* impA = actionByPrefix("Nhập media");
+        auto* setA = actionByPrefix("Cài đặt vận hành");
+        auto* plugDock = w.findChild<QDockWidget*>("dockPlugins");
+        CHECK(lockBtn && lockLabel && tlDur && tlLoop && tlPlay && importB && undoA && redoA && openA && impA && setA && plugDock, "tim thay nut khoa va cac dieu khien lien quan");
+        CHECK(!w.isLocked() && lockLabel->text().contains("Mở khoá") && insp->isEnabled() && importB->isEnabled() && tlDur->isEnabled() && plugDock->widget()->isEnabled(), "khoi dong: MO KHOA, moi dieu khien bat");
+
+        // Tao 1 buoc hoan tac that de kiem tra khoa Hoan tac
+        const int sceneCount = int(p.scenes.size());
+        const int stackBefore = w.undoStack()->count();
+        tl->addKey(AnimProp::X, 1.0);
+        pump(200);
+        CHECK(w.undoStack()->count() == stackBefore + 1 && undoA->isEnabled(), "(chuan bi) them keyframe -> co buoc Hoan tac, Hoan tac bat");
+
+        lockBtn->click();
+        pump(100);
+        CHECK(w.isLocked() && lockBtn->isLocked() && lockLabel->text().contains("KHOÁ"), "bam nut khoa: dang khoa, thanh trang thai hien KHOA VAN HANH");
+        CHECK(w.windowTitle().contains("KHOÁ"), "tieu de cua so ghi [KHOA VAN HANH]");
+        CHECK(!insp->isEnabled() && insp->locked(), "khoa: Inspector bi vo hieu");
+        CHECK(!importB->isEnabled() && !impA->isEnabled(), "khoa: Nhap media (nut + menu) bi vo hieu");
+        CHECK(!plugDock->widget()->isEnabled(), "khoa: Plugin Manager bi vo hieu");
+        CHECK(!undoA->isEnabled() && !redoA->isEnabled(), "khoa: Hoan tac/Lam lai bi vo hieu");
+        CHECK(!openA->isEnabled() && !setA->isEnabled(), "khoa: Mo project va Cai dat van hanh bi vo hieu");
+        CHECK(!tlDur->isEnabled() && !tlLoop->isEnabled() && tl->locked(), "khoa: sua thoi luong/lap timeline bi vo hieu");
+        CHECK(tlPlay->isEnabled() && tlStop->isEnabled(), "khoa: Phat/Tam dung/Ve 0 timeline VAN dung duoc");
+
+        // chan bang lenh (khong chi vo hieu widget)
+        const int cnt = w.undoStack()->count();
+        const QRectF rect0 = p.scenes[0]->layers[0].rect;
+        insp->editCurrentLayer([](Layer& l) { l.rect.moveLeft(0.5); l.opacity = 0.1f; }, "thu sua khi khoa");
+        tl->addKey(AnimProp::Y, 2.0);
+        tl->setDuration(77);
+        tl->setLoop(false);
+        tl->deleteKey(AnimProp::X, 0);
+        CHECK(tl->moveKey(AnimProp::X, 0, 3.0, false) == -1, "khoa: moveKey tra -1");
+        pump(250);
+        CHECK(w.undoStack()->count() == cnt, "khoa: cac lenh sua bang ma khong tao buoc Hoan tac");
+        CHECK(p.scenes[0]->layers[0].rect == rect0 && p.scenes[0]->layers[0].opacity == 1.0f && p.scenes[0]->duration != 77 && p.scenes[0]->loop, "khoa: du lieu Scene/Layer tren render thread KHONG doi");
+        CHECK(!w.addMediaFile(dir.filePath("khong_quan_tam.png")) && int(p.scenes.size()) == sceneCount, "khoa: addMediaFile bi tu choi, khong them Scene");
+        // keo chuot vao timeline khi khoa
+        {
+            tl->stopTransport();
+            waitFor([&] { return p.scenes[0]->clock.time.load() == 0.0 && !p.scenes[0]->clock.playing.load(); });
+            QWidget* tv = tl->trackView();
+            const int y = tl->rowTop(0) + 5;
+            QMouseEvent dbl(QEvent::MouseButtonDblClick, QPointF(tl->timeToX(2.0), y), QPointF(tl->timeToX(2.0), y), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(tv, &dbl);
+            QMouseEvent ruler(QEvent::MouseButtonPress, QPointF(tl->timeToX(5.0), 5), QPointF(tl->timeToX(5.0), 5), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(tv, &ruler);
+            QMouseEvent rel(QEvent::MouseButtonRelease, QPointF(tl->timeToX(5.0), 5), QPointF(tl->timeToX(5.0), 5), Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+            QApplication::sendEvent(tv, &rel);
+            pump(150);
+            CHECK(w.undoStack()->count() == cnt && p.scenes[0]->clock.time.load() == 0.0, "khoa: nhap dup/keo thuoc tren timeline khong sua, khong tua");
+        }
+
+        // dong cua so chinh bi chan
+        w.setAskOnClose(true);
+        const bool closed = w.close();
+        CHECK(!closed && w.isVisible(), "khoa: dong cua so chinh bi chan (khong hien hop thoai, cua so van mo)");
+        w.setAskOnClose(false);
+
+        // dieu khien LIVE van chay
+        const int pgBefore = ch->program;
+        button(&w, "CUT")->click();
+        CHECK(waitFor([&] { return ch->program != pgBefore; }), "khoa: CUT van chay");
+        button(&w, "CUT")->click();
+        waitFor([&] { return ch->program == pgBefore; });
+        auto* blackAll = button(&w, "BLACK ALL");
+        CHECK(blackAll->isEnabled(), "khoa: BLACK ALL con bat");
+        blackAll->click();
+        CHECK(waitFor([&] { return engine.output(0)->black.load() && engine.output(1)->black.load(); }), "khoa: BLACK ALL van chay");
+        blackAll->click();
+        waitFor([&] { return !engine.output(0)->black.load(); });
+        auto* ftb = button(&w, "FTB");
+        ftb->click();
+        CHECK(waitFor([&] { return ch->ftbTarget.load(); }), "khoa: FTB van chay");
+        ftb->click();
+        waitFor([&] { return !ch->ftbTarget.load(); });
+        CHECK(button(&w, "TAKE")->isEnabled() && button(&w, "AUTO")->isEnabled() && w.findChild<QSlider*>("tbar")->isEnabled(), "khoa: TAKE/AUTO/T-bar con bat");
+        auto* scenesL = w.findChild<QListWidget*>("sceneList");
+        emit scenesL->itemClicked(scenesL->item(0));
+        CHECK(waitFor([&] { return ch->preview == 0; }), "khoa: chon Scene (Preview) van chay");
+        {
+            QToolButton* blk = nullptr; QToolButton* frz = nullptr; QToolButton* pat = nullptr;
+            for (auto* b : w.findChildren<QToolButton*>()) { if (b->text() == "Đen" && !blk) blk = b; if (b->text() == "Dừng" && !frz) frz = b; if (b->text() == "Mẫu" && !pat) pat = b; }
+            CHECK(blk && frz && pat && blk->isEnabled() && frz->isEnabled() && pat->isEnabled(), "khoa: Den/Dung/Mau tung Output con bat");
+            blk->click();
+            CHECK(waitFor([&] { return engine.output(0)->black.load(); }), "khoa: Den Output 1 van chay");
+            blk->click();
+            waitFor([&] { return !engine.output(0)->black.load(); });
+        }
+        tlStop->click();
+        waitFor([&] { return !p.scenes[0]->clock.playing.load(); });
+        tlPlay->click();
+        CHECK(waitFor([&] { return p.scenes[0]->clock.playing.load(); }), "khoa: Phat timeline van chay");
+        tlStop->click();
+        CHECK(waitFor([&] { return !p.scenes[0]->clock.playing.load() && p.scenes[0]->clock.time.load() == 0.0; }), "khoa: Ve 0 timeline van chay");
+        button(&w, "CUT")->click();                             // dua lai nhu cu
+        waitFor([&] { return ch->program == 1; });
+        button(&w, "CUT")->click();
+        waitFor([&] { return ch->program == 0; });
+
+        // API tren cua so that cung thay trang thai khoa
+        CHECK(w.controlApi().state()["locked"].toBool(), "API: state bao locked = true");
+
+        // mo khoa phai co xac nhan: bam nhanh khong mo
+        lockBtn->click();
+        pump(100);
+        CHECK(w.isLocked(), "dang khoa: bam nhanh KHONG mo khoa");
+        {
+            QMouseEvent pr(QEvent::MouseButtonPress, QPointF(5, 5), QPointF(5, 5), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(lockBtn, &pr);
+            pump(400);
+            CHECK(lockBtn->holding() && w.isLocked(), "giu 0,4 s: dang dem, chua mo khoa");
+            QMouseEvent rl(QEvent::MouseButtonRelease, QPointF(5, 5), QPointF(5, 5), Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+            QApplication::sendEvent(lockBtn, &rl);
+            pump(1300);
+            CHECK(w.isLocked() && !lockBtn->holding(), "nha som: huy, van khoa");
+            QApplication::sendEvent(lockBtn, &pr);
+            pump(1250);
+            CHECK(!w.isLocked(), "giu du 1 giay: MO KHOA");
+            QApplication::sendEvent(lockBtn, &rl);
+            pump(100);
+            CHECK(!w.isLocked() && lockLabel->text().contains("Mở khoá"), "nha nut sau khi mo khoa: van mo, nhan 'Mo khoa'");
+        }
+        // phim Space giu
+        w.setLocked(true);
+        {
+            QKeyEvent kp(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier);
+            QApplication::sendEvent(lockBtn, &kp);
+            pump(300);
+            QKeyEvent kr(QEvent::KeyRelease, Qt::Key_Space, Qt::NoModifier);
+            QApplication::sendEvent(lockBtn, &kr);
+            pump(1200);
+            CHECK(w.isLocked(), "phim Space: giu ngan roi nha = van khoa");
+            QApplication::sendEvent(lockBtn, &kp);
+            pump(1250);
+            QApplication::sendEvent(lockBtn, &kr);
+            CHECK(!w.isLocked(), "phim Space giu 1 giay: mo khoa");
+        }
+        // sau khi mo khoa moi thu tro lai
+        CHECK(insp->isEnabled() && importB->isEnabled() && impA->isEnabled() && openA->isEnabled() && setA->isEnabled() && tlDur->isEnabled() && plugDock->widget()->isEnabled(),
+              "mo khoa: moi dieu khien sua bat lai");
+        CHECK(undoA->isEnabled() && undoA->text().startsWith("Hoàn tác"), "mo khoa: Hoan tac bat lai (con buoc truoc do)");
+        const int cnt2 = w.undoStack()->count();
+        tl->addKey(AnimProp::Y, 2.0);
+        pump(200);
+        CHECK(w.undoStack()->count() == cnt2 + 1, "mo khoa: sua keyframe lai hoat dong");
+        undoA->trigger();
+        pump(200);
+        CHECK(w.undoStack()->count() == cnt2 + 1 && w.undoStack()->index() == cnt2, "mo khoa: Hoan tac (menu) hoat dong");
+        undoA->trigger();                                        // tra ve trang thai ban dau (bo key X + Y)
+        pump(200);
+        // Ctrl+L khoa
+        QSettings stLock("LumaCast", "LumaCast");
+        bool savedLock = false;
+        for (const QString& k : stLock.allKeys()) savedLock = savedLock || k.contains("lock", Qt::CaseInsensitive);
+        CHECK(!savedLock, "trang thai khoa KHONG luu vao QSettings (chi theo phien)");
+        w.setLocked(true);
+        w.setLocked(false);
+        QFile pf(p.filePath);
+        CHECK(!pf.exists() || !pf.open(QIODevice::ReadOnly) || !QString::fromUtf8(pf.readAll()).contains("locked", Qt::CaseInsensitive), "khoa KHONG luu vao file project");
     }
 
     engine.stopEngine();

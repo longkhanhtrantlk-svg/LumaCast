@@ -117,6 +117,7 @@ protected:
     }
 
     void mousePressEvent(QMouseEvent* e) override {
+        if (o_->locked_) return;                       // khoa van hanh: khong sua, khong keo thuoc
         setFocus();
         const QPoint pos = e->position().toPoint();
         const int r = rowAt(pos.y());
@@ -167,6 +168,7 @@ protected:
     void mouseReleaseEvent(QMouseEvent*) override { o_->scrubbing_ = false; dragging_ = false; }
 
     void mouseDoubleClickEvent(QMouseEvent* e) override {
+        if (o_->locked_) return;
         const QPoint pos = e->position().toPoint();
         const int r = rowAt(pos.y());
         int hr, hi;
@@ -174,6 +176,7 @@ protected:
     }
 
     void keyPressEvent(QKeyEvent* e) override {
+        if (o_->locked_) return;
         if ((e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace) && selRow_ >= 0 && selIdx_ >= 0) {
             o_->deleteKey(AnimProp(selRow_), selIdx_);
             clearSelection();
@@ -297,7 +300,8 @@ void TimelineWidget::refresh() {
     timeLabel_->setText(QString("%1 / %2 s").arg(playhead(), 0, 'f', 2).arg(sp.duration, 0, 'f', 2));
     playBtn_->setText(playing() ? "⏸ Tạm dừng" : "▶ Phát");
     const bool has = insp_.currentScenePtr() != nullptr;
-    for (QWidget* w : std::initializer_list<QWidget*>{playBtn_, stopBtn_, durSpin_, loopChk_, restartChk_}) w->setEnabled(has);
+    for (QWidget* w : std::initializer_list<QWidget*>{playBtn_, stopBtn_}) w->setEnabled(has);
+    for (QWidget* w : std::initializer_list<QWidget*>{durSpin_, loopChk_, restartChk_}) w->setEnabled(has && !locked_);
     // Canh bao an toan: Scene dang chon dang o Program cua mot kenh -> phat/tua/sua keyframe tac dong TRUC TIEP len man hinh
     bool onAir = false;
     if (auto sc = insp_.currentScenePtr())
@@ -350,6 +354,7 @@ void TimelineWidget::seek(double t) {
 // ---- thuoc tinh Scene (khong qua Hoan tac) ----
 
 void TimelineWidget::setDuration(double d) {
+    if (locked_) return;
     auto sc = insp_.currentScenePtr();
     if (!sc) return;
     d = std::max(0.1, d);
@@ -358,12 +363,14 @@ void TimelineWidget::setDuration(double d) {
     refresh();
 }
 void TimelineWidget::setLoop(bool on) {
+    if (locked_) return;
     auto sc = insp_.currentScenePtr();
     if (!sc) return;
     props().loop = on;
     post([sc, on](double) { sc->loop = on; });
 }
 void TimelineWidget::setRestartOnAir(bool on) {
+    if (locked_) return;
     auto sc = insp_.currentScenePtr();
     if (!sc) return;
     props().restart = on;
@@ -373,6 +380,7 @@ void TimelineWidget::setRestartOnAir(bool on) {
 // ---- keyframe (moi thao tac la mot buoc Hoan tac) ----
 
 void TimelineWidget::addKey(AnimProp p, double t) {
+    if (locked_) return;
     insp_.editCurrentLayer([p, t](Layer& l) {
         const double v = valueOf(l, p, t);
         Track* tr = l.track(p);
@@ -383,6 +391,7 @@ void TimelineWidget::addKey(AnimProp p, double t) {
 }
 
 void TimelineWidget::toggleKeyAtPlayhead(AnimProp p) {
+    if (locked_) return;
     const Layer* l = insp_.currentLayerData();
     if (!l) return;
     const double t = playhead();
@@ -392,6 +401,7 @@ void TimelineWidget::toggleKeyAtPlayhead(AnimProp p) {
 }
 
 int TimelineWidget::moveKey(AnimProp p, int index, double newTime, bool merge) {
+    if (locked_) return -1;
     const Layer* cur = insp_.currentLayerData();
     const Track* tr0 = cur ? cur->track(p) : nullptr;
     if (!tr0 || index < 0 || index >= int(tr0->keys.size())) return -1;
@@ -411,6 +421,7 @@ int TimelineWidget::moveKey(AnimProp p, int index, double newTime, bool merge) {
 }
 
 void TimelineWidget::deleteKey(AnimProp p, int index) {
+    if (locked_) return;
     insp_.editCurrentLayer([p, index](Layer& l) {
         Track* tr = l.track(p);
         if (!tr || index < 0 || index >= int(tr->keys.size())) return;
@@ -425,6 +436,7 @@ void TimelineWidget::deleteKey(AnimProp p, int index) {
 }
 
 void TimelineWidget::setKeyInterp(AnimProp p, int index, Interp interp) {
+    if (locked_) return;
     insp_.editCurrentLayer([p, index, interp](Layer& l) {
         Track* tr = l.track(p);
         if (tr && index >= 0 && index < int(tr->keys.size())) tr->keys[index].interp = interp;

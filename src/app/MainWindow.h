@@ -23,6 +23,7 @@ class QToolButton;
 namespace lc {
 
 class InspectorPanel;
+class LockButton;
 class TimelineWidget;
 class MonitorWidget;
 
@@ -45,7 +46,10 @@ public:
     ControlService& control() { return *ctl_; }
     ControlApi& controlApi() { return *ctlApi_; }
     void showStartupNotice(const QString& msg);    // thong bao khong chan (thanh trang thai) khi tu mo project that bai/thieu file
-    void openSettings();                           // hop thoai Cai dat van hanh (dieu khien ngoai...)
+    void openSettings();
+    // UI-07: Khoa van hanh (theo phien, khong luu vao project). Khoa = vo hieu moi dieu khien SUA, giu dieu khien live.
+    void setLocked(bool on);
+    bool isLocked() const { return locked_; }                           // hop thoai Cai dat van hanh (dieu khien ngoai...)
 
 protected:
     void closeEvent(QCloseEvent* e) override;
@@ -118,6 +122,12 @@ private:
     ControlService* ctl_ = nullptr;
     QLabel* ctlLabel_ = nullptr;
     QAction* settingsAct_ = nullptr;
+    QAction *importAct_ = nullptr, *openAct_ = nullptr, *undoAct_ = nullptr, *redoAct_ = nullptr;
+    QPushButton* importBtn_ = nullptr;
+    QWidget* pluginPanel_ = nullptr;
+    LockButton* lockBtn_ = nullptr;
+    QLabel* lockLabel_ = nullptr;
+    void updateUndoActions();
     void updateControlStatus();
 };
 

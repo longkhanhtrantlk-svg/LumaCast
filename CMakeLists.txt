@@ -62,6 +62,7 @@ add_library(lumacast_ui STATIC
   src/app/InspectorPanel.h src/app/InspectorPanel.cpp
   src/app/ParamEditor.h src/app/ParamEditor.cpp
   src/app/TimelineWidget.h src/app/TimelineWidget.cpp
+  src/app/LockButton.h src/app/LockButton.cpp
   src/app/SettingsDialog.h src/app/SettingsDialog.cpp
   src/app/MainWindow.h src/app/MainWindow.cpp
 )

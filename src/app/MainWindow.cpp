@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 #include "InspectorPanel.h"
+#include "LockButton.h"
 #include "MonitorWidget.h"
 #include "ParamEditor.h"
 #include "SettingsDialog.h"
@@ -56,6 +57,9 @@ MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList plugi
     ctlLabel_ = new QLabel;
     ctlLabel_->setObjectName("ctlLabel");
     statusBar()->addPermanentWidget(ctlLabel_);
+    lockLabel_ = new QLabel;
+    lockLabel_->setObjectName("lockLabel");
+    statusBar()->addPermanentWidget(lockLabel_);
     connect(ctl_, &ControlService::statusChanged, this, [this] { updateControlStatus(); });
     buildMenus();
     defaultState_ = saveState();
@@ -82,6 +86,38 @@ MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList plugi
         }
     }
     updateControlStatus();
+    setLocked(false);                                  // khoi dong luon mo khoa (khong luu giua cac phien)
+}
+
+void MainWindow::updateUndoActions() {
+    undoAct_->setEnabled(!locked_ && undo_.canUndo());
+    redoAct_->setEnabled(!locked_ && undo_.canRedo());
+    undoAct_->setText(undo_.canUndo() ? "Hoàn tác " + undo_.undoText() : "Hoàn tác");
+    redoAct_->setText(undo_.canRedo() ? "Làm lại " + undo_.redoText() : "Làm lại");
+}
+
+// UI-07. Khoa = vo hieu moi dieu khien SUA (Inspector, sua keyframe/thoi luong, nhap media, Plug-in, Hoan tac/Lam lai, mo project,
+// cai dat, dong cua so chinh); GIU dieu khien live (CUT/TAKE/AUTO/T-bar/BLACK ALL/FTB/Den-Dung-Mau, chon Scene, Phat-Tam dung-Ve 0).
+void MainWindow::setLocked(bool on) {
+    const bool changed = on != locked_;
+    locked_ = on;
+    lockBtn_->setLocked(on);
+    inspector_->setLocked(on);
+    timeline_->setLocked(on);
+    pluginPanel_->setEnabled(!on);
+    importBtn_->setEnabled(!on);
+    importAct_->setEnabled(!on);
+    openAct_->setEnabled(!on);
+    recentMenu_->setEnabled(!on && !QSettings("LumaCast", "LumaCast").value("recent").toStringList().isEmpty());
+    settingsAct_->setEnabled(!on);
+    updateUndoActions();
+    lockLabel_->setText(on ? "🔒 KHOÁ VẬN HÀNH" : "🔓 Mở khoá");
+    lockLabel_->setStyleSheet(on ? "color:white;background:#8a1c1c;font-weight:bold;padding:0 8px" : "color:#8a90a2");
+    updateTitle();
+    if (changed) {
+        qInfo().noquote() << (on ? "Khoá vận hành: BẬT" : "Khoá vận hành: TẮT");
+        showMessage(on ? "Đã khoá vận hành: chỉ còn điều khiển live" : "Đã mở khoá vận hành");
+    }
 }
 
 void MainWindow::updateControlStatus() {
@@ -119,6 +155,11 @@ void MainWindow::buildUi() {
         chanCombo_->addItem(QString("Kênh %1: %2").arg(i + 1).arg(project_.channels[i]->name));
     top->addWidget(chanCombo_);
     top->addStretch();
+    lockBtn_ = new LockButton;
+    top->addWidget(lockBtn_);
+    connect(lockBtn_, &LockButton::lockRequested, this, [this] { setLocked(true); });
+    connect(lockBtn_, &LockButton::unlockConfirmed, this, [this] { setLocked(false); });
+    new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_L), this, [this] { if (!locked_) setLocked(true); });
     chanCombo_->setVisible(project_.channels.size() > 1);
     v->addLayout(top);
 
@@ -303,6 +344,7 @@ void MainWindow::buildDocks() {
     auto* mv = new QVBoxLayout(mw);
     auto* mtop = new QHBoxLayout;
     auto* importB = new QPushButton("Nhập media...");
+    importBtn_ = importB;
     mtop->addWidget(importB);
     mtop->addWidget(new QLabel("Nhấp đúp để tạo Scene từ nguồn"));
     mtop->addStretch();
@@ -322,6 +364,7 @@ void MainWindow::buildDocks() {
         for (const QString& f : QFileDialog::getOpenFileNames(this, "Nhập media", QString(), kMediaFilter)) addMediaFile(f);
     });
     connect(mediaList_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* it) {
+        if (locked_) { showMessage("Đang khoá vận hành: không tạo Scene mới được"); return; }
         const int k = it->data(Qt::UserRole).toInt();
         if (k < 0 || k >= int(project_.sources.size())) return;
         auto src = project_.sources[k].source;
@@ -367,6 +410,7 @@ void MainWindow::buildDocks() {
     hint->setWordWrap(true);
     pv->addWidget(hint);
     plugDock->setWidget(pw);
+    pluginPanel_ = pw;
     tabifyDockWidget(inspDock, plugDock);
     inspDock->raise();
     connect(rescanB, &QPushButton::clicked, this, [this] { pm_.rescan(); });
@@ -419,14 +463,13 @@ void MainWindow::rebuildPluginList() {
 
 void MainWindow::buildMenus() {
     auto* file = menuBar()->addMenu("&File");
-    auto* openA = file->addAction("Mở project...", QKeySequence::Open, this, [this] { openProject(); });
-    Q_UNUSED(openA);
+    openAct_ = file->addAction("Mở project...", QKeySequence::Open, this, [this] { openProject(); });
     recentMenu_ = file->addMenu("Gần đây");
     file->addSeparator();
     file->addAction("Lưu", QKeySequence::Save, this, [this] { saveProject(false); });
     file->addAction("Lưu thành...", QKeySequence::SaveAs, this, [this] { saveProject(true); });
     file->addSeparator();
-    file->addAction("Nhập media...", this, [this] {
+    importAct_ = file->addAction("Nhập media...", this, [this] {
         for (const QString& f : QFileDialog::getOpenFileNames(this, "Nhập media", QString(), kMediaFilter)) addMediaFile(f);
     });
     file->addSeparator();
@@ -434,12 +477,18 @@ void MainWindow::buildMenus() {
     rebuildRecentMenu();
 
     auto* edit = menuBar()->addMenu("&Edit");
-    QAction* undoA = undo_.createUndoAction(this, "Hoàn tác");
-    undoA->setShortcut(QKeySequence::Undo);
-    QAction* redoA = undo_.createRedoAction(this, "Làm lại");
-    redoA->setShortcuts({QKeySequence::Redo, QKeySequence(Qt::CTRL | Qt::Key_Y)});
-    edit->addAction(undoA);
-    edit->addAction(redoA);
+    // Hoan tac/Lam lai tu dinh nghia (khong dung createUndoAction) de khoa van hanh vo hieu duoc chung.
+    undoAct_ = new QAction("Hoàn tác", this);
+    undoAct_->setShortcut(QKeySequence::Undo);
+    redoAct_ = new QAction("Làm lại", this);
+    redoAct_->setShortcuts({QKeySequence::Redo, QKeySequence(Qt::CTRL | Qt::Key_Y)});
+    connect(undoAct_, &QAction::triggered, this, [this] { if (!locked_) undo_.undo(); });
+    connect(redoAct_, &QAction::triggered, this, [this] { if (!locked_) undo_.redo(); });
+    for (auto sig : {&QUndoStack::canUndoChanged, &QUndoStack::canRedoChanged}) connect(&undo_, sig, this, [this] { updateUndoActions(); });
+    for (auto sig : {&QUndoStack::undoTextChanged, &QUndoStack::redoTextChanged}) connect(&undo_, sig, this, [this] { updateUndoActions(); });
+    edit->addAction(undoAct_);
+    edit->addAction(redoAct_);
+    updateUndoActions();
 
     auto* view = menuBar()->addMenu("&View");
     for (QDockWidget* d : findChildren<QDockWidget*>()) view->addAction(d->toggleViewAction());
@@ -689,6 +738,7 @@ void MainWindow::onProjectChanged() {
 // ---------------- media ----------------
 
 bool MainWindow::addMediaFile(const QString& path) {
+    if (locked_) { showMessage("Đang khoá vận hành: không nhập media được"); return false; }
     SourceDef d;
     d.path = QFileInfo(path).absoluteFilePath();
     d.type = kImageExt.contains(QFileInfo(path).suffix().toLower()) ? "image" : "video";
@@ -751,7 +801,7 @@ void MainWindow::saveProject(bool saveAs) {
 }
 
 void MainWindow::updateTitle() {
-    setWindowTitle(QString("LumaCast — %1").arg(project_.filePath.isEmpty() ? "Chưa đặt tên" : QFileInfo(project_.filePath).fileName()));
+    setWindowTitle(QString("LumaCast — %1%2").arg(project_.filePath.isEmpty() ? "Chưa đặt tên" : QFileInfo(project_.filePath).fileName(), locked_ ? "  [KHOÁ VẬN HÀNH]" : ""));
 }
 
 void MainWindow::addRecent(const QString& path) {
@@ -768,7 +818,7 @@ void MainWindow::rebuildRecentMenu() {
     recentMenu_->clear();
     const QStringList l = QSettings("LumaCast", "LumaCast").value("recent").toStringList();
     for (const QString& p : l) recentMenu_->addAction(p, this, [this, p] { launchProject(p); });
-    recentMenu_->setEnabled(!l.isEmpty());
+    recentMenu_->setEnabled(!l.isEmpty() && !locked_);
 }
 
 void MainWindow::openProject() {
@@ -778,6 +828,7 @@ void MainWindow::openProject() {
 
 // Mo project khac = khoi dong lai voi project do (engine/output dung lai tu dau, don gian va chac chan).
 void MainWindow::launchProject(const QString& path) {
+    if (locked_) { showMessage("Đang khoá vận hành: không mở project khác được"); return; }
     if (QMessageBox::question(this, "Mở project",
                               "Mở project này sẽ ĐÓNG project hiện tại và tắt các output.\nTiếp tục?",
                               QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
@@ -791,6 +842,12 @@ void MainWindow::launchProject(const QString& path) {
 }
 
 void MainWindow::closeEvent(QCloseEvent* e) {
+    if (locked_ && askOnClose_) {                          // khoa: khong dong duoc cho den khi mo khoa (mo khoa = xac nhan)
+        qWarning().noquote() << "Khoá vận hành: từ chối đóng cửa sổ chính";
+        showMessage("Đang KHOÁ vận hành — giữ nút khoá 1 giây để mở khoá rồi mới thoát được");
+        e->ignore();
+        return;
+    }
     if (askOnClose_ &&
         QMessageBox::question(this, "Thoát LumaCast", "Thoát sẽ tắt tất cả output.\nBạn chắc chắn?",
                               QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) {

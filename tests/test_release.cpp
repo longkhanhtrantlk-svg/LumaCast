@@ -7,6 +7,7 @@
 #include "render/Engine.h"
 #include "render/PluginManager.h"
 #include <QApplication>
+#include <QtGlobal>
 #include <QDir>
 #include <QDirIterator>
 #include <QJsonObject>
@@ -61,9 +62,9 @@ int main(int argc, char** argv) {
             CHECK(!e.error.isEmpty() && !e.restricted(), std::string("File hong '") + bad + "': bao loi va khong khoa gi");
         }
         CHECK(!Entitlements::load(dir.filePath("khong_co.json")).error.isEmpty(), "File khong ton tai: bao loi");
-        setenv("LUMACAST_LICENSE", "/tmp/x/license.json", 1);
+        qputenv("LUMACAST_LICENSE", "/tmp/x/license.json");
         CHECK(Entitlements::searchPaths().first() == "/tmp/x/license.json", "searchPaths: LUMACAST_LICENSE di dau");
-        unsetenv("LUMACAST_LICENSE");
+        qunsetenv("LUMACAST_LICENSE");
 
         // ---- thi hanh ----
         Entitlements::setCurrent(Entitlements::preset("basic"));

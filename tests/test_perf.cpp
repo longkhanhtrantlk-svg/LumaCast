@@ -2,6 +2,7 @@
 #include "core/Channel.h"
 #include "core/Project.h"
 #include "media/FFmpegSource.h"
+#include "media/Hap.h"
 #include "media/StaticSources.h"
 #include "render/Benchmark.h"
 #include "render/Compositor.h"
@@ -14,6 +15,7 @@
 #include <QThread>
 #include <cmath>
 #include <cstdlib>
+#include <array>
 #include <iostream>
 #include <random>
 
@@ -343,6 +345,123 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ===== 5b. HAP: tach khung + day thang DXT len GPU =====
+    {
+        // --- phan tich khung tay: DXT1 8x8 = 4 khoi, khoi i mau i ---
+        auto dxtBlock = [](uint16_t c0, uint16_t c1, uint32_t idx) {
+            std::vector<uint8_t> b = {uint8_t(c0), uint8_t(c0 >> 8), uint8_t(c1), uint8_t(c1 >> 8), uint8_t(idx), uint8_t(idx >> 8), uint8_t(idx >> 16), uint8_t(idx >> 24)};
+            return b;
+        };
+        std::vector<uint8_t> tex;
+        for (uint16_t c : {uint16_t(0xF800), uint16_t(0x07E0), uint16_t(0x001F), uint16_t(0xFFFF)}) {
+            auto b = dxtBlock(c, 0x0000, 0);
+            tex.insert(tex.end(), b.begin(), b.end());
+        }
+        auto section = [](std::vector<uint8_t> payload, uint8_t type) {
+            std::vector<uint8_t> o = {uint8_t(payload.size()), uint8_t(payload.size() >> 8), uint8_t(payload.size() >> 16), type};
+            o.insert(o.end(), payload.begin(), payload.end());
+            return o;
+        };
+        auto snappyLiteral = [](const std::vector<uint8_t>& d) {              // snappy hop le chi gom literal (do dai < 61)
+            std::vector<uint8_t> o = {uint8_t(d.size()), uint8_t((d.size() - 1) << 2)};
+            o.insert(o.end(), d.begin(), d.end());
+            return o;
+        };
+        HapFrame hf;
+        QString herr;
+        CHECK(hapParseFrame(section(tex, 0xAB).data(), tex.size() + 4, 8, 8, hf, &herr) && hf.format == HapFormat::Dxt1 && hf.data == tex, "HAP: khung none (0xAB) -> DXT1");
+        uint8_t px[4];
+        hapSamplePixel(hf, 1, 1, px);
+        CHECK(px[0] == 255 && px[1] == 0 && px[2] == 0, "HAP: diem anh khoi 0 = do");
+        hapSamplePixel(hf, 6, 1, px);
+        CHECK(px[0] == 0 && px[1] == 255 && px[2] == 0, "HAP: diem anh khoi 1 = xanh la");
+        hapSamplePixel(hf, 6, 6, px);
+        CHECK(px[0] == 255 && px[1] == 255 && px[2] == 255, "HAP: diem anh khoi 3 = trang");
+        const auto sn = section(snappyLiteral(tex), 0xBB);
+        CHECK(hapParseFrame(sn.data(), sn.size(), 8, 8, hf, &herr) && hf.data == tex, "HAP: snappy (0xBB) giai nen dung");
+        // complex: hai chunk (none + snappy), nua bang nua
+        {
+            const std::vector<uint8_t> a(tex.begin(), tex.begin() + 16), b(tex.begin() + 16, tex.end());
+            const auto bs = snappyLiteral(b);
+            std::vector<uint8_t> comp = section({0x0A, 0x0B}, 0x02);
+            std::vector<uint8_t> sizes = section({uint8_t(a.size()), 0, 0, 0, uint8_t(bs.size()), 0, 0, 0}, 0x03);
+            std::vector<uint8_t> di = comp;
+            di.insert(di.end(), sizes.begin(), sizes.end());
+            auto container = section(di, 0x01);
+            container.insert(container.end(), a.begin(), a.end());
+            container.insert(container.end(), bs.begin(), bs.end());
+            const auto cf = section(container, 0xCB);
+            CHECK(hapParseFrame(cf.data(), cf.size(), 8, 8, hf, &herr) && hf.data == tex, "HAP: complex (0xCB, 2 chunk none+snappy) ghep dung");
+        }
+        // anh huong xau: khong crash, tu choi
+        CHECK(!hapParseFrame(nullptr, 0, 8, 8, hf, &herr) && !hapParseFrame(tex.data(), 3, 8, 8, hf, &herr), "HAP: du lieu rong/cut -> tu choi");
+        CHECK(!hapParseFrame(section(tex, 0xAB).data(), tex.size() + 4, 6, 8, hf, &herr), "HAP: kich thuoc khong chia het cho 4 -> tu choi");
+        CHECK(!hapParseFrame(section(tex, 0xA1).data(), tex.size() + 4, 8, 8, hf, &herr), "HAP: dinh dang khong ho tro (0xA1) -> tu choi");
+        auto badSn = section(snappyLiteral(tex), 0xBB);
+        badSn.resize(badSn.size() - 5);
+        CHECK(!hapParseFrame(badSn.data(), badSn.size(), 8, 8, hf, &herr), "HAP: snappy cut -> tu choi");
+        std::mt19937 fz(3);
+        bool noCrash = true;
+        for (int it = 0; it < 3000; ++it) {                                    // gian ruot ngau nhien: khong duoc crash/tran bo nho
+            auto f = it % 2 ? section(snappyLiteral(tex), 0xBB) : section(tex, 0xAB);
+            for (int k = 0; k < 3; ++k) f[fz() % f.size()] = uint8_t(fz());
+            if (fz() % 4 == 0) f.resize(fz() % f.size());
+            HapFrame x;
+            hapParseFrame(f.data(), f.size(), 8, 8, x, nullptr);
+            if (x.format != HapFormat::None && x.data.size() != hapTextureBytes(x.format, 8, 8)) noCrash = false;
+        }
+        CHECK(noCrash, "HAP: 3000 khung bi pha ngau nhien khong crash, khung chap nhan luon dung kich thuoc");
+        std::vector<uint8_t> sout;
+        const std::vector<uint8_t> snBad = {0x05, 0x00, 'a'};                       // hua 5 byte, literal 1 byte
+        CHECK(!snappyDecompress(snBad.data(), snBad.size(), sout, 100), "snappy: do dai khong khop -> tu choi");
+        const std::vector<uint8_t> snCopy = {0x08, 0x0C, 'a', 'b', 'c', 'd', 0x01, 0x04};   // literal "abcd" + copy len 4 offset 4 (kieu 1)
+        CHECK(snappyDecompress(snCopy.data(), snCopy.size(), sout, 100) && std::string(sout.begin(), sout.end()) == "abcdabcd", "snappy: literal + copy");
+        const std::vector<uint8_t> snBig = {0xFF, 0xFF, 0xFF, 0xFF, 0x0F};
+        CHECK(!snappyDecompress(snBig.data(), snBig.size(), sout, 1 << 20), "snappy: khai bao qua lon -> tu choi, khong cap phat");
+    }
+    if (haveFfmpeg) {
+        const bool s3tc = HapSupport::state() == HapSupport::Yes;
+        std::cout << "      S3TC tren GL nay: " << (s3tc ? "co" : "KHONG") << "\n";
+        struct H { const char* name; const char* opt; HapFormat fmt; };
+        const H hs[] = {
+            {"Hap (DXT1), snappy", "-format hap -compressor snappy", HapFormat::Dxt1},
+            {"Hap (DXT1), none", "-format hap -compressor none", HapFormat::Dxt1},
+            {"Hap Alpha (DXT5), snappy, 4 chunk", "-format hap_alpha -compressor snappy -chunks 4", HapFormat::Dxt5},
+            {"Hap Q (YCoCg), snappy", "-format hap_q -compressor snappy", HapFormat::YCoCgDxt5},
+        };
+        for (const H& h : hs) {
+            const QString file = dir.filePath(QString("h_%1.mov").arg(&h - hs));
+            const int rc = sh(QString("ffmpeg -y -loglevel error -f lavfi -i smptebars=s=320x240:r=25:d=1 -frames:v 4 -c:v hap %1 \"%2\"").arg(h.opt, file));
+            if (rc != 0) { std::cout << "skip: ffmpeg khong tao duoc " << h.name << "\n"; continue; }
+            VideoDecodeOptions od; od.hwDecode = "off"; od.hapDirect = true;
+            VideoDecodeOptions oc = od; oc.hapDirect = false;
+            FFmpegSource d(file, true, od), c(file, true, oc);
+            const TexRef td = firstFrame(d), tc = firstFrame(c);
+            if (!td.id || !tc.id) { CHECK(false, std::string("HAP mo duoc ") + h.name); continue; }
+            const QImage gi = renderLayer(comp, pool, d, {td.w, td.h}), ci = renderLayer(comp, pool, c, {tc.w, tc.h});
+            const Diff df = compare(gi, ci);
+            std::cout << "      " << h.name << ": " << d.decodeInfo().toStdString() << " | khac GPU-truc-tiep/FFmpeg: tb " << df.mean << ", max " << df.max << "\n";
+            if (s3tc) {
+                CHECK(d.decodeInfo().contains("trực tiếp"), std::string(h.name) + ": di duong DXT truc tiep");
+                CHECK(df.mean <= 2.0 && df.p99 <= 12, std::string(h.name) + ": khop bo giai ma hap cua FFmpeg");
+            } else {
+                CHECK(!d.decodeInfo().contains("trực tiếp") && df.mean < 1.0, std::string(h.name) + ": khong co S3TC -> tu ve FFmpeg, hinh dung");
+            }
+            // chieu + snapshot: smptebars co hang tren sang, hang duoi toi
+            const QImage sn = d.snapshot(80);
+            CHECK(!sn.isNull() && sn.width() == 80, std::string(h.name) + ": snapshot() duoc");
+        }
+        // kich thuoc khong chia het cho 4: hap encoder pad; nguon van chay (qua FFmpeg)
+        {
+            const QString file = dir.filePath("hodd.mov");
+            if (sh(QString("ffmpeg -y -loglevel error -f lavfi -i smptebars=s=322x242:r=25:d=1 -frames:v 3 -c:v hap \"%1\"").arg(file)) == 0) {
+                FFmpegSource v(file, true, VideoDecodeOptions{"off", true, true});
+                const TexRef t = firstFrame(v);
+                CHECK(t.id && v.error().isEmpty() && !v.decodeInfo().contains("trực tiếp"), "HAP 322x242 (khong chia het cho 4): chay qua FFmpeg, khong loi");
+            }
+        }
+    }
+
     // ===== 6. Tuy chon mac dinh =====
     {
         setenv("LUMACAST_HWDEC", "off", 1);
@@ -352,7 +471,10 @@ int main(int argc, char** argv) {
         unsetenv("LUMACAST_HWDEC");
         unsetenv("LUMACAST_GPU_YUV");
         const VideoDecodeOptions d = VideoDecodeOptions::fromEnvironment();
-        CHECK(d.hwDecode == "auto" && d.gpuColor, "Mac dinh: hwdec=auto, doi mau tren GPU");
+        CHECK(d.hwDecode == "auto" && d.gpuColor && d.hapDirect, "Mac dinh: hwdec=auto, doi mau tren GPU, HAP truc tiep");
+        setenv("LUMACAST_HAP", "0", 1);
+        CHECK(!VideoDecodeOptions::fromEnvironment().hapDirect, "LUMACAST_HAP=0 tat HAP truc tiep");
+        unsetenv("LUMACAST_HAP");
     }
 
     // ===== 7. Benchmark + so lieu tung giai doan =====

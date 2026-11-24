@@ -143,6 +143,118 @@ void GlTexture::upload(GL& gl, const uint8_t* rgba, int w, int h) {
     }
 }
 
+// ---------------- HAP ----------------
+
+static std::atomic<int> gHap{0};
+HapSupport::State HapSupport::state() { return State(gHap.load()); }
+void HapSupport::set(bool s3tc) { gHap = s3tc ? Yes : No; }
+
+#ifndef GL_COMPRESSED_RGB_S3TC_DXT1_EXT
+#define GL_COMPRESSED_RGB_S3TC_DXT1_EXT 0x83F0
+#define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT 0x83F3
+#endif
+
+static const char* kHapVert = R"(#version 330 core
+out vec2 vUv;
+void main() {
+    vec2 p = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1));
+    vUv = p;
+    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+})";
+// Scaled YCoCg-DXT5 (Hap Q): (R,G,B,A) = (Co, Cg, scale, Y)
+static const char* kHapFrag = R"(#version 330 core
+uniform sampler2D uTex;
+in vec2 vUv;
+out vec4 o;
+void main() {
+    vec4 t = texture(uTex, vUv) - vec4(0.50196078431373, 0.50196078431373, 0.0, 0.0);
+    float scale = t.z * (255.0 / 8.0) + 1.0;
+    float co = t.x / scale, cg = t.y / scale, y = t.w;
+    o = vec4(clamp(vec3(y + co - cg, y + cg, y - co - cg), 0.0, 1.0), 1.0);
+})";
+namespace {
+struct HapProg {
+    std::unique_ptr<QOpenGLShaderProgram> p;
+    GLuint vao = 0;
+    QOpenGLContext* ctx = nullptr;
+};
+HapProg& hapProg(GL& gl) {
+    static std::mutex m;
+    static auto* progs = new std::map<QOpenGLContext*, HapProg>;      // co y khong huy: luc thoat tien trinh context GL da het
+    std::lock_guard lk(m);
+    QOpenGLContext* cx = QOpenGLContext::currentContext();
+    HapProg& hp = (*progs)[cx];
+    if (!hp.p) {
+        hp.p = std::make_unique<QOpenGLShaderProgram>();
+        if (!hp.p->addShaderFromSourceCode(QOpenGLShader::Vertex, kHapVert) || !hp.p->addShaderFromSourceCode(QOpenGLShader::Fragment, kHapFrag) ||
+            !hp.p->link()) {
+            qCritical().noquote() << "Shader HAP loi:" << hp.p->log();
+            hp.p.reset();
+            return hp;
+        }
+        gl.glGenVertexArrays(1, &hp.vao);
+        hp.ctx = cx;
+    }
+    return hp;
+}
+} // namespace
+
+HapTexture::~HapTexture() {
+    if (QOpenGLContext* c = QOpenGLContext::currentContext()) {
+        const GLuint t[2] = {tex_, out_};
+        c->functions()->glDeleteTextures(2, t);
+        if (fbo_) c->functions()->glDeleteFramebuffers(1, &fbo_);
+    }
+}
+
+bool HapTexture::upload(GL& gl, HapGlFormat f, int w, int h, const uint8_t* data, size_t bytes) {
+    if (w <= 0 || h <= 0 || w % 4 || h % 4) return false;
+    const size_t blk = f == HapGlFormat::Dxt1 ? 8 : 16;
+    if (bytes != size_t(w / 4) * size_t(h / 4) * blk) return false;
+    UploadTimer timer(gl);
+    const bool fresh = !tex_ || w != w_ || h != h_ || f != fmt_;
+    if (!tex_) gl.glGenTextures(1, &tex_);
+    const GLenum internal = f == HapGlFormat::Dxt1 ? GL_COMPRESSED_RGB_S3TC_DXT1_EXT : GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
+    gl.glActiveTexture(GL_TEXTURE0);
+    gl.glBindTexture(GL_TEXTURE_2D, tex_);
+    void* dst = UploadConfig::usePbo() ? pbo_.begin(gl, bytes) : nullptr;
+    const void* src = data;
+    if (dst) { std::memcpy(dst, data, bytes); pbo_.end(gl); src = nullptr; }
+    if (fresh) {
+        gl.glCompressedTexImage2D(GL_TEXTURE_2D, 0, internal, w, h, 0, GLsizei(bytes), src);
+        setupTex(gl);
+    } else {
+        gl.glCompressedTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, internal, GLsizei(bytes), src);
+    }
+    if (dst) pbo_.release(gl);
+    w_ = w; h_ = h; fmt_ = f;
+    ycocg_ = f == HapGlFormat::YCoCgDxt5;
+    if (ycocg_) {
+        HapProg& hp = hapProg(gl);
+        if (!hp.p) return false;
+        if (!out_) {
+            gl.glGenTextures(1, &out_);
+            gl.glGenFramebuffers(1, &fbo_);
+        }
+        if (fresh) {
+            gl.glBindTexture(GL_TEXTURE_2D, out_);
+            gl.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            setupTex(gl);
+            gl.glBindFramebuffer(GL_FRAMEBUFFER, fbo_);
+            gl.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, out_, 0);
+        }
+        gl.glBindFramebuffer(GL_FRAMEBUFFER, fbo_);
+        gl.glViewport(0, 0, w, h);
+        gl.glDisable(GL_BLEND);
+        hp.p->bind();
+        hp.p->setUniformValue("uTex", 0);
+        gl.glBindTexture(GL_TEXTURE_2D, tex_);
+        gl.glBindVertexArray(hp.vao);
+        gl.glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    }
+    return true;
+}
+
 // ---------------- YUV ----------------
 
 size_t YuvImage::planeBytes(int i) const {

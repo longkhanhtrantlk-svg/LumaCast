@@ -99,6 +99,8 @@ static std::unique_ptr<QOpenGLShaderProgram> makeProgram(const char* frag) {
 
 bool Compositor::init() {
     if (!gl_.initializeOpenGLFunctions()) return false;
+    if (QOpenGLContext* c = QOpenGLContext::currentContext())
+        HapSupport::set(c->hasExtension("GL_EXT_texture_compression_s3tc") || c->hasExtension("GL_EXT_texture_compression_dxt1"));
     gl_.glGenVertexArrays(1, &vao_);
     blit_ = makeProgram(kFragBlit);
     out_ = makeProgram(kFragOut);

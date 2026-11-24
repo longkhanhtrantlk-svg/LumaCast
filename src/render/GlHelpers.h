@@ -78,6 +78,32 @@ private:
     PboRing pbo_;
 };
 
+// HAP (M6, SRC-05): texture nen S3TC/DXT upload thang. YCoCg DXT5 (Hap Q) duoc doi sang RGBA bang mot pass shader.
+// Ho tro S3TC duoc Compositor::init() xac dinh tu context render va ghi vao day (nguon doc de quyet dinh di duong HAP truc tiep hay giai ma FFmpeg).
+struct HapSupport {
+    enum State { Unknown = 0, Yes = 1, No = 2 };
+    static State state();
+    static void set(bool s3tc);
+};
+enum class HapGlFormat : uint8_t { Dxt1, Dxt5, YCoCgDxt5 };
+class HapTexture {
+public:
+    HapTexture() = default;
+    ~HapTexture();
+    HapTexture(const HapTexture&) = delete;
+    HapTexture& operator=(const HapTexture&) = delete;
+    bool upload(GL& gl, HapGlFormat f, int w, int h, const uint8_t* data, size_t bytes);
+    GLuint id() const { return ycocg_ ? out_ : tex_; }
+    int w() const { return w_; }
+    int h() const { return h_; }
+private:
+    GLuint tex_ = 0, out_ = 0, fbo_ = 0;
+    int w_ = 0, h_ = 0;
+    bool ycocg_ = false;
+    HapGlFormat fmt_ = HapGlFormat::Dxt1;
+    PboRing pbo_;
+};
+
 // Dung phang hoac nua phang cua anh YUV (khong phu thuoc FFmpeg).
 enum class YuvLayout : uint8_t { Planar, SemiPlanar };       // Planar: Y,U,V rieng; SemiPlanar: Y + (U,V xen ke) - NV12/P010
 enum class YuvMatrix : uint8_t { BT601, BT709, BT2020 };

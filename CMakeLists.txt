@@ -65,6 +65,7 @@ add_library(lumacast_core STATIC
   src/audio/AudioPlan.h src/audio/AudioPlan.cpp
   src/media/StaticSources.cpp
   src/media/FFmpegSource.cpp
+  src/media/Hap.h src/media/Hap.cpp
   src/live/LiveInput.h
   src/live/LiveSource.h src/live/LiveSource.cpp
   src/live/Ndi.h src/live/Ndi.cpp

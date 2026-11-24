@@ -42,6 +42,7 @@ VideoDecodeOptions VideoDecodeOptions::fromEnvironment() {
     const QString hw = qEnvironmentVariable("LUMACAST_HWDEC").trimmed().toLower();
     if (!hw.isEmpty()) o.hwDecode = hw;
     if (qEnvironmentVariable("LUMACAST_GPU_YUV").trimmed() == "0") o.gpuColor = false;
+    if (qEnvironmentVariable("LUMACAST_HAP").trimmed() == "0") o.hapDirect = false;
     return o;
 }
 VideoDecodeOptions VideoDecodeOptions::defaults() {
@@ -137,18 +138,23 @@ TexRef FFmpegSource::acquire(GL& gl) {
         if (latest_ && latest_->seq != uploaded_) f = latest_;
     }
     if (f) {
-        if (f->yuv) {
-            curYuv_ = yuvTex_.upload(gl, *f->yuv);
+        if (f->hap) {
+            const HapGlFormat gf = f->hap->format == HapFormat::Dxt1 ? HapGlFormat::Dxt1
+                                 : f->hap->format == HapFormat::Dxt5 ? HapGlFormat::Dxt5 : HapGlFormat::YCoCgDxt5;
+            if (hapTex_.upload(gl, gf, f->hap->w, f->hap->h, f->hap->data.data(), f->hap->data.size())) cur_ = Cur::Hap;
+        } else if (f->yuv) {
+            if (yuvTex_.upload(gl, *f->yuv)) cur_ = Cur::Yuv;
         } else {
             tex_.upload(gl, f->rgba.data(), f->w, f->h);
-            curYuv_ = false;
+            cur_ = Cur::Rgba;
         }
         uploaded_ = f->seq;
         rotation_ = f->rotation;
         waitFirst_ = false;
     }
     if (waitFirst_) return {};
-    if (curYuv_) return {yuvTex_.id(), yuvTex_.w(), yuvTex_.h(), rotation_};
+    if (cur_ == Cur::Hap) return {hapTex_.id(), hapTex_.w(), hapTex_.h(), rotation_};
+    if (cur_ == Cur::Yuv) return {yuvTex_.id(), yuvTex_.w(), yuvTex_.h(), rotation_};
     return {tex_.id(), tex_.w(), tex_.h(), rotation_};
 }
 
@@ -159,6 +165,14 @@ QImage FFmpegSource::snapshot(int maxWidth) const {
         f = latest_;
     }
     if (!f) return {};
+    if (f->hap) {
+        const int tw = std::max(1, std::min(maxWidth, f->w)), th = std::max(1, int(std::lround(double(tw) * f->h / f->w)));
+        QImage img(tw, th, QImage::Format_RGBA8888);
+        for (int j = 0; j < th; ++j)
+            for (int i = 0; i < tw; ++i)
+                hapSamplePixel(*f->hap, int((i + 0.5) * f->w / tw), int((j + 0.5) * f->h / th), img.scanLine(j) + i * 4);
+        return f->rotation ? img.transformed(QTransform().rotate(f->rotation)) : img;
+    }
     if (f->yuv) {
         const QImage small = yuvToImage(*f->yuv, std::min(maxWidth, f->w));
         return f->rotation ? small.transformed(QTransform().rotate(f->rotation)) : small;
@@ -232,6 +246,7 @@ const char* pixName(int fmt) {
 
 struct Pend {
     AVFrame* f = nullptr;
+    std::shared_ptr<HapFrame> hap;       // HAP truc tiep: khong co AVFrame
     double pts = 0;          // PTS goc cua file (giay)
     double cont = 0;         // moc tren dong thoi gian lien tuc (hop le khi hasCont)
     bool hasCont = false;
@@ -340,6 +355,13 @@ void FFmpegSource::run() {
             setError("Khong mo duoc decoder");
             return cleanup();
         }
+    }
+    // HAP truc tiep: can S3TC tren GPU (Compositor::init() ghi HapSupport) - doi toi ~1,5 s neu engine chua kip khoi dong
+    bool hapDirect = false, hapWarned = false;
+    if (opts_.hapDirect && st->codecpar->codec_id == AV_CODEC_ID_HAP && cc->width % 4 == 0 && cc->height % 4 == 0) {
+        for (int i = 0; i < 150 && !stop_ && HapSupport::state() == HapSupport::Unknown; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        hapDirect = HapSupport::state() == HapSupport::Yes;
+        if (!hapDirect) qInfo().noquote() << QString("HAP '%1': GPU khong co S3TC (hoac chua biet) → giai ma bang FFmpeg").arg(name_);
     }
     hwActive_ = hwActive;
     gpuColorActive_ = opts_.gpuColor;
@@ -468,6 +490,11 @@ void FFmpegSource::run() {
     };
 
     // ----- hinh: giai ma vao hang cho (pend) -----
+    auto enqueue = [&](Pend& p) {
+        if (!haveAudio && !offsetKnown) resolveOffset(fallbackOffset(p.pts));      // khong co tieng: dong ho tuong
+        if (offsetKnown) { p.cont = p.pts + vOffset; p.hasCont = true; }
+        pend.push_back(p);
+    };
     auto drainVideo = [&] {
         while (!stop_) {
             const int rr = avcodec_receive_frame(cc, fr);
@@ -495,9 +522,7 @@ void FFmpegSource::run() {
             p.pts = pts;
             av_frame_unref(fr);
             if (!p.f) continue;
-            if (!haveAudio && !offsetKnown) resolveOffset(fallbackOffset(pts));      // khong co tieng: dong ho tuong
-            if (offsetKnown) { p.cont = pts + vOffset; p.hasCont = true; }
-            pend.push_back(p);
+            enqueue(p);
         }
     };
     auto clearPending = [&] {
@@ -522,8 +547,31 @@ void FFmpegSource::run() {
             last = pend.front();
             pend.pop_front();
         }
-        if (!last.f) return;
+        if (!last.f && !last.hap) return;
         lastCont = last.cont;
+        if (last.hap) {                                       // HAP truc tiep: khong doi mau tren CPU
+            auto out = std::make_shared<Frame>();
+            out->w = last.hap->w; out->h = last.hap->h;
+            out->rotation = streamRotation;
+            out->hap = std::move(last.hap);
+            out->seq = ++seq;
+            if (infoFmt != -3) {
+                infoFmt = -3;
+                const char* n = out->hap->format == HapFormat::Dxt1 ? "HAP (DXT1)" : out->hap->format == HapFormat::Dxt5 ? "HAP Alpha (DXT5)" : "HAP Q (YCoCg DXT5)";
+                {
+                    std::lock_guard lk(m_);
+                    info_ = QString("%1 → GPU trực tiếp (không giải mã CPU)").arg(n);
+                }
+                qInfo().noquote() << QString("Video '%1': %2").arg(name_, decodeInfo());
+            }
+            {
+                std::lock_guard lk(m_);
+                latest_ = std::move(out);
+            }
+            presentedCont_ = last.cont;
+            lateMs_ = (clk - last.cont) * 1000.0;
+            return;
+        }
         AVFrame* f = last.f;
         if (infoFmt != f->format || infoHw != hwActive || infoGpu != opts_.gpuColor) {
             infoFmt = f->format; infoHw = hwActive; infoGpu = opts_.gpuColor;
@@ -617,7 +665,21 @@ void FFmpegSource::run() {
             if (r < 0) {
                 eof = true;
             } else {
-                if (pkt->stream_index == vs) {
+                if (pkt->stream_index == vs && hapDirect) {
+                    HapFrame hf;
+                    QString herr;
+                    if (hapParseFrame(pkt->data, size_t(pkt->size), cc->width, cc->height, hf, &herr)) {
+                        Pend p;
+                        p.hap = std::make_shared<HapFrame>(std::move(hf));
+                        p.pts = pkt->pts == AV_NOPTS_VALUE ? lastVpts + frameDur : double(pkt->pts) * vtb;
+                        lastVpts = p.pts;
+                        enqueue(p);
+                    } else {                                  // khung khong ho tro: dung bo giai ma FFmpeg (co the lan voi khung truc tiep, HAP la intra-only)
+                        if (!hapWarned) { hapWarned = true; qInfo().noquote() << QString("HAP '%1': %2 → bo giai ma FFmpeg").arg(name_, herr); }
+                        avcodec_send_packet(cc, pkt);
+                        drainVideo();
+                    }
+                } else if (pkt->stream_index == vs) {
                     avcodec_send_packet(cc, pkt);
                     if (hwActive && ++hwNoFrame > 60) fallbackToSoftware("khong ra khung");   // phan cung nuot goi tin nhung khong tra hinh
                     drainVideo();

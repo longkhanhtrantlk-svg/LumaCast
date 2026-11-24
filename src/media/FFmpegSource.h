@@ -1,4 +1,5 @@
 #pragma once
+#include "Hap.h"
 #include "Source.h"
 #include <atomic>
 #include <memory>
@@ -12,10 +13,11 @@ namespace lc {
 //  - hwDecode: "auto" (Windows: D3D11VA; nen tang khac: tat), "off", hoac ten thiet bi FFmpeg ("d3d11va", "dxva2", "vaapi", "cuda"...).
 //    Khong mo duoc thiet bi/codec hoac loi giua chung -> tu ve phan mem (khong dung hinh).
 //  - gpuColor: true = day plane Y/UV len GPU, doi YUV->RGB bang shader (SRC-04); false = sws_scale RGBA tren CPU (duong du phong + doi chieu).
-// Bien moi truong: LUMACAST_HWDEC=off|auto|<ten>, LUMACAST_GPU_YUV=0.
+// Bien moi truong: LUMACAST_HWDEC=off|auto|<ten>, LUMACAST_GPU_YUV=0, LUMACAST_HAP=0.
 struct VideoDecodeOptions {
     QString hwDecode = "auto";
     bool gpuColor = true;
+    bool hapDirect = true;          // HAP: tach DXT va day thang len GPU (SRC-05); false = bo giai ma hap cua FFmpeg (RGBA tren CPU)
     static VideoDecodeOptions fromEnvironment();
     static VideoDecodeOptions defaults();
     static void setDefaults(const VideoDecodeOptions& o);
@@ -52,6 +54,7 @@ private:
     struct Frame {
         std::vector<uint8_t> rgba;              // duong CPU (sws_scale); rong khi dung yuv
         std::shared_ptr<YuvImage> yuv;          // duong GPU: plane Y/UV tho, shader doi mau
+        std::shared_ptr<HapFrame> hap;          // HAP: khoi DXT, day thang len GPU
         int w = 0, h = 0;
         int rotation = 0;       // do xoay hien thi (theo chieu kim dong ho), tu display matrix
         uint64_t seq = 0;
@@ -78,7 +81,8 @@ private:
     std::atomic<bool> followAudio_{false};
     GlTexture tex_;
     YuvTexture yuvTex_;
-    bool curYuv_ = false;
+    HapTexture hapTex_;
+    enum class Cur { Rgba, Yuv, Hap } cur_ = Cur::Rgba;
     VideoDecodeOptions opts_;
     QString info_;
     std::atomic<bool> hwActive_{false}, gpuColorActive_{false};

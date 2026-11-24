@@ -50,6 +50,7 @@ add_library(lumacast_core STATIC
   src/render/Engine.cpp
   src/render/OutputWindow.cpp
   src/render/OutputHealth.cpp
+  src/render/Benchmark.h src/render/Benchmark.cpp
   src/render/EffectDef.cpp
   src/render/BuiltinEffects.cpp
   src/render/EffectRegistry.cpp
@@ -162,3 +163,8 @@ add_test(NAME live COMMAND lumacast_live_tests)
 add_executable(lumacast_live_ui_tests tests/test_live_ui.cpp)
 target_link_libraries(lumacast_live_ui_tests PRIVATE lumacast_ui)
 add_test(NAME live_ui COMMAND lumacast_live_ui_tests)
+
+# M6: hieu nang (YUV shader, PBO, giai ma phan cung du phong, benchmark)
+add_executable(lumacast_perf_tests tests/test_perf.cpp)
+target_link_libraries(lumacast_perf_tests PRIVATE lumacast_core)
+add_test(NAME perf COMMAND lumacast_perf_tests)

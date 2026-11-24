@@ -2,6 +2,8 @@
 #include "core/Log.h"
 #include "core/AppSettings.h"
 #include "core/Startup.h"
+#include "media/FFmpegSource.h"
+#include "render/Benchmark.h"
 #include "Theme.h"
 #include <QApplication>
 #include <QCommandLineParser>
@@ -70,11 +72,23 @@ int main(int argc, char** argv) {
     cli.addOption({"fullscreen", "Output chay toan man hinh (moi output mot man hinh)."});
     cli.addOption({"scale", "fit | fill | stretch | pixel (mac dinh fit).", "mode", "fit"});
     cli.addOption({"fps", "Nhip master (mac dinh 60).", "n", "60"});
+    cli.addOption({"benchmark", "Chay benchmark render roi thoat. Vd: \"outputs=4,size=3840x2160,source=synthetic-yuv,seconds=10\" (xem docs/TEST-PLAN.md muc 4).", "spec"});
+    cli.addOption({"bench-json", "Ghi ket qua benchmark ra file JSON.", "file"});
+    cli.addOption({"hwdec", "Giai ma video phan cung: auto (Windows: D3D11VA) | off | ten thiet bi FFmpeg. Mac dinh lay tu cai dat.", "mode"});
+    cli.addOption({"no-gpu-yuv", "Doi YUV->RGB tren CPU (sws_scale) thay vi shader GPU."});
     cli.addOption({"no-audio", "Khong mo thiet bi am thanh (dong ho hinh chay theo dong ho tuong)."});
     cli.process(app);
 
+    if (cli.isSet("benchmark")) return runBenchmarkCli(cli.value("benchmark"), cli.value("bench-json"));
     Project proj;
     QSettings cfg = appSettings();
+    {   // M6: tuy chon giai ma video (uu tien: dong lenh > bien moi truong > cai dat "video/hwdec")
+        VideoDecodeOptions vo = VideoDecodeOptions::defaults();
+        if (cli.isSet("hwdec")) vo.hwDecode = cli.value("hwdec").toLower();
+        else if (qEnvironmentVariable("LUMACAST_HWDEC").isEmpty() && cfg.contains("video/hwdec")) vo.hwDecode = cfg.value("video/hwdec").toString();
+        if (cli.isSet("no-gpu-yuv")) vo.gpuColor = false;
+        VideoDecodeOptions::setDefaults(vo);
+    }
     QString startupNotice;
     auto askRestore = [](const QFileInfo& autosave) {
         return QMessageBox::question(nullptr, "Khôi phục project",

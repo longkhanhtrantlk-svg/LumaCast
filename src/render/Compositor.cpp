@@ -148,6 +148,14 @@ QRectF cropToTexture(const QRectF& d, int rotation) {
 }
 
 void Compositor::renderScene(const Scene& scene, RenderTarget& dst) {
+    const int64_t t0 = GlProfile::nowNs(), up0 = GlProfile::uploadNs();
+    struct Done {
+        Compositor& c; int64_t t0, up0;
+        ~Done() {
+            if (GlProfile::sync()) c.gl_.glFinish();
+            c.timing_.sceneNs += (GlProfile::nowNs() - t0) - (GlProfile::uploadNs() - up0);     // upload do rieng
+        }
+    } done{*this, t0, up0};
     clear(dst, scene.background);
 
     const double W = dst.w, H = dst.h;
@@ -211,8 +219,22 @@ void Compositor::renderScene(const Scene& scene, RenderTarget& dst) {
     gl_.glDisable(GL_BLEND);
 }
 
+namespace {
+struct TransTimer {
+    int& depth; int64_t& acc; GL& gl; int64_t t0 = GlProfile::nowNs();
+    TransTimer(int& d, int64_t& a, GL& g) : depth(d), acc(a), gl(g) { ++depth; }
+    ~TransTimer() {
+        if (--depth == 0) {                 // chi do lop ngoai cung (overload day du goi overload theo loai)
+            if (GlProfile::sync()) gl.glFinish();
+            acc += GlProfile::nowNs() - t0;
+        }
+    }
+};
+} // namespace
+
 void Compositor::renderTransition(const RenderTarget& a, const RenderTarget& b, TransitionType type, float t,
                                   RenderTarget& dst) {
+    TransTimer tt(transDepth_, timing_.transitionNs, gl_);
     gl_.glBindFramebuffer(GL_FRAMEBUFFER, dst.fbo);
     gl_.glViewport(0, 0, dst.w, dst.h);
     gl_.glDisable(GL_BLEND);
@@ -304,6 +326,7 @@ RenderTarget* Compositor::applyLayerEffects(const Layer& l, const TexRef& tex) {
 
 void Compositor::renderTransition(const RenderTarget& a, const RenderTarget& b, const TransitionSpec& spec, float t,
                                   RenderTarget& dst) {
+    TransTimer tt(transDepth_, timing_.transitionNs, gl_);
     if (spec.type == TransitionType::Plugin && registry_) {
         auto def = registry_->find(spec.pluginId);
         QOpenGLShaderProgram* prog = def && def->kind == EffectDef::Transition ? effectProgram(*def) : nullptr;

@@ -48,6 +48,39 @@ RenderEngine::MonitorFrame RenderEngine::monitor(int ch) const {
     return ch >= 0 && ch < int(monitors_.size()) ? monitors_[ch] : MonitorFrame{};
 }
 
+StageReport RenderEngine::stages() const {
+    std::lock_guard lk(stageMu_);
+    return stages_;
+}
+
+void RenderEngine::startRecording() {
+    std::lock_guard lk(recMu_);
+    rec_.clear();
+    rec_.reserve(1 << 15);
+    recording_ = true;
+}
+
+std::vector<RenderEngine::FrameSample> RenderEngine::takeRecording() {
+    recording_ = false;
+    std::lock_guard lk(recMu_);
+    return std::move(rec_);
+}
+
+void RenderEngine::setProfileSync(bool on) { GlProfile::setSync(on); }
+
+int RenderEngine::addSink(std::unique_ptr<OutputSink> sink) {
+    if (!sink) return -1;
+    auto box = std::make_shared<std::unique_ptr<OutputSink>>(std::move(sink));
+    auto idx = std::make_shared<std::atomic<int>>(-1);
+    postAndWait([this, box, idx](double) {
+        std::lock_guard lk(sinksMu_);
+        idx->store(int(sinks_.size()));
+        sinks_.push_back(std::move(*box));
+    });
+    if (*box) return -1;
+    return idx->load();
+}
+
 int RenderEngine::addNdiOutput(const OutputConfig& cfgIn) {
     OutputConfig cfg = cfgIn;
     cfg.kind = OutputKind::Ndi;
@@ -162,7 +195,7 @@ void RenderEngine::run() {
     const int monitorEvery = std::max(1, int(project_.fps / 15.0));
     int monitorTick = 0;
 
-    FrameStats stats;
+    FrameStats stats, stUpload, stScene, stTrans, stMonitor, stOutput;
     auto statsMark = Clock::now();
     heartbeatNs_ = steadyNs();
     qInfo().noquote() << "Engine bat dau: GPU" << gpuName() << "| output:" << int(project_.outputs.size())
@@ -187,6 +220,8 @@ void RenderEngine::run() {
 
         // 2) render tat ca Channel vao FBO
         ctx.makeCurrent(surface_.get());
+        GlProfile::uploadNs() = 0;
+        comp.resetTiming();
         pool.beginFrame();
         comp.setTime(t);
         for (const auto& sc : project_.scenes) sc->clock.tick(t, sc->duration, sc->loop);     // dong ho keyframe cua moi Scene
@@ -199,6 +234,8 @@ void RenderEngine::run() {
             if (!lastPlan_ || !plan->sameAs(*lastPlan_)) { lastPlan_ = plan; audio_.setPlan(plan); }
         }
 
+        const int64_t upNs = GlProfile::uploadNs(), scNs = comp.timing().sceneNs, trNs = comp.timing().transitionNs;
+        const int64_t monT0 = GlProfile::nowNs();
         // 2b) anh thu nho cho monitor UI (~15 lan/giay)
         if (++monitorTick >= monitorEvery) {
             monitorTick = 0;
@@ -212,6 +249,8 @@ void RenderEngine::run() {
             monitors_ = std::move(mf);
         }
 
+        const int64_t monNs = GlProfile::nowNs() - monT0;
+        const int64_t outT0 = GlProfile::nowNs();
         // 3) dua ra tung Output
         {
             std::vector<OutputSink*> cur;
@@ -223,13 +262,30 @@ void RenderEngine::run() {
                 const int ch = sink->config().channel;
                 sink->present(ctx, comp, (ch >= 0 && ch < int(chanOut.size())) ? chanOut[ch] : nullptr);
             }
+            if (GlProfile::sync()) comp.gl().glFinish();
         }
 
-        stats.add(std::chrono::duration<double, std::milli>(Clock::now() - frameStart).count());
+        const double frameMs = std::chrono::duration<double, std::milli>(Clock::now() - frameStart).count();
+        stats.add(frameMs);
+        if (recording_) {
+            std::lock_guard lk(recMu_);
+            rec_.push_back({float(frameMs), float(double(upNs) / 1e6), float(double(scNs) / 1e6), float(double(trNs) / 1e6),
+                            float(double(monNs) / 1e6), float(double(GlProfile::nowNs() - outT0) / 1e6)});
+        }
+        stUpload.add(double(upNs) / 1e6);
+        stScene.add(double(scNs) / 1e6);
+        stTrans.add(double(trNs) / 1e6);
+        stMonitor.add(double(monNs) / 1e6);
+        stOutput.add(double(GlProfile::nowNs() - outT0) / 1e6);
         if (Clock::now() - statsMark >= std::chrono::seconds(1)) {
             p50_ = stats.percentile(0.50);
             p99_ = stats.percentile(0.99);
             maxMs_ = stats.max();
+            auto st = [](const FrameStats& f) { return StageStat{f.percentile(0.50), f.percentile(0.99), f.max()}; };
+            {
+                std::lock_guard lk(stageMu_);
+                stages_ = StageReport{st(stats), st(stUpload), st(stScene), st(stTrans), st(stMonitor), st(stOutput)};
+            }
             statsMark = Clock::now();
         }
 

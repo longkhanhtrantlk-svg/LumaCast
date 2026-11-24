@@ -19,6 +19,11 @@ class Compositor {
 public:
     bool init();                              // can context GL hien hanh; false neu loi shader
     GL& gl() { return gl_; }
+    // Thoi gian CPU tich luy (ns) tu lan resetTiming() gan nhat: Scene (khong tinh upload nguon, do rieng trong GlProfile::uploadNs()) va Transition.
+    // Voi GlProfile::setSync(true) co glFinish cuoi moi giai doan nen la thoi gian GPU that.
+    struct Timing { int64_t sceneNs = 0, transitionNs = 0; };
+    const Timing& timing() const { return timing_; }
+    void resetTiming() { timing_ = Timing(); }
 
     void clear(RenderTarget& dst, const QColor& c);
     void renderScene(const Scene& scene, RenderTarget& dst);
@@ -53,6 +58,8 @@ private:
     TargetPool* pool_ = nullptr;
     double time_ = 0;
     std::map<QString, std::unique_ptr<QOpenGLShaderProgram>> fxCache_;
+    Timing timing_;
+    int transDepth_ = 0;
 };
 
 } // namespace lc

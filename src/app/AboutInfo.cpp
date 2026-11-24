@@ -41,7 +41,7 @@ QString aboutHtml() {
     h += QString("• FFmpeg (%1) — %2%3<br>").arg(li.ffmpegVersion, li.ffmpegLicense.toHtmlEscaped(),
                                                 li.ffmpegLgpl ? "" : " <i>(CẢNH BÁO: không phải bản LGPL)</i>");
     h += "Toàn văn giấy phép và nguồn: xem THIRD-PARTY-NOTICES.txt trong thư mục cài đặt.<br><br>";
-    h += ndiTrademarkNotice().toHtmlEscaped() + "<br>";
+    h += ndiTrademarkNotice().toHtmlEscaped() + " <a href=\"https://ndi.video\">ndi.video</a><br>";
     h += "NDI không kèm theo LumaCast; cài NDI Tools/Runtime từ ndi.video để dùng nguồn/Output NDI.";
     return h;
 }

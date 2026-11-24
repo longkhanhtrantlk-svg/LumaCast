@@ -17,6 +17,7 @@ int main(int argc, char** argv) {
     {
         const QString h = aboutHtml();
         CHECK(h.contains("NDI®") && h.contains("registered trademark of Vizrt NDI AB"), "Gioi thieu: co dong ghi nhan 'NDI® is a registered trademark of Vizrt NDI AB.' (SPEC 5.1)");
+        CHECK(h.contains("https://ndi.video"), "Gioi thieu: co lien ket toi ndi.video");
         CHECK(h.contains("Qt") && h.contains("FFmpeg") && h.contains("LGPL") && h.contains("THIRD-PARTY-NOTICES"), "Gioi thieu: liet ke Qt/FFmpeg, giay phep LGPL, tro toi THIRD-PARTY-NOTICES");
         CHECK(h.contains("không kèm") || h.contains("không kèm theo"), "Gioi thieu: noi ro NDI khong kem theo");
         const LibraryInfo li = libraryInfo();

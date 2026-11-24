@@ -2,6 +2,8 @@
 
 Bo dieu khien man hinh LED nhieu kenh / nhieu do phan giai. Xem thiet ke: `docs/KienTruc.md`; yeu cau: `docs/SPEC.md`.
 
+NDI® (Network Device Interface) là nhãn hiệu đã đăng ký của Vizrt NDI AB — https://ndi.video
+
 ## Tài liệu
 | File | Nội dung |
 |---|---|

@@ -64,6 +64,16 @@ add_library(lumacast_core STATIC
   src/audio/AudioPlan.h src/audio/AudioPlan.cpp
   src/media/StaticSources.cpp
   src/media/FFmpegSource.cpp
+  src/live/LiveInput.h
+  src/live/LiveSource.h src/live/LiveSource.cpp
+  src/live/Ndi.h src/live/Ndi.cpp
+  src/live/NdiFake.h src/live/NdiFake.cpp
+  src/live/NdiRuntime.cpp
+  src/live/Camera.h src/live/Camera.cpp
+  src/live/CameraFake.h src/live/CameraFake.cpp
+  src/live/CameraMF.cpp
+  src/audio/AudioDrift.h
+  src/render/NdiOutput.h src/render/NdiOutput.cpp
   src/control/HttpServer.h src/control/HttpServer.cpp
   src/control/Osc.h src/control/Osc.cpp
   src/control/ControlApi.h src/control/ControlApi.cpp
@@ -74,6 +84,7 @@ target_include_directories(lumacast_core PUBLIC src)
 target_link_libraries(lumacast_core PUBLIC Qt6::Core Qt6::Gui Qt6::OpenGL Qt6::Network ${LC_FFMPEG})
 if(WIN32)
   target_link_libraries(lumacast_core PUBLIC winmm ole32 avrt)   # winmm: timeBeginPeriod(1); ole32 + avrt: WASAPI (COM, MMCSS)
+  target_link_libraries(lumacast_core PUBLIC mfplat mf mfreadwrite mfuuid)   # camera: Media Foundation (M5b); khong can Qt Multimedia
 endif()
 
 add_library(lumacast_ui STATIC
@@ -136,3 +147,13 @@ add_test(NAME audio COMMAND lumacast_audio_tests)
 add_executable(lumacast_audio_ui_tests tests/test_audio_ui.cpp)
 target_link_libraries(lumacast_audio_ui_tests PRIVATE lumacast_ui)
 add_test(NAME audio_engine COMMAND lumacast_audio_ui_tests)
+
+# M5b: thu vien NDI gia (chi cho test: kiem chung duong nap dong + chuyen doi dinh dang; KHONG phai NDI that)
+add_library(lumacast_fake_ndi SHARED tests/fake_ndi_lib.cpp)
+set_target_properties(lumacast_fake_ndi PROPERTIES CXX_VISIBILITY_PRESET default)
+
+add_executable(lumacast_live_tests tests/test_live.cpp)
+target_link_libraries(lumacast_live_tests PRIVATE lumacast_core)
+target_compile_definitions(lumacast_live_tests PRIVATE LUMACAST_FAKE_NDI_LIB="$<TARGET_FILE:lumacast_fake_ndi>")
+add_dependencies(lumacast_live_tests lumacast_fake_ndi)
+add_test(NAME live COMMAND lumacast_live_tests)

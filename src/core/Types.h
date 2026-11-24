@@ -43,8 +43,14 @@ struct Calibration {
     float gainR = 1.0f, gainG = 1.0f, gainB = 1.0f;
 };
 
-// Mot man hinh LED vat ly (mot cua so output).
+// Loai dich den cua mot Output. Screen = cua so/man hinh LED; Ndi = phat Program cua Channel ra mang bang NDI (M5b, OUT-13).
+enum class OutputKind { Screen, Ndi };
+
+// Mot man hinh LED vat ly (mot cua so output) hoac mot dich den khac (NDI ra).
 struct OutputConfig {
+    OutputKind kind = OutputKind::Screen;
+    QString ndiName;            // kind == Ndi: ten nguon NDI se hien tren mang (rong = dung `name`)
+    bool ndiAudio = true;       // kind == Ndi: gui kem am thanh bus cua Channel
     QString name;
     int channel = 0;            // Channel cap hinh cho output nay
     int screenIndex = -1;       // chi so man hinh he dieu hanh (khi fullscreen)

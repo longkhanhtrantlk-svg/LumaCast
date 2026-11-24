@@ -1,6 +1,7 @@
 #include "Engine.h"
 #include "audio/AudioPlan.h"
 #include "render/FrameStats.h"
+#include "render/NdiOutput.h"
 #include "render/OutputWindow.h"
 #include <QElapsedTimer>
 #include <QGuiApplication>
@@ -47,7 +48,24 @@ RenderEngine::MonitorFrame RenderEngine::monitor(int ch) const {
     return ch >= 0 && ch < int(monitors_.size()) ? monitors_[ch] : MonitorFrame{};
 }
 
+int RenderEngine::addNdiOutput(const OutputConfig& cfgIn) {
+    OutputConfig cfg = cfgIn;
+    cfg.kind = OutputKind::Ndi;
+    if (cfg.channel < 0 || cfg.channel >= int(project_.channels.size())) return -1;
+    auto sink = std::make_shared<std::unique_ptr<OutputSink>>(std::make_unique<NdiOutputSink>(cfg, project_.fps, &audio_));
+    auto idx = std::make_shared<std::atomic<int>>(-1);
+    postAndWait([this, sink, idx, cfg](double) {
+        std::lock_guard lk(sinksMu_);
+        idx->store(int(sinks_.size()));
+        sinks_.push_back(std::move(*sink));
+        project_.outputs.push_back(sinks_.back()->config());
+    });
+    if (*sink) return -1;                                   // lenh chua chay (het thoi gian): sink van con o day -> bo
+    return idx->load();
+}
+
 void RenderEngine::syncOutputsToProject() {
+    std::lock_guard lk(sinksMu_);
     for (size_t i = 0; i < sinks_.size() && i < project_.outputs.size(); ++i)
         project_.outputs[i] = sinks_[i]->config();
 }
@@ -79,6 +97,10 @@ void RenderEngine::startEngine() {
     const QRect avail = QGuiApplication::primaryScreen()->availableGeometry();
     int x = avail.left() + 20, y = avail.top() + 420, rowH = 0;
     for (const OutputConfig& cfg : project_.outputs) {
+        if (cfg.kind == OutputKind::Ndi) {
+            sinks_.push_back(std::make_unique<NdiOutputSink>(cfg, project_.fps, &audio_));
+            continue;
+        }
         auto w = std::make_unique<OutputWindow>(cfg);
         if (cfg.fullscreen) {
             if (w->canShow()) w->showFullScreen();
@@ -111,6 +133,7 @@ void RenderEngine::stopEngine() {
     audio_.stop();
     audio_.releasePlan();
     lastPlan_.reset();
+    std::lock_guard lk(sinksMu_);
     sinks_.clear();
 }
 
@@ -190,9 +213,16 @@ void RenderEngine::run() {
         }
 
         // 3) dua ra tung Output
-        for (auto& sink : sinks_) {
-            const int ch = sink->config().channel;
-            sink->present(ctx, comp, (ch >= 0 && ch < int(chanOut.size())) ? chanOut[ch] : nullptr);
+        {
+            std::vector<OutputSink*> cur;
+            {
+                std::lock_guard lk(sinksMu_);
+                for (auto& s : sinks_) cur.push_back(s.get());
+            }
+            for (OutputSink* sink : cur) {
+                const int ch = sink->config().channel;
+                sink->present(ctx, comp, (ch >= 0 && ch < int(chanOut.size())) ? chanOut[ch] : nullptr);
+            }
         }
 
         stats.add(std::chrono::duration<double, std::milli>(Clock::now() - frameStart).count());
@@ -220,6 +250,10 @@ void RenderEngine::run() {
     }
 
     ctx.makeCurrent(surface_.get());
+    {
+        std::lock_guard lk(sinksMu_);
+        for (auto& s : sinks_) s->shutdown(ctx, comp);
+    }
     pool.clear();
     comp.shutdown();
     ctx.doneCurrent();

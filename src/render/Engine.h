@@ -29,8 +29,11 @@ public:
     bool postAndWait(std::function<void(double)> fn, int timeoutMs = 2000);
     double now() const;
     double fps() const { return fps_; }
-    int outputCount() const { return int(sinks_.size()); }
-    OutputSink* output(int i) const { return sinks_[i].get(); }
+    int outputCount() const { std::lock_guard lk(sinksMu_); return int(sinks_.size()); }
+    OutputSink* output(int i) const { std::lock_guard lk(sinksMu_); return i >= 0 && i < int(sinks_.size()) ? sinks_[size_t(i)].get() : nullptr; }
+    // Them Output NDI luc dang chay (M5b). Chi ho tro OutputKind::Ndi (cua so man hinh phai co luc khoi dong). Goi tu UI thread; cho render thread
+    // xong roi moi tra ve, nen outputCount()/output(i) thay ngay Output moi. Tra chi so Output moi, hoac -1 neu loi.
+    int addNdiOutput(const OutputConfig& cfg);
     QString error() const;
     QString gpuName() const;
     uint64_t droppedFrames() const { return dropped_; }
@@ -56,7 +59,8 @@ protected:
 
 private:
     Project& project_;
-    std::vector<std::unique_ptr<OutputSink>> sinks_;
+    std::vector<std::unique_ptr<OutputSink>> sinks_;      // chi them (khong xoa) khi dang chay; sinksMu_ bao ve vector (con tro Output ben vung cho den stopEngine)
+    mutable std::mutex sinksMu_;
     std::unique_ptr<QOffscreenSurface> surface_;
     AudioMixer audio_;
     std::shared_ptr<AudioPlan> lastPlan_;

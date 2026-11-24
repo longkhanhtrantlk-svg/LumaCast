@@ -46,6 +46,10 @@ public:
     AudioMixer();
     ~AudioMixer();
 
+    // Tap bus cua Channel (NDI ra...): moi khoi tron xong, bus cua `ch` duoc day vao `tap` (ring lock-free; day thi bo phan thua). nullptr = go tap.
+    // Goi tu thread bat ky; mixer khoa mutex ngan moi khoi (khong phai duong callback thiet bi).
+    void setTap(int ch, std::shared_ptr<AudioStream> tap);
+
     // Render thread.
     void setPlan(std::shared_ptr<const AudioPlan> plan);
 
@@ -86,6 +90,10 @@ private:
     std::vector<Scr> scr_;
     std::vector<std::vector<float>> bus_;
     std::vector<Key> now_;
+
+    std::mutex tapMu_;
+    std::array<std::shared_ptr<AudioStream>, kMaxAudioChannels> taps_;
+    std::atomic<int> tapCount_{0};
 
     std::array<AudioMeter, kMaxAudioChannels> meters_;
     AudioMeter master_;

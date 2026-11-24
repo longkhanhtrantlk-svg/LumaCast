@@ -1,4 +1,7 @@
 #include "Project.h"
+#include "live/Camera.h"
+#include "live/LiveSource.h"
+#include "live/Ndi.h"
 #include "media/FFmpegSource.h"
 #include "media/StaticSources.h"
 #include <QDir>
@@ -29,6 +32,15 @@ std::shared_ptr<Source> createSource(const SourceDef& d, QString* err) {
     if (d.type == "testpattern")
         return std::make_shared<ImageSource>(makeTestPattern(d.size.width(), d.size.height(), d.label),
                                              d.label.isEmpty() ? "test" : d.label);
+    // Nguon truc tiep: KHONG bao gio that bai luc tao — thieu NDI Runtime/camera chi la trang thai cua nguon (project van mo duoc).
+    if (d.type == "ndi") {
+        if (d.device.isEmpty()) return fail("Nguon NDI thieu ten");
+        return makeNdiSource(d.device, d.url, d.label);
+    }
+    if (d.type == "camera") {
+        if (d.device.isEmpty() && d.deviceName.isEmpty()) return fail("Nguon camera thieu thiet bi");
+        return makeCameraSource(d.device, d.deviceName, {std::max(0, d.size.width()), std::max(0, d.size.height()), std::max(0.0, d.fps)}, d.label);
+    }
     return fail("Loai nguon khong biet: " + d.type);
 }
 
@@ -119,6 +131,18 @@ bool saveProject(const Project& p, const QString& path, QString* err) {
         if (d.type == "video" || d.type == "image") o["path"] = base.relativeFilePath(d.path);
         if (d.type == "color") { o["color"] = d.color.name(QColor::HexArgb); o["label"] = d.label; }
         if (d.type == "testpattern") { o["width"] = d.size.width(); o["height"] = d.size.height(); o["label"] = d.label; }
+        if (d.type == "ndi") {                              // M5b: nguon NDI (tuy chon, khong tang version)
+            o["ndiName"] = d.device;
+            if (!d.url.isEmpty()) o["ndiUrl"] = d.url;
+            if (!d.label.isEmpty()) o["label"] = d.label;
+        }
+        if (d.type == "camera") {
+            o["device"] = d.device;
+            o["deviceName"] = d.deviceName;
+            if (d.size.width() > 0 && d.size.height() > 0) { o["width"] = d.size.width(); o["height"] = d.size.height(); }
+            if (d.fps > 0) o["fps"] = d.fps;
+            if (!d.label.isEmpty()) o["label"] = d.label;
+        }
         srcs.append(o);
     }
     root["sources"] = srcs;
@@ -202,6 +226,11 @@ bool saveProject(const Project& p, const QString& path, QString* err) {
     for (const OutputConfig& c : p.outputs) {
         QJsonObject o;
         o["name"] = c.name;
+        if (c.kind == OutputKind::Ndi) {                    // M5b (tuy chon, khong tang version): Output NDI
+            o["type"] = "ndi";
+            if (!c.ndiName.isEmpty()) o["ndiName"] = c.ndiName;
+            if (!c.ndiAudio) o["ndiAudio"] = false;
+        }
         o["channel"] = c.channel;
         o["screen"] = c.screenIndex;
         if (!c.screenName.isEmpty()) o["screenName"] = c.screenName;
@@ -257,7 +286,15 @@ bool loadProject(Project& out, const QString& path, QString* err) {
         for (const auto& e : p.sources) if (e.id == d.id) return fail("Trung id nguon: " + d.id);
         if (o.contains("path")) d.path = QDir::cleanPath(base.absoluteFilePath(o["path"].toString()));
         if (o.contains("color")) d.color = QColor(o["color"].toString());
-        d.size = QSize(o["width"].toInt(1920), o["height"].toInt(1080));
+        d.size = QSize(o["width"].toInt(d.type == "camera" ? 0 : 1920), o["height"].toInt(d.type == "camera" ? 0 : 1080));
+        if (d.type == "ndi") { d.device = o["ndiName"].toString(); d.url = o["ndiUrl"].toString(); }
+        if (d.type == "camera") {
+            d.device = o["device"].toString();
+            d.deviceName = o["deviceName"].toString();
+            const double f = o["fps"].toDouble(0);
+            d.fps = std::isfinite(f) && f > 0 && f < 1000 ? f : 0;
+            if (d.size.width() < 0 || d.size.height() < 0 || d.size.width() > 16384 || d.size.height() > 16384) d.size = QSize(0, 0);
+        }
         QString e;
         if (!p.addSource(d, &e)) return fail(QString("Nguon '%1': %2").arg(d.id, e));
     }
@@ -359,6 +396,11 @@ bool loadProject(Project& out, const QString& path, QString* err) {
         const QJsonObject o = v.toObject();
         OutputConfig c;
         c.name = o["name"].toString(QString("Output %1").arg(p.outputs.size() + 1));
+        if (o["type"].toString() == "ndi") {
+            c.kind = OutputKind::Ndi;
+            c.ndiName = o["ndiName"].toString().left(120);
+            c.ndiAudio = o["ndiAudio"].toBool(true);
+        }
         c.channel = o["channel"].toInt(0);
         if (c.channel < 0 || c.channel >= int(p.channels.size()))
             return fail(QString("Output '%1': kenh %2 khong ton tai").arg(c.name).arg(c.channel + 1));
@@ -366,6 +408,8 @@ bool loadProject(Project& out, const QString& path, QString* err) {
         c.screenName = o["screenName"].toString();
         c.fullscreen = o["fullscreen"].toBool(false);
         c.size = QSize(o["width"].toInt(1920), o["height"].toInt(1080));
+        if (c.kind == OutputKind::Ndi && (c.size.width() < 16 || c.size.height() < 16 || c.size.width() > 8192 || c.size.height() > 8192))
+            return fail("Output NDI '" + c.name + "': kich thuoc khong hop le");
         c.scale = parseScale(o["scale"].toString());
         c.rotation = ((o["rotation"].toInt(0) % 360) + 360) % 360 / 90 * 90;
         const QJsonArray cr = o["crop"].toArray();

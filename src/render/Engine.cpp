@@ -1,5 +1,6 @@
 #include "Engine.h"
 #include "audio/AudioPlan.h"
+#include "core/Features.h"
 #include "render/FrameStats.h"
 #include "render/NdiOutput.h"
 #include "render/OutputWindow.h"
@@ -17,6 +18,19 @@
 namespace lc {
 
 using Clock = std::chrono::steady_clock;
+
+namespace {
+// Output bi tat boi goi giay phep: giu cho (chi so + cau hinh duoc luu lai nguyen ven) nhung khong hien/khong gui gi.
+class DisabledSink : public OutputSink {
+public:
+    explicit DisabledSink(OutputConfig c) : cfg_(std::move(c)) {}
+    const OutputConfig& config() const override { return cfg_; }
+    OutputConfig& mutableConfig() override { return cfg_; }
+    void present(QOpenGLContext&, Compositor&, RenderTarget*) override {}
+private:
+    OutputConfig cfg_;
+};
+} // namespace
 
 RenderEngine::RenderEngine(Project& p, QObject* parent) : QThread(parent), project_(p) { ownRegistry_.loadBuiltins(); }
 
@@ -84,6 +98,8 @@ int RenderEngine::addSink(std::unique_ptr<OutputSink> sink) {
 int RenderEngine::addNdiOutput(const OutputConfig& cfgIn) {
     OutputConfig cfg = cfgIn;
     cfg.kind = OutputKind::Ndi;
+    if (!Entitlements::current().ndi) return -1;
+    if (const int mo = Entitlements::current().maxOutputs; mo > 0 && outputCount() >= mo) return -1;
     if (cfg.channel < 0 || cfg.channel >= int(project_.channels.size())) return -1;
     auto sink = std::make_shared<std::unique_ptr<OutputSink>>(std::make_unique<NdiOutputSink>(cfg, project_.fps, &audio_));
     auto idx = std::make_shared<std::atomic<int>>(-1);
@@ -129,8 +145,21 @@ void RenderEngine::startEngine() {
     // Che do cua so (phat trien): xep cac output thanh hang ngang duoi bang dieu khien, xuong dong khi het cho.
     const QRect avail = QGuiApplication::primaryScreen()->availableGeometry();
     int x = avail.left() + 20, y = avail.top() + 420, rowH = 0;
+    const int maxOut = Entitlements::current().maxOutputs;            // 0 = khong gioi han (mac dinh)
+    int outIdx = 0;
     for (const OutputConfig& cfg : project_.outputs) {
+        // Output vuot gioi han goi / NDI khong co trong goi: giu mot sink RONG (khong hien/khong gui) de chi so Output va project luu lai van khop
+        if (maxOut > 0 && outIdx++ >= maxOut) {
+            qWarning().noquote() << QString("Output '%1' bị tắt: gói giấy phép hiện tại tối đa %2 Output").arg(cfg.name).arg(maxOut);
+            sinks_.push_back(std::make_unique<DisabledSink>(cfg));
+            continue;
+        }
         if (cfg.kind == OutputKind::Ndi) {
+            if (!Entitlements::current().ndi) {
+                qWarning().noquote() << QString("Output NDI '%1' bị tắt: NDI không có trong gói giấy phép").arg(cfg.name);
+                sinks_.push_back(std::make_unique<DisabledSink>(cfg));
+                continue;
+            }
             sinks_.push_back(std::make_unique<NdiOutputSink>(cfg, project_.fps, &audio_));
             continue;
         }

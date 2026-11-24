@@ -1,4 +1,5 @@
 #include "ControlService.h"
+#include "core/Features.h"
 #include <QNetworkDatagram>
 #include <QRandomGenerator>
 
@@ -104,8 +105,16 @@ void ControlService::stop() {
     if (wasHttp || wasOsc) emit statusChanged();
 }
 
-QString ControlService::apply(const ControlSettings& s) {
+QString ControlService::apply(const ControlSettings& sIn) {
     stop();
+    ControlSettings s = sIn;
+    if (!Entitlements::current().externalControl && (s.httpEnabled || s.oscEnabled)) {     // goi khong co dieu khien ngoai: khong mo cong
+        qWarning().noquote() << "Điều khiển ngoài không có trong gói giấy phép hiện tại: không mở HTTP/OSC";
+        s.httpEnabled = s.oscEnabled = false;
+        cur_ = s;
+        emit statusChanged();
+        return "Điều khiển ngoài không có trong gói giấy phép hiện tại";
+    }
     cur_ = s;
     QStringList errors;
     api_.setToken(s.token.toUtf8());

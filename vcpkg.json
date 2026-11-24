@@ -1,0 +1,12 @@
+{
+  "name": "lumacast",
+  "version": "0.1.0",
+  "description": "LumaCast - LED Display Controller. Chi FFmpeg di qua vcpkg (ban LGPL, lien ket dong); Qt cai rieng (Qt installer / aqt).",
+  "dependencies": [
+    {
+      "name": "ffmpeg",
+      "default-features": false,
+      "features": ["avcodec", "avformat", "swresample", "swscale", "ffmpeg"]
+    }
+  ]
+}

@@ -1,0 +1,90 @@
+name: CI
+
+# Build + ctest. Linux: day du (xvfb + Mesa llvmpipe). Windows: build + goi cai dat la rao chan; ctest chay nhung KHONG chan
+# (runner khong co GPU: can OpenGL 3.3 phan mem; xem docs/TEST-WINDOWS.md). Chua chay thu tren GitHub - xem README/PR.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cai phu thuoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev libqt6opengl6-dev libgl1-mesa-dev libxkbcommon-dev xvfb \
+            libavformat-dev libavcodec-dev libswscale-dev libswresample-dev libavutil-dev \
+            cmake g++ pkg-config ninja-build ffmpeg
+      - name: Cau hinh
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build -j
+      - name: ctest
+        run: xvfb-run -a ctest --test-dir build --output-on-failure --timeout 600
+      - name: Goi cai dat (kiem tra bo file + rao chan NDI)
+        run: cpack --config build/CPackConfig.cmake -B build/pkg
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: linux-test-logs
+          path: build/Testing/Temporary/LastTest.log
+
+  windows:
+    runs-on: windows-2022
+    env:
+      QT_VERSION: "6.8.3"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cai Qt (MSVC 2022, 64-bit)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+          cache: true
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Cache vcpkg (FFmpeg)
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\vcpkg\archives
+          key: vcpkg-ffmpeg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+      - name: Cau hinh (FFmpeg qua vcpkg manifest)
+        shell: pwsh
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows
+      - name: Build
+        run: cmake --build build
+      - name: Giay phep FFmpeg la LGPL (rao chan phat hanh)
+        shell: pwsh
+        env:
+          LUMACAST_REQUIRE_LGPL: "1"
+        run: |
+          # dua DLL Qt/FFmpeg canh file kiem thu roi chay bo "release"
+          & "$env:QT_ROOT_DIR\bin\windeployqt.exe" build\lumacast_license_tests.exe
+          ctest --test-dir build -R "^(license|package)$" --output-on-failure
+      - name: ctest (khong chan - runner khong co GPU)
+        continue-on-error: true
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_OPENGL: software
+        run: |
+          Get-ChildItem build\lumacast_*tests*.exe | ForEach-Object { & "$env:QT_ROOT_DIR\bin\windeployqt.exe" $_.FullName }
+          ctest --test-dir build --output-on-failure --timeout 600
+      - name: Dong goi (NSIS + ZIP)
+        shell: pwsh
+        run: cpack --config build/CPackConfig.cmake -C Release -B build/pkg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            build/pkg/*.exe
+            build/pkg/*.zip

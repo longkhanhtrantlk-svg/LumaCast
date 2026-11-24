@@ -1,5 +1,6 @@
 #include "PluginManager.h"
 #include "core/AppSettings.h"
+#include "core/Features.h"
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDir>
@@ -75,7 +76,9 @@ void PluginManager::rescan() {
 
     std::map<QString, std::pair<EffectDef, PluginInfo>> found;      // id -> (def, info); thu muc sau ghi de
     std::vector<PluginInfo> failed;
-    for (const QString& dir : dirs_) {
+    const bool pluginsAllowed = Entitlements::current().plugins;          // goi khong co plug-in: chi Effect/Transition dung san
+    if (!pluginsAllowed && !pluginsNoted_) { pluginsNoted_ = true; qInfo().noquote() << "Plug-in không có trong gói giấy phép hiện tại: bỏ qua thư mục plug-in"; }
+    for (const QString& dir : pluginsAllowed ? dirs_ : QStringList()) {
         for (const QFileInfo& sub : QDir(dir).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name)) {
             const QString folder = sub.absoluteFilePath();
             const QString manifestPath = folder + "/plugin.json";

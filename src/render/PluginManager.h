@@ -38,6 +38,7 @@ private:
     QHash<QString, QString> lastErrors_;                           // thu muc -> loi da canh bao gan nhat
     int revCounter_ = 1;
     int scanCount_ = 0;
+    bool pluginsNoted_ = false;
     bool watching_ = false;
 };
 

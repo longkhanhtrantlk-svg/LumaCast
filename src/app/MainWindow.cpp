@@ -1,4 +1,6 @@
 #include "MainWindow.h"
+#include "AboutInfo.h"
+#include "core/Features.h"
 #include "AudioPanel.h"
 #include "InspectorPanel.h"
 #include "LiveDialogs.h"
@@ -399,6 +401,10 @@ void MainWindow::buildDocks() {
     tlDock->setObjectName("dockTimeline");
     timeline_ = new TimelineWidget(*inspector_, engine_, project_);
     tlDock->setWidget(timeline_);
+    if (!Entitlements::current().timeline) {                      // goi khong co timeline/keyframe: lam xam, giai thich
+        timeline_->setEnabled(false);
+        tlDock->setWindowTitle("Timeline (không có trong gói)");
+    }
     addDockWidget(Qt::BottomDockWidgetArea, tlDock);
     tabifyDockWidget(mediaDock, tlDock);
     mediaDock->raise();
@@ -550,9 +556,7 @@ void MainWindow::buildMenus() {
     settingsAct_ = settings->addAction("Cài đặt vận hành…", this, [this] { openSettings(); });
 
     auto* help = menuBar()->addMenu("&Help");
-    help->addAction("Giới thiệu", this, [this] {
-        QMessageBox::about(this, "LumaCast", "<b>LumaCast</b> — LED Display Controller<br>Phiên bản M3a");
-    });
+    help->addAction("Giới thiệu", this, [this] { QMessageBox::about(this, "LumaCast", aboutHtml()); });
 }
 
 // ---------------- thao tac live ----------------
@@ -878,18 +882,21 @@ bool MainWindow::addNdiOutput(const QString& name, int channel, QSize size, bool
 }
 
 void MainWindow::showAddNdiSource() {
+    if (!Entitlements::current().ndi) { showMessage("NDI không có trong gói giấy phép hiện tại"); return; }
     if (locked_) { showMessage("Đang khoá vận hành: không thêm nguồn được"); return; }
     NdiSourceDialog dlg(this);
     if (dlg.exec() == QDialog::Accepted) addNdiSource(dlg.name(), dlg.url(), dlg.label());
 }
 
 void MainWindow::showAddCamera() {
+    if (!Entitlements::current().camera) { showMessage("Camera/capture không có trong gói giấy phép hiện tại"); return; }
     if (locked_) { showMessage("Đang khoá vận hành: không thêm nguồn được"); return; }
     CameraSourceDialog dlg(this);
     if (dlg.exec() == QDialog::Accepted && !dlg.deviceId().isEmpty()) addCameraSource(dlg.deviceId(), dlg.deviceName(), dlg.format(), dlg.label());
 }
 
 void MainWindow::showAddNdiOutput() {
+    if (!Entitlements::current().ndi) { showMessage("NDI không có trong gói giấy phép hiện tại"); return; }
     if (locked_) { showMessage("Đang khoá vận hành: không thêm Output được"); return; }
     QStringList names;
     for (const auto& c : project_.channels) names << c->name;

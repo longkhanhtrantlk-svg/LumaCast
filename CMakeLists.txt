@@ -28,6 +28,7 @@ add_library(lumacast_core STATIC
   src/core/Animation.cpp
   src/core/Scene.cpp
   src/core/Log.cpp
+  src/core/Startup.h src/core/Startup.cpp
   src/render/GlHelpers.cpp
   src/render/Compositor.cpp
   src/render/Engine.h
@@ -102,4 +103,6 @@ add_test(NAME control COMMAND lumacast_control_tests)
 
 add_executable(lumacast_m5c_tests tests/test_m5c.cpp)
 target_link_libraries(lumacast_m5c_tests PRIVATE lumacast_ui)
+target_compile_definitions(lumacast_m5c_tests PRIVATE LUMACAST_EXE="$<TARGET_FILE:lumacast>")
+add_dependencies(lumacast_m5c_tests lumacast)
 add_test(NAME ops COMMAND lumacast_m5c_tests)

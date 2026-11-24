@@ -1,5 +1,6 @@
 #pragma once
 #include "control/ControlService.h"
+#include "core/Startup.h"
 #include <QDialog>
 
 class QCheckBox;
@@ -15,7 +16,8 @@ namespace lc {
 class SettingsDialog : public QDialog {
     Q_OBJECT
 public:
-    SettingsDialog(ControlService& control, QWidget* parent = nullptr);
+    // runKey/exePath: chi de test (QSettings giả thay cho registry Windows). Mặc định: registry HKCU\...\Run (chỉ Windows) và exe hiện tại.
+    SettingsDialog(ControlService& control, QWidget* parent = nullptr, QSettings* runKey = nullptr, QString exePath = {});
 
     // Ap dung + luu; tra ve loi (rong = thanh cong). Cung la diem vao cho test.
     QString applyAndSave();
@@ -29,6 +31,11 @@ private:
     ControlSettings collect() const;
 
     ControlService& control_;
+    std::unique_ptr<QSettings> runKeyOwned_;
+    QSettings* runKey_ = nullptr;
+    QString exe_;
+    QCheckBox *autostart_ = nullptr, *reopen_ = nullptr;
+    QLabel* autoHint_ = nullptr;
     QCheckBox *httpOn_ = nullptr, *httpLan_ = nullptr, *oscOn_ = nullptr, *oscLan_ = nullptr, *showTok_ = nullptr;
     QSpinBox *httpPort_ = nullptr, *oscPort_ = nullptr;
     QLineEdit* token_ = nullptr;

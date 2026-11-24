@@ -44,6 +44,7 @@ public:
     QUndoStack* undoStack() { return &undo_; }
     ControlService& control() { return *ctl_; }
     ControlApi& controlApi() { return *ctlApi_; }
+    void showStartupNotice(const QString& msg);    // thong bao khong chan (thanh trang thai) khi tu mo project that bai/thieu file
     void openSettings();                           // hop thoai Cai dat van hanh (dieu khien ngoai...)
 
 protected:

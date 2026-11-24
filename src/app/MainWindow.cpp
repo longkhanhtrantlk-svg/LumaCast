@@ -3,6 +3,7 @@
 #include "MonitorWidget.h"
 #include "ParamEditor.h"
 #include "SettingsDialog.h"
+#include "core/Startup.h"
 #include "TimelineWidget.h"
 #include "render/OutputWindow.h"
 #include "Theme.h"
@@ -89,6 +90,8 @@ void MainWindow::updateControlStatus() {
     if (ctl_->oscRunning()) parts << QString("OSC :%1%2").arg(ctl_->oscPort()).arg(ctl_->settings().oscLan ? " (LAN)" : "");
     ctlLabel_->setText(parts.isEmpty() ? QString() : "Điều khiển ngoài: " + parts.join(" · "));
 }
+
+void MainWindow::showStartupNotice(const QString& msg) { statusBar()->showMessage(msg, 30000); }
 
 void MainWindow::openSettings() {
     SettingsDialog dlg(*ctl_, this);
@@ -742,7 +745,7 @@ void MainWindow::saveProject(bool saveAs) {
         const bool ok = lc::saveProject(project_, path, &err);
         QMetaObject::invokeMethod(this, [this, ok, err, path] {
             showMessage(ok ? "Đã lưu: " + path : "Lỗi lưu: " + err);
-            if (ok) { addRecent(path); updateTitle(); QFile::remove(path + ".autosave"); }
+            if (ok) { addRecent(path); updateTitle(); QFile::remove(path + ".autosave"); QSettings stl("LumaCast", "LumaCast"); rememberProject(stl, path); }
         }, Qt::QueuedConnection);
     });
 }

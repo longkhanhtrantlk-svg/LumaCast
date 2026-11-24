@@ -1,5 +1,7 @@
 #include "SettingsDialog.h"
 #include <QCheckBox>
+#include <QCoreApplication>
+#include <QDir>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QGroupBox>
@@ -13,10 +15,28 @@
 
 namespace lc {
 
-SettingsDialog::SettingsDialog(ControlService& control, QWidget* parent) : QDialog(parent), control_(control) {
+SettingsDialog::SettingsDialog(ControlService& control, QWidget* parent, QSettings* runKey, QString exePath)
+    : QDialog(parent), control_(control), exe_(exePath.isEmpty() ? QCoreApplication::applicationFilePath() : std::move(exePath)) {
+    if (runKey) runKey_ = runKey;
+    else { runKeyOwned_ = openRunKey(); runKey_ = runKeyOwned_.get(); }
     setWindowTitle("Cài đặt vận hành");
     setObjectName("settingsDialog");
     auto* root = new QVBoxLayout(this);
+
+    // ---- Khoi dong (OPS-01) ----
+    auto* sg = new QGroupBox("Khởi động");
+    auto* sl = new QVBoxLayout(sg);
+    autostart_ = new QCheckBox("Khởi động LumaCast cùng Windows");
+    autostart_->setObjectName("autostart");
+    reopen_ = new QCheckBox("Tự mở lại project gần nhất khi khởi động (nếu không chỉ định --project)");
+    reopen_->setObjectName("reopenLast");
+    autoHint_ = new QLabel;
+    autoHint_->setWordWrap(true);
+    autoHint_->setObjectName("autostartHint");
+    sl->addWidget(autostart_);
+    sl->addWidget(reopen_);
+    sl->addWidget(autoHint_);
+    root->addWidget(sg);
 
     // ---- HTTP ----
     auto* hg = new QGroupBox("Điều khiển ngoài — HTTP / SSE (điện thoại, Companion, script)");
@@ -87,6 +107,18 @@ SettingsDialog::SettingsDialog(ControlService& control, QWidget* parent) : QDial
 
 void SettingsDialog::loadFromSettings() {
     QSettings st("LumaCast", "LumaCast");
+    reopen_->setChecked(reopenLastEnabled(st));
+    const QString last = lastProjectPath(st);
+    QString hint = last.isEmpty() ? "Chưa có project nào được nhớ." : "Project gần nhất: " + QDir::toNativeSeparators(last);
+    if (!runKey_) {
+        autostart_->setEnabled(false);
+        hint += "\nKhởi động cùng hệ điều hành chỉ hỗ trợ trên Windows.";
+    } else {
+        const AutostartState as = autostartState(*runKey_, exe_);
+        autostart_->setChecked(as != AutostartState::Off);
+        if (as == AutostartState::OnOtherPath) hint += "\n⚠ Đang bật nhưng trỏ tới đường dẫn khác (đã di chuyển?). Bấm OK để cập nhật về: " + QDir::toNativeSeparators(exe_);
+    }
+    autoHint_->setText(hint);
     const ControlSettings s = ControlSettings::load(st);
     httpOn_->setChecked(s.httpEnabled);
     httpPort_->setValue(s.httpPort);
@@ -127,7 +159,23 @@ ControlSettings SettingsDialog::collect() const {
 
 QString SettingsDialog::applyAndSave() {
     const ControlSettings s = collect();
-    const QString err = control_.apply(s);                 // tu log bat/tat; LAN khong token se bi tu choi tai day
+    QString err = control_.apply(s);                       // tu log bat/tat; LAN khong token se bi tu choi tai day
+    {
+        QSettings stp("LumaCast", "LumaCast");
+        setReopenLast(stp, reopen_->isChecked());
+    }
+    if (runKey_) {
+        const AutostartState as = autostartState(*runKey_, exe_);
+        const bool want = autostart_->isChecked();
+        if (want != (as != AutostartState::Off) || (want && as == AutostartState::OnOtherPath)) {
+            if (setAutostart(*runKey_, want, exe_)) qInfo().noquote() << QString("Khởi động cùng Windows: %1 (%2)").arg(want ? "BẬT" : "TẮT", want ? autostartCommand(exe_) : QString());
+            else {
+                const QString e = "Không ghi được khoá khởi động cùng Windows (kiểm tra quyền/đường dẫn)";
+                qWarning().noquote() << e;
+                err += (err.isEmpty() ? "" : "\n") + e;
+            }
+        }
+    }
     err_->setText(err);
     QSettings st("LumaCast", "LumaCast");
     s.save(st);                                            // luu ca khi cong bi chiem: de nguoi dung sua tiep, khong mat nhap

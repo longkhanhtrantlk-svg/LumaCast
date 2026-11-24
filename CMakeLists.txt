@@ -39,7 +39,16 @@ endif()
 
 # NDI(R): bien dich co NDI hay khong. OFF = KHONG co ma nap runtime NDI nao trong file thuc thi (ban phat hanh khong dinh dieu khoan SDK NDI, xem SPEC 5.1).
 # ON (mac dinh, de phat trien/kiem thu) = co backend NDI that (nap dong), chua doi chieu ABI.
-option(LUMACAST_ENABLE_NDI "Bien dich ho tro NDI (nap dong runtime)" ON)
+option(LUMACAST_ENABLE_NDI "Bien dich ho tro NDI (nap dong runtime). MAC DINH TAT: xem docs/SPEC.md muc 5.1" OFF)
+set(LUMACAST_NDI_EULA_ACCEPTED "" CACHE STRING "Dat = I_ACCEPT_NDI_SDK_EULA de BAT NDI, sau khi ban da doc va chap nhan NDI SDK License Agreement")
+if(LUMACAST_ENABLE_NDI AND NOT LUMACAST_NDI_EULA_ACCEPTED STREQUAL "I_ACCEPT_NDI_SDK_EULA")
+  message(FATAL_ERROR
+    "NDI dang bi KHOA. Ma NDI trong repo chi de nguoi co chuyen mon xem. Muon bat phai:\n"
+    "  1) tai NDI SDK tu https://ndi.video/for-developers/ va doc/chap nhan NDI SDK License Agreement (tu chiu trach nhiem phap ly: EULA rieng cho ban phan phoi (muc 3d), tuong thich SDK moi nhat, header SDK la thong tin mat - khong dua vao repo);\n"
+    "  2) doi chieu ABI trong src/live/NdiRuntime.cpp voi header chinh thuc;\n"
+    "  3) cau hinh them -DLUMACAST_NDI_EULA_ACCEPTED=I_ACCEPT_NDI_SDK_EULA.\n"
+    "Chi tiet: docs/SPEC.md muc 5.1.")
+endif()
 if(LUMACAST_ENABLE_NDI)
   set(LC_NDI_RUNTIME_SRC src/live/NdiRuntime.cpp)
 else()

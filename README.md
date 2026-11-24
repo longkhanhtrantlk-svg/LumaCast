@@ -32,7 +32,7 @@ Windows (muc tieu): Qt 6 + FFmpeg qua vcpkg (`vcpkg install ffmpeg:x64-windows` 
 Phim tat (kenh 1): `1..9` chon Preview, `Space` = AUTO, `Enter` = CUT.
 
 ## M6 them (hieu nang va phat hanh Windows)
-- **NDI tat trong ban phat hanh:** CMake `-DLUMACAST_ENABLE_NDI=OFF` (CI/release dat san) -> khong co ma NDI trong file thuc thi, giao dien an muc NDI (vi EULA NDI SDK buoc EULA rieng; xem `docs/SPEC.md` muc 5.1). Mac dinh ON de phat trien/kiem thu (ctest `live`, `live_ui` chi chay khi ON).
+- **NDI tat trong ban phat hanh:** CMake `-DLUMACAST_ENABLE_NDI=OFF` (CI/release dat san) -> khong co ma NDI trong file thuc thi, giao dien an muc NDI (vi EULA NDI SDK buoc EULA rieng; xem `docs/SPEC.md` muc 5.1). **Mac dinh OFF va bi khoa**: bat NDI can `-DLUMACAST_ENABLE_NDI=ON -DLUMACAST_NDI_EULA_ACCEPTED=I_ACCEPT_NDI_SDK_EULA` sau khi tu doc/chap nhan EULA cua NDI SDK (ctest `live`, `live_ui` chi chay khi ON). Ma NDI van nam trong repo de nguoi co chuyen mon xem; can ban co NDI thi lien he tac gia.
 - **Doi mau YUV->RGB bang shader tren GPU** (mac dinh): plane Y/UV (8/10 bit, NV12/P010, 4:2:0/4:2:2/4:4:4, BT.601/709/2020, gioi han/day du) len GPU thay vi `sws_scale` RGBA tren CPU. `--no-gpu-yuv` / `LUMACAST_GPU_YUV=0` ve duong CPU.
 - **Giai ma phan cung D3D11VA** (Windows, mac dinh `auto`): `--hwdec auto|off|<ten thiet bi FFmpeg>` / `LUMACAST_HWDEC` / khoa cai dat `video/hwdec`. Khong dung duoc -> tu ve phan mem. **Chua chay voi D3D11VA that** (T-HWDEC).
 - **HAP** (Hap, Hap Alpha, Hap Q): upload khoi DXT thang len GPU, khong giai ma CPU. `LUMACAST_HAP=0` tat.

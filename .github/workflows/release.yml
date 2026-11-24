@@ -33,7 +33,7 @@ jobs:
         shell: pwsh
         run: |
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DLUMACAST_ENABLE_NDI=OFF
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows
           cmake --build build
       - name: FFmpeg phai la LGPL
         shell: pwsh

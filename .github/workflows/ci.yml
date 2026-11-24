@@ -23,7 +23,7 @@ jobs:
             libavformat-dev libavcodec-dev libswscale-dev libswresample-dev libavutil-dev \
             cmake g++ pkg-config ninja-build ffmpeg
       - name: Cau hinh
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLUMACAST_ENABLE_NDI=ON -DLUMACAST_NDI_EULA_ACCEPTED=I_ACCEPT_NDI_SDK_EULA   # chi de chay test NDI noi bo (thu vien NDI gia); khong phat hanh ban nay
       - name: Build
         run: cmake --build build -j
       - name: ctest
@@ -59,7 +59,7 @@ jobs:
         run: |
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
-            -DVCPKG_TARGET_TRIPLET=x64-windows -DLUMACAST_ENABLE_NDI=OFF
+            -DVCPKG_TARGET_TRIPLET=x64-windows
       - name: Build
         run: cmake --build build
       - name: Giay phep FFmpeg la LGPL (rao chan phat hanh)

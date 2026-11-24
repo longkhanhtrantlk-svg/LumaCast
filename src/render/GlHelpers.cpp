@@ -125,6 +125,47 @@ static void texUpload(GL& gl, PboRing& ring, bool fresh, GLint internal, GLenum 
     if (dst) ring.release(gl);
 }
 
+AsyncReadback::~AsyncReadback() {
+    if (QOpenGLContext* c = QOpenGLContext::currentContext())
+        if (pbo_[0] || pbo_[1]) c->functions()->glDeleteBuffers(2, pbo_);
+}
+
+void AsyncReadback::release(GL& gl) {
+    if (pbo_[0] || pbo_[1]) gl.glDeleteBuffers(2, pbo_);
+    pbo_[0] = pbo_[1] = 0;
+    w_[0] = w_[1] = h_[0] = h_[1] = 0;
+}
+
+QImage AsyncReadback::submit(GL& gl, int w, int h) {
+    gl.glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    if (!UploadConfig::usePbo()) {                         // dong bo: doc ngay
+        QImage img(w, h, QImage::Format_RGBA8888);
+        gl.glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, img.bits());
+        return img.mirrored(false, true);
+    }
+    if (!pbo_[0]) gl.glGenBuffers(2, pbo_);
+    cur_ ^= 1;
+    const size_t bytes = size_t(w) * h * 4;
+    gl.glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo_[cur_]);
+    gl.glBufferData(GL_PIXEL_PACK_BUFFER, GLsizeiptr(bytes), nullptr, GL_STREAM_READ);
+    gl.glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);           // async: ghi vao PBO
+    w_[cur_] = w; h_[cur_] = h;
+    QImage out;
+    const int prev = cur_ ^ 1;
+    if (w_[prev] == w && h_[prev] == h) {
+        gl.glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo_[prev]);
+        if (const void* p = gl.glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, GLsizeiptr(bytes), GL_MAP_READ_BIT)) {
+            QImage img(w, h, QImage::Format_RGBA8888);
+            const size_t row = size_t(w) * 4;
+            for (int y = 0; y < h; ++y) std::memcpy(img.scanLine(h - 1 - y), static_cast<const uint8_t*>(p) + row * size_t(y), row);   // GL goc duoi-trai -> tren-trai
+            gl.glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+            out = std::move(img);
+        }
+    }
+    gl.glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    return out;
+}
+
 GlTexture::~GlTexture() {
     if (id_ && QOpenGLContext::currentContext())
         QOpenGLContext::currentContext()->functions()->glDeleteTextures(1, &id_);

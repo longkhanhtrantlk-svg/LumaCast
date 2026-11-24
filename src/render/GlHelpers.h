@@ -1,6 +1,7 @@
 #pragma once
 #include <QOpenGLContext>
 #include <QOpenGLFunctions_3_3_Core>
+#include <QImage>
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -58,6 +59,23 @@ public:
 private:
     GLuint pbo_[2] = {0, 0};
     size_t cap_[2] = {0, 0};
+    int cur_ = 0;
+};
+
+// Doc ngu GPU->CPU bat dong bo (anh monitor): glReadPixels vao PBO, anh tra ve la cua LAN GOI TRUOC (tre 1 lan goi) nen CPU khong cho GPU xong khung hien tai.
+// Khi tat PBO (UploadConfig) thi doc dong bo va tra ngay anh vua doc.
+class AsyncReadback {
+public:
+    AsyncReadback() = default;
+    ~AsyncReadback();
+    AsyncReadback(const AsyncReadback&) = delete;
+    AsyncReadback& operator=(const AsyncReadback&) = delete;
+    // Goi khi FBO nguon dang duoc bind doc: doc w x h RGBA8. Tra anh (goc tren-trai) cua lan goi truoc cung kich thuoc; QImage rong neu chua co.
+    QImage submit(GL& gl, int w, int h);
+    void release(GL& gl);
+private:
+    GLuint pbo_[2] = {0, 0};
+    int w_[2] = {0, 0}, h_[2] = {0, 0};
     int cur_ = 0;
 };
 

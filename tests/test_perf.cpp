@@ -244,6 +244,48 @@ int main(int argc, char** argv) {
         CHECK(GlProfile::uploadNs() > 0, "GlProfile: upload cong don thoi gian");
     }
 
+    // ===== 3b. Output: duong "khong hieu chinh" = duong day du; thumbnail bat dong bo =====
+    {
+        std::vector<uint8_t> grad(64 * 48 * 4);
+        for (int y = 0; y < 48; ++y)
+            for (int x = 0; x < 64; ++x) { uint8_t* p = &grad[size_t(y * 64 + x) * 4]; p[0] = uint8_t(x * 4); p[1] = uint8_t(y * 5); p[2] = uint8_t((x + y) * 2); p[3] = 255; }
+        GlTexture gt;
+        gt.upload(gl, grad.data(), 64, 48);
+        auto drawWith = [&](const Calibration& cal) {
+            pool.beginFrame();
+            RenderTarget* t = pool.acquire(64, 48);
+            gl.glBindFramebuffer(GL_FRAMEBUFFER, t->fbo);
+            OutputConfig cfg; cfg.scale = ScaleMode::Stretch; cfg.cal = cal;
+            comp.drawToCurrent(gt.id(), 64, 48, cfg, 64, 48);
+            return readAll(gl, t->fbo, 64, 48);
+        };
+        Calibration id, near1; near1.brightness = 1.0001f;           // khac mac dinh mot chut -> bat buoc chay shader day du
+        const Diff d = compare(drawWith(id), drawWith(near1));
+        CHECK(d.max <= 1, "Output: duong khong-hieu-chinh khop duong shader day du (sai lech toi da " + std::to_string(d.max) + ")");
+        Calibration dim; dim.brightness = 0.5f;
+        const QImage a = drawWith(id), b = drawWith(dim);
+        CHECK(qRed(b.pixel(40, 10)) < qRed(a.pixel(40, 10)) * 0.6 && qRed(b.pixel(40, 10)) > qRed(a.pixel(40, 10)) * 0.4, "Output: hieu chinh do sang van tac dung (khong bi duong nhanh bo qua)");
+
+        // thumbnail bat dong bo: lan dau chua co anh, lan 2 co anh cua lan 1, dung chieu
+        pool.beginFrame();
+        RenderTarget* src = pool.acquire(64, 48);
+        auto halves = std::make_shared<Scene>();
+        halves->size = {64, 48};
+        halves->background = Qt::blue;
+        auto red = std::make_shared<ColorSource>(QColor(Qt::red), "r");
+        halves->layers.push_back({red, {0, 0, 1, 0.5}, 1.0f, LayerFit::Stretch});         // nua TREN do
+        comp.renderScene(*halves, *src);
+        const QImage t1 = comp.thumbnailAsync(pool, *src, 32, 7);
+        const QImage t2 = comp.thumbnailAsync(pool, *src, 32, 7);
+        CHECK(t1.isNull(), "thumbnailAsync lan dau: chua co anh (tra khi goi lan sau)");
+        CHECK(!t2.isNull() && t2.width() == 32 && qRed(t2.pixel(16, 3)) > 240 && qBlue(t2.pixel(16, 3)) < 15 && qBlue(t2.pixel(16, 20)) > 240,
+              "thumbnailAsync lan 2: anh cua lan 1, dung chieu (nua tren do, nua duoi xanh)");
+        UploadConfig::setUsePbo(false);
+        const QImage t3 = comp.thumbnailAsync(pool, *src, 32, 8);
+        UploadConfig::setUsePbo(true);
+        CHECK(!t3.isNull() && qRed(t3.pixel(16, 3)) > 240 && qBlue(t3.pixel(16, 20)) > 240, "thumbnailAsync khi tat PBO: doc dong bo, tra ngay, dung chieu");
+    }
+
     // ===== 4. Video that: duong GPU (shader) so voi duong CPU (sws_scale) =====
     QTemporaryDir dir;
     auto sh = [&](const QString& cmd) { return std::system(cmd.toLocal8Bit().constData()); };

@@ -41,6 +41,8 @@ public:
     void drawToCurrent(GLuint tex, int texW, int texH, const OutputConfig& cfg, int winW, int winH);
     // Thu nho texture (toi da maxW rong) va doc ve CPU cho monitor UI. Chay tren render thread.
     QImage thumbnail(TargetPool& pool, const RenderTarget& src, int maxW);
+    // Nhu thumbnail() nhung doc bat dong bo qua PBO: tra anh CUA LAN GOI TRUOC cung `slot` (rong o lan dau/doi kich thuoc) -> khong chan CPU cho GPU xong khung nay.
+    QImage thumbnailAsync(TargetPool& pool, const RenderTarget& src, int maxW, int slot);
     // Phu den len dst voi do mo `amount` (0..1): dung cho Fade-To-Black.
     void fadeToBlack(RenderTarget& dst, float amount);
     void shutdown();
@@ -59,6 +61,7 @@ private:
     double time_ = 0;
     std::map<QString, std::unique_ptr<QOpenGLShaderProgram>> fxCache_;
     Timing timing_;
+    std::map<int, AsyncReadback> readers_;
     int transDepth_ = 0;
 };
 

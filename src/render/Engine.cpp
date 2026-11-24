@@ -269,12 +269,20 @@ void RenderEngine::run() {
         if (++monitorTick >= monitorEvery) {
             monitorTick = 0;
             std::vector<MonitorFrame> mf(project_.channels.size());
+            std::vector<char> keepProg(mf.size(), 0), keepPrev(mf.size(), 0);
             for (size_t i = 0; i < project_.channels.size(); ++i) {
-                if (chanOut[i]) mf[i].program = comp.thumbnail(pool, *chanOut[i], 480);
-                if (RenderTarget* pv = project_.channels[i]->renderPreview(comp, pool))
-                    mf[i].preview = comp.thumbnail(pool, *pv, 480);
+                // doc bat dong bo (PBO): anh tre them 1 nhip monitor (~67 ms) nhung khong chan CPU cho GPU xong khung nay
+                if (chanOut[i]) { mf[i].program = comp.thumbnailAsync(pool, *chanOut[i], 480, int(i) * 2); keepProg[i] = mf[i].program.isNull(); }
+                if (RenderTarget* pv = project_.channels[i]->renderPreview(comp, pool)) {
+                    mf[i].preview = comp.thumbnailAsync(pool, *pv, 480, int(i) * 2 + 1);
+                    keepPrev[i] = mf[i].preview.isNull();
+                }
             }
             std::lock_guard lk(monitorMutex_);
+            for (size_t i = 0; i < mf.size() && i < monitors_.size(); ++i) {       // anh chua ve kip (lan dau/doi kich thuoc): giu anh cu, khong nhay ve trong
+                if (keepProg[i]) mf[i].program = monitors_[i].program;
+                if (keepPrev[i]) mf[i].preview = monitors_[i].preview;
+            }
             monitors_ = std::move(mf);
         }
 

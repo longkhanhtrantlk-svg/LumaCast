@@ -1,4 +1,5 @@
 #include "Engine.h"
+#include "audio/AudioPlan.h"
 #include "render/FrameStats.h"
 #include "render/OutputWindow.h"
 #include <QElapsedTimer>
@@ -107,6 +108,9 @@ void RenderEngine::stopEngine() {
         stop_ = true;
         wait();
     }
+    audio_.stop();
+    audio_.releasePlan();
+    lastPlan_.reset();
     sinks_.clear();
 }
 
@@ -165,6 +169,12 @@ void RenderEngine::run() {
         for (const auto& sc : project_.scenes) sc->clock.tick(t, sc->duration, sc->loop);     // dong ho keyframe cua moi Scene
         for (size_t i = 0; i < project_.channels.size(); ++i)
             chanOut[i] = project_.channels[i]->render(comp, pool, t);
+
+        // 2a) ke hoach tron am thanh (chi day cho mixer khi co thay doi: he so, transition, Scene, Layer...)
+        {
+            auto plan = buildAudioPlan(project_, t);
+            if (!lastPlan_ || !plan->sameAs(*lastPlan_)) { lastPlan_ = plan; audio_.setPlan(plan); }
+        }
 
         // 2b) anh thu nho cho monitor UI (~15 lan/giay)
         if (++monitorTick >= monitorEvery) {

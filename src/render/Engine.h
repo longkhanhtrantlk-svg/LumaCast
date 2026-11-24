@@ -1,4 +1,5 @@
 #pragma once
+#include "audio/AudioMixer.h"
 #include "core/Project.h"
 #include "render/EffectRegistry.h"
 #include "render/OutputSink.h"
@@ -45,6 +46,8 @@ public:
     MonitorFrame monitor(int channel) const;
     // Render thread (goi trong post): chep cau hinh Output hien tai ve Project de luu file.
     void syncOutputsToProject();
+    // Mixer am thanh (M5a). Engine dung ke hoach tron moi khung (render thread); thiet bi do ben ngoai mo bang audio().start(id).
+    AudioMixer& audio() { return audio_; }
     // Kho Effect/Transition dung chung (UI nap plug-in vao day; render thread bien dich + dung).
     EffectRegistry& registry() { return *registry_; }
 
@@ -55,6 +58,8 @@ private:
     Project& project_;
     std::vector<std::unique_ptr<OutputSink>> sinks_;
     std::unique_ptr<QOffscreenSurface> surface_;
+    AudioMixer audio_;
+    std::shared_ptr<AudioPlan> lastPlan_;
     EffectRegistry ownRegistry_;
     EffectRegistry* registry_ = &ownRegistry_;
     std::mutex mutex_;

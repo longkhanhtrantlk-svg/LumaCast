@@ -9,14 +9,14 @@
 | M2 | Project JSON, hiệu chỉnh màu, video wall, nhiều Layer, video dọc | ✅ xong | #1 |
 | M3a | Giao diện Live Control: monitor, Scene list, Media Pool, Outputs, Inspector, FTB, Đen/Dừng, tự lưu | ✅ xong | #1 |
 | M3b | Hoàn tác/làm lại, T-bar, AUTO, panel Layer kéo-thả | ✅ xong | #2 |
-| M3c | Độ tin cậy: log, watchdog, mất màn, mẫu thử theo Output, thống kê khung | 🟡 phần mã xong; còn thử trên phần cứng thật | #4 |
-| M4a | Effect trên Layer, Transition mới + Stinger + easing, plug-in shader, Plugin Manager | 🟡 phần mã xong; còn thử trên Windows | #5 |
-| M4b | Xoay/crop/blend Layer, đồng hồ Scene, keyframe, timeline | 🟡 phần mã xong; còn thử trên Windows | (nhánh `m4b`) |
+| M3c | Độ tin cậy: log, watchdog, mất màn, mẫu thử theo Output, thống kê khung | ✅ xong; đã thử trên phần cứng (trừ T-4K, T-SOAK) | #4 |
+| M4a | Effect trên Layer, Transition mới + Stinger + easing, plug-in shader, Plugin Manager | ✅ xong; đã thử trên Windows | #5 |
+| M4b | Xoay/crop/blend Layer, đồng hồ Scene, keyframe, timeline | ✅ xong; đã thử trên Windows | #6 |
 
 Quy mô mã: khoảng 6.500 dòng C++ (gồm test) · 326 kiểm tra tự động · build được trên Linux và Windows (MSVC 2022, Qt 6.8.3, FFmpeg 9.1).
 
-**Chưa được xác nhận trên phần cứng thật** (rủi ro đã biết, xem mục 5): nút Dừng hình trên Windows; fullscreen đúng màn LED;
-4 Output 4K; chạy liên tục nhiều giờ.
+**Đã xác nhận trên phần cứng thật (24/11/2026):** Dừng hình, fullscreen đúng màn, mất màn, mẫu thử, log, Effect/Transition/Stinger/plug-in, keyframe/xoay/crop/blend.
+**Chưa xác nhận** (rủi ro đã biết, xem mục 5): 4 Output 4K (T-4K); chạy liên tục nhiều giờ (T-SOAK); benchmark B1–B5.
 
 ## 2. Nguyên tắc làm việc
 1. **Mỗi mốc một nhánh**, một Pull Request vào `main`; `main` luôn build được và qua `ctest`.
@@ -33,7 +33,7 @@ Kích cỡ: **S** vài ngày · **M** 1–2 tuần · **L** vài tuần (ước 
 
 ### M3c — Nghiệm thu thật và độ tin cậy (đề xuất làm **trước** M4) · Kích cỡ: M
 *Mục tiêu:* biến các điều "chưa xác nhận" thành đã kiểm chứng, và thêm bảo vệ cơ bản trước khi thêm tính năng.
-- [ ] **Cần phần cứng thật:** chạy checklist Windows T-FRZ, T-FS, T-LOSS, T-4K, T-SOAK (xem `TEST-PLAN.md`), ghi kết quả vào `SPEC.md`.
+- [x] **Cần phần cứng thật:** T-FRZ, T-FS, T-LOSS đã Đạt (24/11/2026). *Còn lại:* T-4K, T-SOAK (xem `TEST-PLAN.md`).
 - [ ] Sửa lỗi phát hiện được (ví dụ cơ chế Dừng hình nếu không đúng trên Windows).
 - [x] OUT-12: phát hiện mất màn/sai màn, báo đúng Output, ẩn cửa sổ khi mất màn (không nhảy sang màn khác), tự hiện lại đúng màn. Nhận diện màn theo **tên** (`screenName`).
 - [x] OPS-02: watchdog render thread (cảnh báo giao diện + log; màn hình giữ hình cuối). *Chưa làm:* tự khởi động lại.
@@ -98,7 +98,7 @@ M5a/M5b/M5c có thể đổi thứ tự theo nhu cầu thực tế của buổi 
 ## 5. Rủi ro
 | # | Rủi ro | Ảnh hưởng | Giảm thiểu |
 |---|---|---|---|
-| R1 | Dừng hình dựa vào việc không hoán đổi bộ đệm; hành vi trên Windows (DWM) chưa xác nhận | Dừng hình không đứng yên | T-FRZ trong M3c; nếu sai, giữ một bản sao khung cuối và vẽ lại |
+| R1 | Dừng hình dựa vào việc không hoán đổi bộ đệm; **đã xác nhận trên Windows (T-FRZ Đạt)** | Dừng hình không đứng yên | T-FRZ trong M3c; nếu sai, giữ một bản sao khung cuối và vẽ lại |
 | R2 | Nhiều Output cùng tần số quét nhưng không đồng bộ tuyệt đối, có thể xé hình/lệch khung | Chất lượng hình trên LED ghép | Một render thread, đo bằng T-4K; cân nhắc card có Genlock khi ghép lớn |
 | R3 | Băng thông GPU/VRAM với nhiều Output 4K | Rớt khung | Benchmark sớm (M3c), render theo độ phân giải Output chọn lọc, giải mã phần cứng (M6) |
 | R4 | Plug-in bên thứ ba treo/crash | Sập cả show | Shader plug-in là đường chính, native có hạn chạy và vô hiệu hoá, tách tiến trình sau |
@@ -106,7 +106,7 @@ M5a/M5b/M5c có thể đổi thứ tự theo nhu cầu thực tế của buổi 
 | R6 | OpenGL bị Apple ngừng phát triển | Chặn macOS | Giữ ranh giới GPU hẹp (nguyên tắc 4), làm M7 qua RHI |
 | R7 | Điều khoản NDI SDK và giấy phép thương mại của Qt khi bán gói Thương mại | Pháp lý | Xác nhận trước M5b/M6; giữ liên kết động LGPL |
 | R8 | Phạm vi lớn so với một người làm | Chậm tiến độ | Làm theo mốc nhỏ, P0 trước; mỗi PR có thể phát hành độc lập |
-| R9 | Chưa có máy LED/bộ gửi tín hiệu thật để kiểm tra trong môi trường phát triển | Lỗi chỉ lộ ra ngoài hiện trường | M3c bắt buộc có buổi thử trên phần cứng thật |
+| R9 | Môi trường phát triển (Linux) không có máy LED/bộ gửi tín hiệu thật; người dùng thử trên Windows mỗi đợt (đã Đạt cho M3c–M4b) | Lỗi chỉ lộ ra ngoài hiện trường | M3c bắt buộc có buổi thử trên phần cứng thật |
 
 ## 6. Cách làm việc theo mốc (quy trình)
 1. Tách nhánh từ `main` (`m3c`, `m4a`…); viết test trước/cùng với mã.

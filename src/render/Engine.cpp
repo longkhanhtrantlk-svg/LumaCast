@@ -56,6 +56,19 @@ void RenderEngine::post(std::function<void(double)> fn) {
     commands_.push_back(std::move(fn));
 }
 
+bool RenderEngine::postAndWait(std::function<void(double)> fn, int timeoutMs) {
+    if (!isRunning() || QThread::currentThread() == this) { fn(now()); return true; }
+    struct Sync { std::mutex m; std::condition_variable cv; bool done = false; };
+    auto sync = std::make_shared<Sync>();
+    post([fn = std::move(fn), sync](double t) {
+        fn(t);
+        { std::lock_guard lk(sync->m); sync->done = true; }
+        sync->cv.notify_all();
+    });
+    std::unique_lock lk(sync->m);
+    return sync->cv.wait_for(lk, std::chrono::milliseconds(timeoutMs), [&] { return sync->done; });
+}
+
 void RenderEngine::startEngine() {
     now();                                                       // khoi tao moc thoi gian
     surface_ = std::make_unique<QOffscreenSurface>();            // phai tao tren thread chinh

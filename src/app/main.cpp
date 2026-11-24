@@ -1,11 +1,14 @@
 #include "MainWindow.h"
 #include "core/Log.h"
+#include "core/AppSettings.h"
+#include "core/Startup.h"
 #include "Theme.h"
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QRegularExpression>
+#include <QSettings>
 #include <QStandardPaths>
 #include <QSurfaceFormat>
 
@@ -46,7 +49,13 @@ int main(int argc, char** argv) {
 
     QApplication app(argc, argv);
     app.setApplicationName("LumaCast");
-    initLogging(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/logs");
+    // LUMACAST_CONFIG_DIR: dat thu muc cau hinh + log rieng (ban mang theo/kiem thu); khong dat thi dung vi tri chuan cua he dieu hanh (registry tren Windows).
+    const QString cfgDir = qEnvironmentVariable("LUMACAST_CONFIG_DIR");
+    if (!cfgDir.isEmpty()) {
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, cfgDir);
+    }
+    initLogging(cfgDir.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/logs" : cfgDir + "/logs");
     qInfo() << "LumaCast khoi dong";
     applyDarkTheme(app);
     QCommandLineParser cli;
@@ -64,25 +73,46 @@ int main(int argc, char** argv) {
     cli.process(app);
 
     Project proj;
-    if (cli.isSet("project")) {
+    QSettings cfg = appSettings();
+    QString startupNotice;
+    auto askRestore = [](const QFileInfo& autosave) {
+        return QMessageBox::question(nullptr, "Khôi phục project",
+                                     QString("Tìm thấy bản tự động lưu mới hơn:\n%1\n(%2)\n\nKhôi phục bản này?")
+                                         .arg(autosave.fileName(), autosave.lastModified().toString("dd/MM/yyyy HH:mm:ss")),
+                                     QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes) == QMessageBox::Yes;
+    };
+    // OPS-01: khong co --project va khong co cau hinh tu dong lenh -> tu mo lai project gan nhat (neu bat); thieu file thi chay binh thuong.
+    QString projectArg = cli.value("project");
+    bool autoOpened = false;
+    if (!cli.isSet("project")) {
+        const bool explicitCfg = cli.isSet("output") || cli.isSet("media") || cli.isSet("wall") || cli.isSet("save");
+        const StartupDecision dec = decideStartupProject(cfg, explicitCfg);
+        startupNotice = dec.notice;
+        projectArg = dec.path;
+        autoOpened = !dec.path.isEmpty();
+    }
+    bool loaded = false;
+    if (!projectArg.isEmpty()) {
         QString err;
-        QString toLoad = cli.value("project");
         // Khoi phuc: neu ban autosave moi hon file project (vd mat dien giua show) thi hoi nguoi dung.
-        const QFileInfo main(toLoad), autosave(toLoad + ".autosave");
-        if (autosave.exists() && (!main.exists() || autosave.lastModified() > main.lastModified()) &&
-            QMessageBox::question(nullptr, "Khôi phục project",
-                                  QString("Tìm thấy bản tự động lưu mới hơn:\n%1\n(%2)\n\nKhôi phục bản này?")
-                                      .arg(autosave.fileName(), autosave.lastModified().toString("dd/MM/yyyy HH:mm:ss")),
-                                  QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes) == QMessageBox::Yes)
-            toLoad = autosave.filePath();
-        if (!loadProject(proj, toLoad, &err)) {
+        const QString toLoad = pickProjectToLoad(projectArg, askRestore);
+        if (loadProject(proj, toLoad, &err)) {
+            proj.filePath = projectArg;                  // luu lai vao file goc, ke ca khi nap tu autosave
+            if (cli.isSet("fullscreen"))
+                for (auto& o : proj.outputs) o.fullscreen = true;
+            rememberProject(cfg, projectArg);
+            if (autoOpened) qInfo().noquote() << "Tự mở lại project gần nhất:" << projectArg;
+            loaded = true;
+        } else if (!autoOpened) {
             qCritical().noquote() << "Khong mo duoc project:" << err;
             return 2;
+        } else {                                         // tu mo that bai: khong lam hong buoi chay, chay project trong va bao
+            proj = Project();
+            startupNotice = QString("Không mở lại được project gần nhất (%1): %2").arg(projectArg, err);
+            qWarning().noquote() << startupNotice;
         }
-        proj.filePath = cli.value("project");           // luu lai vao file goc, ke ca khi nap tu autosave
-        if (cli.isSet("fullscreen"))
-            for (auto& o : proj.outputs) o.fullscreen = true;
-    } else {
+    }
+    if (!loaded) {
         proj.fps = cli.value("fps").toDouble();
         const QString sm = cli.value("scale");
         const ScaleMode scale = sm == "fill" ? ScaleMode::Fill : sm == "stretch" ? ScaleMode::Stretch
@@ -153,6 +183,7 @@ int main(int argc, char** argv) {
     engine.startEngine();
     MainWindow window(proj, engine);
     window.show();
+    if (!startupNotice.isEmpty()) { qWarning().noquote() << startupNotice; window.showStartupNotice(startupNotice); }
     const int rc = app.exec();
     qInfo() << "LumaCast thoat, ma" << rc;
     engine.stopEngine();

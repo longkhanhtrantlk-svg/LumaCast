@@ -10,6 +10,8 @@ Liên quan: `SPEC.md` (tiêu chí nghiệm thu), `PLAN.md` (Definition of Done),
 | Tự động — độ tin cậy | `lumacast_m3c_tests` | Linux (xvfb), Windows | 28 |
 | Tự động — Effect/Transition/plug-in | `lumacast_effects_tests` | Linux (xvfb), Windows | 65 |
 | Tự động — hoạt hoạ/Layer | `lumacast_anim_tests` | Linux (xvfb), Windows | 67 |
+| Tự động — điều khiển ngoài (HTTP/SSE/OSC, bảo mật) | `lumacast_control_tests` | Linux (xvfb), Windows | 186 |
+| Tự động — vận hành (cài đặt, tự khởi động, mở lại project, khoá, hoàn tác nhập media, timeline) | `lumacast_m5c_tests` | Linux (xvfb), Windows | 197 |
 | Thử tay trên phần cứng thật | Checklist mục 3 | Windows, màn LED/bộ gửi tín hiệu thật | theo bảng |
 | Benchmark hiệu năng | Mục 4 | Windows, máy mục tiêu | theo bảng |
 
@@ -24,6 +26,10 @@ Chạy:
 Output (Fit, Stretch, xoay, crop), hiệu chỉnh màu, video wall, FTB, thumbnail/snapshot, project (lưu–mở, đường dẫn tương đối, các lỗi),
 video FFmpeg (khung hình, lặp, xoay 90/180/270 so với FFmpeg tự xoay).
 
+**`lumacast_control_tests`** (socket TCP/UDP thật ở `127.0.0.1`, cổng ngẫu nhiên): bộ phân tích OSC (đúng, cụt ở mọi độ dài, bundle lồng/quá sâu, fuzz 6000 gói), HTTP (dòng yêu cầu/header/Content-Length sai, header 20 KB, thân quá lớn, quá nhiều header, slowloris, quá tải kết nối, 300 kết nối rác), toàn bộ endpoint và mã lỗi, Preview không đổi Program, Đen đúng phạm vi, token (thiếu/sai/lệch 1 ký tự/tiền tố/Basic), LAN bắt buộc token, Origin/Host (CSRF, DNS rebinding), SSE (đẩy khi đổi, giới hạn client, client gửi rác), khoá vận hành (423 cho lệnh sửa, live vẫn chạy), OSC qua UDP (lệnh đúng, gói hỏng, địa chỉ lạ, lũ 2000 gói), log bật/tắt/từ chối.
+
+**`lumacast_m5c_tests`**: hộp thoại cài đặt dùng thật trên `MainWindow`, tự khởi động (QSettings giả), tự mở lại project gần nhất (chạy cả tiến trình `lumacast` thật với 5 kịch bản), khoá vận hành (từng điều khiển bị vô hiệu/giữ lại, giữ nút/Space mở khoá), hoàn tác/làm lại nhập media và thuộc tính Scene (kể cả Scene đang On Air), timeline (zoom/cuộn, chuột thật, khung chọn, kéo nhóm, sao chép/dán, khoá).
+
 **`lumacast_ui_tests`** (điều khiển widget như người dùng): engine + cửa sổ chính, monitor, CUT/TAKE/AUTO/T-bar, BLACK ALL, Dừng hình,
 FTB, Inspector (Layer, Output), Hoàn tác/Làm lại (kể cả gộp bước), kéo-thả/ẩn-hiện Layer, nhập media, lưu và tự lưu.
 
@@ -31,6 +37,8 @@ FTB, Inspector (Layer, Output), Hoàn tác/Làm lại (kể cả gộp bước),
 - Dùng GPU phần mềm trên Linux: không phản ánh hiệu năng và hành vi driver thật (NVIDIA/AMD/Intel).
 - Test video cần lệnh `ffmpeg` để tạo video thử; không có thì tự bỏ qua (thường xảy ra trên Windows nếu `ffmpeg.exe` không nằm trong PATH). Khi đó phần phát video chỉ kiểm chứng bằng thử tay.
 - Chưa có test cho: nhiều Output toàn màn hình, mất thiết bị, chạy dài hạn, kéo chuột thật (T-bar, kéo-thả Layer).
+- Cô lập cấu hình: test dùng `lc::appSettings()` + `QSettings::setPath`; tiến trình con dùng `LUMACAST_CONFIG_DIR`. (Trước M5c lời gọi `QSettings("LumaCast","LumaCast")` bỏ qua cách cô lập này; đã sửa. Nếu máy Windows từng chạy test cũ, registry `HKCU\\Software\\LumaCast` có thể chứa dữ liệu rác như danh sách "Gần đây" trỏ vào thư mục tạm.)
+- M5c: ghi registry Windows **thật** (chỉ test logic bằng `QSettings` file .ini), mạng LAN thật, điện thoại/Companion/bàn OSC thật, hiệu năng khi nhiều client SSE, nhập/hoàn tác media video dài.
 
 ## 3. Checklist thử tay trên Windows
 Trạng thái: **Đạt** · **Lỗi** · **Chưa thử**. Cập nhật cột này mỗi lần chạy và ghi vào mô tả PR.
@@ -68,6 +76,13 @@ Trạng thái: **Đạt** · **Lỗi** · **Chưa thử**. Cập nhật cột n�
 | T-AIR | Đưa Scene có keyframe lên Program bằng CUT, TAKE và T-bar | Chạy lại từ 0 mỗi lần lên sóng; tắt "Phát lại khi lên Program" thì giữ nguyên; timeline hiện cảnh báo "đang ở PROGRAM" khi chọn đúng Scene đó | Chưa thử |
 | T-LYR | Xoay, crop (kể cả với video dọc quay bằng điện thoại), đổi blend (Add/Multiply/Screen) cho Layer; hoàn tác | Hình đúng trên Output; crop theo hình đã xoay | Chưa thử |
 | T-LOG | Mở `%AppData%\LumaCast\logs\lumacast.log` sau một phiên chạy | Có dòng khởi động, GPU, sự kiện Output; thanh trạng thái hiện p50/p99 | Chưa thử |
+| T-CTL | Cài đặt → Cài đặt vận hành → bật HTTP. Mở `http://127.0.0.1:8088/` trên máy, rồi bật LAN + token và mở `http://<IP máy>:8088/` trên điện thoại (cùng Wi-Fi), nhập token; thử chọn Scene, CUT, TAKE, FTB, Đen từng Output, BLACK ALL. Thử `curl` với token sai. Thử module HTTP của Bitfocus Companion | Điện thoại điều khiển được, trạng thái cập nhật tức thì (SSE); token sai → 401; log có dòng "TỪ CHỐI"; tường lửa Windows có thể hỏi quyền lần đầu | **Chưa thử** |
+| T-OSC | Bật OSC (cổng 9000). Từ TouchOSC/Companion/`oscsend` gửi `/lumacast/channel/1/preview 3`, `/lumacast/channel/1/cut`, `/lumacast/output/1/black 1`, một bundle | Lệnh được thực thi đúng; gói rác không làm gì và không treo; log ghi gói hỏng | **Chưa thử** |
+| T-AUTO | Bật "Khởi động LumaCast cùng Windows"; kiểm tra `regedit` mục `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` có `LumaCast` = đường dẫn exe trong ngoặc kép; đăng xuất/đăng nhập (hoặc khởi động lại) | LumaCast tự chạy; tắt tuỳ chọn thì giá trị bị xoá; di chuyển thư mục exe rồi mở cài đặt → có cảnh báo "đường dẫn khác" | **Chưa thử** |
+| T-REOPEN | Lưu project, tắt, chạy `lumacast.exe` không tham số; xoá/đổi tên file project rồi chạy lại; tắt tuỳ chọn "Tự mở lại" rồi chạy lại; mất điện giả (kill) khi có autosave mới hơn | Tự mở lại đúng project; file mất → chạy bình thường + thông báo ở thanh trạng thái; tắt tuỳ chọn → không tự mở; có bản autosave → hỏi khôi phục | **Chưa thử** |
+| T-LOCK | Bấm "Khoá vận hành" (hoặc Ctrl+L) khi đang On Air; thử sửa Inspector/Timeline/Nhập media/Plug-in/Ctrl+Z/đóng cửa sổ; thử CUT, TAKE, T-bar, FTB, BLACK ALL, Đen/Dừng/Mẫu, chọn Scene, Phát/Tạm dừng timeline; giữ nút 0,5 s rồi nhả, rồi giữ 1 s | Mọi điều khiển sửa bị mờ; điều khiển live vẫn chạy; thanh trạng thái hiện "KHOÁ VẬN HÀNH"; giữ 1 s mới mở khoá | **Chưa thử** |
+| T-UNDO2 | Nhập một ảnh và một video, Ctrl+Z từng bước, Ctrl+Y; thử Ctrl+Z khi Scene vừa nhập đang On Air | Scene biến mất/hiện lại đúng, không treo, Program không đổi; đang On Air thì báo từ chối | **Chưa thử** |
+| T-TLZ | Timeline: Ctrl + lăn chuột để zoom, kéo thanh cuộn; chọn nhiều key (Ctrl+nhấp, kéo khung); kéo nhóm; Ctrl+C/Ctrl+V tại playhead; Delete; Ctrl+Z | Đúng như mô tả, mượt với Scene dài (≥ 1 phút), mỗi thao tác một bước Hoàn tác | **Chưa thử** |
 
 ## 4. Benchmark hiệu năng
 Mỗi cấu hình đo 5 phút và ghi: FPS trung bình, số khung rơi, thời gian khung p50/p99, GPU %, VRAM, CPU %.

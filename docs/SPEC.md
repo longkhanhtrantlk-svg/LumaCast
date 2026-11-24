@@ -1,6 +1,6 @@
 # LumaCast — Đặc tả yêu cầu (SPEC)
 
-**Phiên bản tài liệu:** 1.0 · **Trạng thái mã:** sau M3b (PR #1, #2) · **Nền tảng mục tiêu:** Windows 10/11 x64 (macOS sau)
+**Phiên bản tài liệu:** 1.1 · **Trạng thái mã:** sau M5c (nhánh `m5-control`, xếp chồng trên `m4b`) · **Nền tảng mục tiêu:** Windows 10/11 x64 (macOS sau)
 
 Tài liệu này trả lời *"phần mềm phải làm gì và thế nào là đạt"*. Thiết kế kỹ thuật nằm ở `KienTruc.md`, lộ trình ở `PLAN.md`,
 định dạng file ở `PROJECT-FORMAT.md`, cách kiểm thử ở `TEST-PLAN.md`.
@@ -53,7 +53,7 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | SCN-04 | Xoay Layer (độ, quanh tâm layer, đúng trên Scene không vuông) và crop Layer (tính theo hình đã xoay, đúng cả với video điện thoại xoay 90/180/270; kết hợp Fit/Fill) | P1 | ✅ | Test tự động (điểm ảnh; 4 nguồn xoay × crop) |
 | SCN-05 | Blend mode: Normal, Add, Multiply, Screen (kể cả opacity) | P1 | 🟡 | Test tự động so với giá trị tính tay. Chưa có Overlay, Soft light… |
 | SCN-06 | Chuỗi Effect trên **Layer** (blur, glow, chỉnh màu, RGB split, pixelate, noise): thêm/gỡ/đổi thứ tự/bật-tắt, tham số tự sinh, hoàn tác, lưu trong project | P0 | ✅ | Test tự động (từng Effect, hướng ảnh, chuỗi, UI). **Chưa có Effect cấp Scene** (xem PLAN) |
-| SCN-07 | Timeline và keyframe cho thuộc tính Layer (vị trí X/Y, rộng, cao, alpha, xoay): đồng hồ Scene (phát/tạm dừng/về 0/tua, lặp, thời lượng, tự phát lại khi lên Program), 5 kiểu nội suy, thêm/dời/xoá keyframe bằng chuột hoặc nút ◆, tự đặt keyframe khi sửa giá trị, hoàn tác | P1 | ✅ | Test tự động (nội suy, đồng hồ, điểm ảnh ở từng thời điểm, chuột thật trên timeline, hoàn tác). Chưa: zoom/cuộn timeline, chọn nhiều key, sao chép key, keyframe cho crop/tham số Effect, đường cong Bézier |
+| SCN-07 | Timeline và keyframe cho thuộc tính Layer (vị trí X/Y, rộng, cao, alpha, xoay): đồng hồ Scene (phát/tạm dừng/về 0/tua, lặp, thời lượng, tự phát lại khi lên Program), 5 kiểu nội suy, thêm/dời/xoá keyframe bằng chuột hoặc nút ◆, tự đặt keyframe khi sửa giá trị, hoàn tác | P1 | ✅ | Test tự động (nội suy, đồng hồ, điểm ảnh ở từng thời điểm, chuột thật trên timeline, hoàn tác). Đã thêm ở M5c: zoom 1–64× và cuộn ngang, chọn nhiều key (Ctrl/Shift/khung chọn), kéo nhóm, Ctrl+C/Ctrl+V (dán tại playhead), xoá/đổi nội suy cả nhóm, hoàn tác thuộc tính Scene (test tự động `lumacast_m5c_tests`; **chưa thử bằng tay trên Windows**, T-TLZ). Chưa: keyframe cho crop/tham số Effect, đường cong Bézier |
 | SCN-08 | Mask, chroma key, nhóm Layer | P2 | ⬜ | — |
 
 ### 3.3 Channel và chuyển cảnh (CHN)
@@ -95,7 +95,7 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | PRJ-04 | Nhập media vào project khi đang chạy (tạo Scene) | P0 | ✅ | Test tự động |
 | PRJ-05 | Mở project khác khi đang chạy | P1 | 🟡 | Hiện khởi động lại tiến trình với project mới |
 | PRJ-06 | Hoàn tác/làm lại cho Layer và Output | P0 | ✅ | Test tự động |
-| PRJ-07 | Hoàn tác cho nhập media, đổi tên, thêm/xoá Scene và Output | P1 | ⬜ | — |
+| PRJ-07 | Hoàn tác cho nhập media, đổi tên, thêm/xoá Scene và Output | P1 | 🟡 | **Đã làm (M5c):** nhập media, tạo Scene từ Media Pool, thuộc tính Scene (thời lượng/lặp/tự phát lại) — test tự động, có xử lý Scene đang On Air. **Chưa làm:** đổi tên, xoá Scene, thêm/xoá Output (hiện chưa có giao diện cho các thao tác này) |
 | PRJ-08 | Gói project (gom media), nâng cấp phiên bản định dạng | P1 | ⬜ | Xem `PROJECT-FORMAT.md` mục 5 |
 
 ### 3.6 Giao diện vận hành (UI)
@@ -107,7 +107,7 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | UI-04 | Giao diện tối; bố cục dock lưu/khôi phục; hỏi xác nhận khi thoát | P0 | ✅ | Thử tay |
 | UI-05 | Thanh trạng thái: GPU, FPS, p50/p99 thời gian khung, khung rơi, số Output hiển thị, cảnh báo treo | P0 | ✅ | Test tự động |
 | UI-06 | Multiview nhiều Channel dạng lưới; chế độ Operator tối giản | P1 | ⬜ | — |
-| UI-07 | Phím tắt tuỳ chỉnh; khoá thao tác khi On Air (operator lock) | P1 | ⬜ | — |
+| UI-07 | Phím tắt tuỳ chỉnh; khoá thao tác khi On Air (operator lock) | P1 | 🟡 | **Khoá vận hành đã làm (M5c):** vô hiệu Inspector/sửa timeline/nhập media/Plugin/Hoàn tác/mở project/cài đặt/đóng cửa sổ, giữ điều khiển live; mở khoá bằng giữ nút 1 s; theo phiên, hiện trên thanh trạng thái — test tự động Linux, **chưa thử tay** (T-LOCK). **Chưa làm:** phím tắt tuỳ chỉnh |
 | UI-08 | Quản lý Output/canvas bằng giao diện (kéo-thả màn hình, wizard tạo project) | P1 | ⬜ | Hiện chỉnh qua Inspector và dòng lệnh |
 | UI-09 | Ngôn ngữ: tiếng Việt; thêm tiếng Anh | P2 | 🟡 | Hiện chỉ tiếng Việt |
 
@@ -124,8 +124,8 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 |---|---|---|---|---|
 | AUD-01 | Âm thanh theo Channel, bật/tắt từng Channel, chọn thiết bị ra (WASAPI) | P0 | ⬜ | M5a |
 | AUD-02 | Âm lượng, đồng bộ hình–tiếng theo đồng hồ âm thanh, crossfade theo transition, meter | P1 | ⬜ | M5a |
-| CTL-01 | Điều khiển ngoài: HTTP/WebSocket, OSC, MIDI (chọn Scene, TAKE/CUT, Đen, đặt tham số) | P1 | ⬜ | M5c |
-| OPS-01 | Tự khởi động cùng Windows, tự mở lại project gần nhất, ghi log | P1 | ⬜ | M5c |
+| CTL-01 | Điều khiển ngoài: HTTP/WebSocket, OSC, MIDI (chọn Scene, TAKE/CUT, Đen, đặt tham số) | P1 | 🟡 | **HTTP REST + SSE và OSC/UDP đã làm (M5c)**, xem `CONTROL-API.md`: mặc định tắt và chỉ `127.0.0.1`; LAN phải bật rõ + token bắt buộc; giới hạn kích thước/thời gian; chống CSRF/DNS rebinding; log từ chối. Test tự động bằng socket thật trên Linux (`lumacast_control_tests`). **Dùng SSE thay WebSocket** (lý do: `KienTruc.md` mục 15). **Chưa làm:** MIDI, đặt tham số Layer/Effect qua API (chưa có endpoint sửa cấu hình). **Chưa thử** trên Windows/LAN/điện thoại/Companion thật (T-CTL, T-OSC) |
+| OPS-01 | Tự khởi động cùng Windows, tự mở lại project gần nhất, ghi log | P1 | 🟡 | **Đã làm (M5c):** tuỳ chọn ghi `HKCU\...\Run` (logic test bằng QSettings giả), tự mở lại project gần nhất (tắt được; file mất/hỏng → chạy bình thường + thông báo; dùng cơ chế khôi phục autosave), log đã có từ M3c. **Chưa thử** ghi registry thật/khởi động cùng Windows (T-AUTO) |
 | OPS-02 | Watchdog: render thread treo (> 2 s) thì cảnh báo trên giao diện + log; màn hình giữ hình cuối | P0 | 🟡 | Test tự động (chặn render thread); **chưa tự khởi động lại** |
 | OPS-04 | Ghi log ra file (`%AppData%/LumaCast/logs`, xoay vòng 2 MB × 3) | P0 | ✅ | Test tự động |
 | OPS-05 | Thời gian render mỗi khung p50/p99 trên thanh trạng thái | P1 | ✅ | Test tự động |
@@ -145,7 +145,7 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | NFR-06 | Độ bền | File hỏng/media thiếu không làm crash | Đáp ứng với project JSON (PRJ-02) |
 | NFR-07 | Tương thích | Windows 10/11 x64; OpenGL 3.3 core; Qt ≥ 6.4 (đã dùng 6.4, 6.8.3); FFmpeg ≥ 6.1 (đã dùng 6.1, 9.1) | Đáp ứng |
 | NFR-08 | Giấy phép phụ thuộc | FFmpeg bản LGPL liên kết động; Qt LGPL liên kết động hoặc giấy phép thương mại | Đáp ứng (vcpkg `ffmpeg` mặc định) |
-| NFR-09 | Kiểm thử | Mọi tính năng mới có test tự động; PR phải qua `ctest` | 326 kiểm tra tự động |
+| NFR-09 | Kiểm thử | Mọi tính năng mới có test tự động; PR phải qua `ctest` | 709 kiểm tra tự động (7 bộ) |
 | NFR-10 | Khả năng mở rộng | GPU chỉ chạm qua `Compositor`, `GlHelpers` và upload texture để thay bằng RHI (macOS) | Giữ nguyên tắc |
 
 ---

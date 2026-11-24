@@ -10,6 +10,8 @@ Mã nguồn tham chiếu: `src/core/Project.cpp` (`saveProject`, `loadProject`).
   Lưu thành công sẽ xoá bản tự lưu cũ.
 - Trường lạ bị bỏ qua; trường thiếu dùng giá trị mặc định (xem bảng).
 
+**Không đổi ở M5c:** vẫn `version` 1, không thêm trường. Cài đặt điều khiển ngoài (cổng, LAN, token), Khoá vận hành, tuỳ chọn tự khởi động và "project gần nhất" là **cài đặt theo máy/phiên** (`QSettings`), cố ý **không** lưu vào file project để mở project trên máy khác không mang theo token hay mở cổng mạng.
+
 ## 2. Cấu trúc
 
 ```json

@@ -37,6 +37,15 @@ else()
   set(LC_FFMPEG lc_ffmpeg)
 endif()
 
+# NDI(R): bien dich co NDI hay khong. OFF = KHONG co ma nap runtime NDI nao trong file thuc thi (ban phat hanh khong dinh dieu khoan SDK NDI, xem SPEC 5.1).
+# ON (mac dinh, de phat trien/kiem thu) = co backend NDI that (nap dong), chua doi chieu ABI.
+option(LUMACAST_ENABLE_NDI "Bien dich ho tro NDI (nap dong runtime)" ON)
+if(LUMACAST_ENABLE_NDI)
+  set(LC_NDI_RUNTIME_SRC src/live/NdiRuntime.cpp)
+else()
+  set(LC_NDI_RUNTIME_SRC src/live/NdiStub.cpp)
+endif()
+
 add_library(lumacast_core STATIC
   src/core/Channel.cpp
   src/core/Project.cpp
@@ -71,7 +80,7 @@ add_library(lumacast_core STATIC
   src/live/LiveSource.h src/live/LiveSource.cpp
   src/live/Ndi.h src/live/Ndi.cpp
   src/live/NdiFake.h src/live/NdiFake.cpp
-  src/live/NdiRuntime.cpp
+  ${LC_NDI_RUNTIME_SRC}
   src/live/Camera.h src/live/Camera.cpp
   src/live/CameraFake.h src/live/CameraFake.cpp
   src/live/CameraMF.cpp
@@ -84,6 +93,9 @@ add_library(lumacast_core STATIC
   src/control/ControlService.h src/control/ControlService.cpp
 )
 target_include_directories(lumacast_core PUBLIC src)
+if(NOT LUMACAST_ENABLE_NDI)
+  target_compile_definitions(lumacast_core PUBLIC LUMACAST_NO_NDI=1)
+endif()
 target_link_libraries(lumacast_core PUBLIC Qt6::Core Qt6::Gui Qt6::OpenGL Qt6::Network ${LC_FFMPEG})
 if(WIN32)
   target_link_libraries(lumacast_core PUBLIC winmm ole32 avrt)   # winmm: timeBeginPeriod(1); ole32 + avrt: WASAPI (COM, MMCSS)
@@ -161,11 +173,15 @@ add_executable(lumacast_live_tests tests/test_live.cpp)
 target_link_libraries(lumacast_live_tests PRIVATE lumacast_core)
 target_compile_definitions(lumacast_live_tests PRIVATE LUMACAST_FAKE_NDI_LIB="$<TARGET_FILE:lumacast_fake_ndi>")
 add_dependencies(lumacast_live_tests lumacast_fake_ndi)
-add_test(NAME live COMMAND lumacast_live_tests)
+if(LUMACAST_ENABLE_NDI)
+  add_test(NAME live COMMAND lumacast_live_tests)      # can duong nap dong NDI (thu vien NDI gia)
+endif()
 
 add_executable(lumacast_live_ui_tests tests/test_live_ui.cpp)
 target_link_libraries(lumacast_live_ui_tests PRIVATE lumacast_ui)
-add_test(NAME live_ui COMMAND lumacast_live_ui_tests)
+if(LUMACAST_ENABLE_NDI)
+  add_test(NAME live_ui COMMAND lumacast_live_ui_tests)
+endif()
 
 # M6: hieu nang (YUV shader, PBO, giai ma phan cung du phong, benchmark)
 add_executable(lumacast_perf_tests tests/test_perf.cpp)

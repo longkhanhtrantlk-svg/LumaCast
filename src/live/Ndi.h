@@ -44,6 +44,14 @@ public:
 // Backend dang dung. Mac dinh: runtime that neu nap duoc, nguoc lai backend "none" (bao "Chưa cài NDI Runtime").
 // Bien moi truong LUMACAST_NDI_BACKEND=fake chon backend gia (dev/demo tren may khong co NDI); LUMACAST_NDI_DISABLE=1 tat han NDI.
 std::shared_ptr<NdiBackend> ndiBackend();
+// true neu file thuc thi co ma NDI (CMake LUMACAST_ENABLE_NDI). false: giao dien an moi muc NDI.
+constexpr bool ndiCompiledIn() {
+#ifdef LUMACAST_NO_NDI
+    return false;
+#else
+    return true;
+#endif
+}
 void setNdiBackend(std::shared_ptr<NdiBackend> b);     // test: dat backend gia; nullptr = quay lai mac dinh
 
 // Nguon NDI de dua vao Project / Media Pool.

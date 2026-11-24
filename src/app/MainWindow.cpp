@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 #include "AboutInfo.h"
+#include "live/Ndi.h"
 #include "core/Features.h"
 #include "AudioPanel.h"
 #include "InspectorPanel.h"
@@ -526,6 +527,11 @@ void MainWindow::buildMenus() {
     addNdiAct_ = file->addAction("Thêm nguồn NDI...", this, [this] { showAddNdiSource(); });
     addCamAct_ = file->addAction("Thêm camera...", this, [this] { showAddCamera(); });
     addNdiOutAct_ = file->addAction("Thêm Output NDI...", this, [this] { showAddNdiOutput(); });
+    if (!ndiCompiledIn()) {                                       // ban dich khong co NDI: an moi muc NDI
+        addNdiAct_->setVisible(false);
+        addNdiOutAct_->setVisible(false);
+        addNdiBtn_->setVisible(false);
+    }
     file->addSeparator();
     file->addAction("Thoát", QKeySequence::Quit, this, [this] { close(); });
     rebuildRecentMenu();

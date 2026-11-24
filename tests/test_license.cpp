@@ -1,6 +1,7 @@
 // M6 giay phep phat hanh (khong can GL/man hinh): Qt dong, FFmpeg LGPL, ghi nhan NDI, THIRD-PARTY-NOTICES, khong NDI trong cay ma nguon.
 #include "AboutInfo.h"
 #include "core/Features.h"
+#include "live/Ndi.h"
 #include <QCoreApplication>
 #include <QDirIterator>
 #include <QFile>
@@ -16,10 +17,11 @@ int main(int argc, char** argv) {
     // ===== Gioi thieu / ghi nhan thuong hieu / giay phep thu vien =====
     {
         const QString h = aboutHtml();
-        CHECK(h.contains("NDI®") && h.contains("registered trademark of Vizrt NDI AB"), "Gioi thieu: co dong ghi nhan 'NDI® is a registered trademark of Vizrt NDI AB.' (SPEC 5.1)");
-        CHECK(h.contains("https://ndi.video"), "Gioi thieu: co lien ket toi ndi.video");
+        if (ndiCompiledIn()) CHECK(h.contains("NDI®") && h.contains("registered trademark of Vizrt NDI AB"), "Gioi thieu: co dong ghi nhan 'NDI® is a registered trademark of Vizrt NDI AB.' (SPEC 5.1)");
+        if (ndiCompiledIn()) CHECK(h.contains("https://ndi.video"), "Gioi thieu: co lien ket toi ndi.video");
+        else CHECK(!h.contains("NDI") || h.contains("không có NDI"), "Ban khong co NDI: Gioi thieu noi ro khong co NDI");
         CHECK(h.contains("Qt") && h.contains("FFmpeg") && h.contains("LGPL") && h.contains("THIRD-PARTY-NOTICES"), "Gioi thieu: liet ke Qt/FFmpeg, giay phep LGPL, tro toi THIRD-PARTY-NOTICES");
-        CHECK(h.contains("không kèm") || h.contains("không kèm theo"), "Gioi thieu: noi ro NDI khong kem theo");
+        if (ndiCompiledIn()) CHECK(h.contains("không kèm") || h.contains("không kèm theo"), "Gioi thieu: noi ro NDI khong kem theo");
         const LibraryInfo li = libraryInfo();
         std::cout << "      Qt " << li.qtVersion.toStdString() << (li.qtShared ? " (dong)" : " (TINH)") << " | " << li.ffmpegVersion.toStdString() << " | giay phep FFmpeg: "
                   << li.ffmpegLicense.toStdString() << "\n";

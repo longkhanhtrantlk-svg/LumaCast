@@ -24,7 +24,7 @@ bằng bản khác của cùng thư viện (điều kiện của LGPL).
    - src/media/Hap.cpp có một bộ giải nén định dạng Snappy (raw) TỰ VIẾT theo mô tả định dạng công khai để đọc khung HAP. Không dùng mã của thư viện Snappy.
    - HAP là định dạng của Vidvox (hap.video), đặc tả công khai. Tên "HAP" thuộc chủ sở hữu của nó.
 
-4. NDI® — KHÔNG KÈM THEO
+4. NDI® — KHÔNG KÈM THEO (bản phát hành dựng với LUMACAST_ENABLE_NDI=OFF không chứa mã NDI nào)
    - NDI® is a registered trademark of Vizrt NDI AB.   (dòng này hiện trong Help ▸ Giới thiệu)
    - LumaCast KHÔNG chứa, KHÔNG liên kết tĩnh và KHÔNG phân phối kèm NDI SDK hay runtime (Processing.NDI.Lib.x64.dll / libndi). NDI được nạp ĐỘNG lúc chạy nếu
      người dùng tự cài NDI Tools / NDI Runtime từ https://ndi.video . Không có runtime thì NDI tự tắt, các chức năng khác vẫn chạy.

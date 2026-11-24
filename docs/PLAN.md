@@ -15,7 +15,7 @@
 | M5a | Âm thanh theo Channel: giải mã, mixer thread, WASAPI/Null, mute/âm lượng, crossfade theo transition, hình theo đồng hồ âm thanh, meter | 🟡 phần mã xong, test Linux (backend Null); còn thử WASAPI/đo lệch 30 phút trên Windows | (nhánh `m5a-audio`, **xếp chồng trên `m4b`**) |
 | M5c | Điều khiển ngoài (HTTP/SSE, OSC), tự khởi động/mở lại project, khoá vận hành, hoàn tác nhập media, timeline nâng cao | 🟡 phần mã xong, test Linux; còn thử trên Windows | (nhánh `m5-control`, **xếp chồng trên `m4b`**) |
 | M5b | NDI vào/ra, camera (Media Foundation), nguồn trực tiếp giữ khung cuối + tự nối lại, bù trôi đồng hồ âm thanh | 🟡 phần mã xong, test Linux (backend giả); còn thử NDI Runtime thật, Media Foundation, độ trễ trên Windows | #11 |
-| M6 | Hiệu năng + phát hành: YUV→RGB bằng shader, D3D11VA (dự phòng phần mềm), HAP, upload PBO, số liệu từng giai đoạn + benchmark, cờ tính năng theo gói, Giới thiệu NDI®, THIRD-PARTY-NOTICES, CPack/NSIS, CI | 🟡 phần mã xong, test Linux; **chưa chạy**: D3D11VA thật, hiệu năng GPU thật, bộ cài trên Windows sạch, CI trên GitHub | (nhánh `m6-perf-release`) |
+| M6 | Hiệu năng + phát hành (bản phát hành **không có NDI**: `LUMACAST_ENABLE_NDI=OFF`): YUV→RGB bằng shader, D3D11VA (dự phòng phần mềm), HAP, upload PBO, số liệu từng giai đoạn + benchmark, cờ tính năng theo gói, Giới thiệu NDI®, THIRD-PARTY-NOTICES, CPack/NSIS, CI | 🟡 phần mã xong, test Linux; **chưa chạy**: D3D11VA thật, hiệu năng GPU thật, bộ cài trên Windows sạch, CI trên GitHub | (nhánh `m6-perf-release`) |
 
 Quy mô mã: khoảng 20.800 dòng C++ (gồm test) · 1097 kiểm tra tự động (966 cũ + 131 của M6: 91 hiệu năng, 31 phát hành, 9 giấy phép) + 1 kiểm tra gói cài đặt · build được trên Linux và Windows (MSVC 2022, Qt 6.8.3, FFmpeg 9.1).
 

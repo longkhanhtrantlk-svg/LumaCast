@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "AudioPanel.h"
 #include "InspectorPanel.h"
 #include "LockButton.h"
 #include "MonitorWidget.h"
@@ -123,6 +124,7 @@ void MainWindow::setLocked(bool on) {
     inspector_->setLocked(on);
     timeline_->setLocked(on);
     pluginPanel_->setEnabled(!on);
+    audioPanel_->setEditLocked(on);
     importBtn_->setEnabled(!on);
     importAct_->setEnabled(!on);
     openAct_->setEnabled(!on);
@@ -346,6 +348,13 @@ void MainWindow::buildDocks() {
     ov->addStretch();
     outDock->setWidget(outW);
     addDockWidget(Qt::RightDockWidgetArea, outDock);
+
+    // Am thanh (M5a)
+    auto* audDock = new QDockWidget("Âm thanh", this);
+    audDock->setObjectName("dockAudio");
+    audioPanel_ = new AudioPanel(project_, engine_);
+    audDock->setWidget(audioPanel_);
+    addDockWidget(Qt::RightDockWidgetArea, audDock);
 
     // Inspector
     auto* inspDock = new QDockWidget("Inspector", this);
@@ -634,6 +643,7 @@ void MainWindow::toggleFtb() {
 // ---------------- cap nhat ----------------
 
 void MainWindow::refresh() {
+    audioPanel_->refreshMeters();
     const int ci = channelIdx();
     const Channel& ch = *project_.channels[ci];
     const auto mf = engine_.monitor(ci);

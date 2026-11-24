@@ -83,6 +83,7 @@ add_library(lumacast_ui STATIC
   src/app/ParamEditor.h src/app/ParamEditor.cpp
   src/app/TimelineWidget.h src/app/TimelineWidget.cpp
   src/app/LockButton.h src/app/LockButton.cpp
+  src/app/AudioPanel.h src/app/AudioPanel.cpp
   src/app/SettingsDialog.h src/app/SettingsDialog.cpp
   src/app/MainWindow.h src/app/MainWindow.cpp
 )
@@ -127,3 +128,11 @@ target_link_libraries(lumacast_m5c_tests PRIVATE lumacast_ui)
 target_compile_definitions(lumacast_m5c_tests PRIVATE LUMACAST_EXE="$<TARGET_FILE:lumacast>")
 add_dependencies(lumacast_m5c_tests lumacast)
 add_test(NAME ops COMMAND lumacast_m5c_tests)
+
+add_executable(lumacast_audio_tests tests/test_audio.cpp)
+target_link_libraries(lumacast_audio_tests PRIVATE lumacast_core)
+add_test(NAME audio COMMAND lumacast_audio_tests)
+
+add_executable(lumacast_audio_ui_tests tests/test_audio_ui.cpp)
+target_link_libraries(lumacast_audio_ui_tests PRIVATE lumacast_ui)
+add_test(NAME audio_engine COMMAND lumacast_audio_ui_tests)

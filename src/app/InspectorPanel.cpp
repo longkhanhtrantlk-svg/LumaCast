@@ -181,6 +181,15 @@ QWidget* InspectorPanel::buildSceneTab() {
     connect(blendCombo_, &QComboBox::currentIndexChanged, this, [this](int i) {
         editCurrentLayer([i](Layer& l) { l.blend = BlendMode(i); }, "Đổi chế độ hoà trộn layer");
     });
+    volumeSpin_ = spin(0, 200, 5, 100, 0);
+    volumeSpin_->setObjectName("layerVolume");
+    volumeSpin_->setPrefix("tiếng ");
+    volumeSpin_->setSuffix("%");
+    volumeSpin_->setToolTip("Âm lượng của nguồn trong Layer này (100% = nguyên gốc). Chỉ có tác dụng nếu nguồn có âm thanh.");
+    g->addWidget(volumeSpin_, 6, 0);
+    connect(volumeSpin_, &QDoubleSpinBox::valueChanged, this, [this](double v) {
+        editCurrentLayer([v](Layer& l) { l.volume = float(v / 100.0); }, "Đổi âm lượng layer", 1000000 + 60);
+    });
     const char* cropPrefix[4] = {"cắt x ", "cắt y ", "cắt w ", "cắt h "};
     const char* cropName[4] = {"layerCropX", "layerCropY", "layerCropW", "layerCropH"};
     for (int k = 0; k < 4; ++k) {
@@ -312,6 +321,7 @@ void InspectorPanel::syncProps() {
     setv(cropSpin_[2], l.crop.width()); setv(cropSpin_[3], l.crop.height());
     { QSignalBlocker b(fitCombo_); fitCombo_->setCurrentIndex(int(l.fit)); }
     { QSignalBlocker b(blendCombo_); blendCombo_->setCurrentIndex(int(l.blend)); }
+    setv(volumeSpin_, double(l.volume) * 100.0);
 }
 
 std::shared_ptr<Scene> InspectorPanel::currentScenePtr() const {

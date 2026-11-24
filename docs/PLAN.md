@@ -1,6 +1,6 @@
 # LumaCast — Kế hoạch phát triển (PLAN)
 
-**Cập nhật:** sau M3b · Yêu cầu: `SPEC.md` · Thiết kế: `KienTruc.md` · Kiểm thử: `TEST-PLAN.md`
+**Cập nhật:** sau M5c (nhánh `m5-control`) · Yêu cầu: `SPEC.md` · Thiết kế: `KienTruc.md` · Kiểm thử: `TEST-PLAN.md`
 
 ## 1. Hiện trạng
 | Mốc | Nội dung | Trạng thái | PR |
@@ -12,8 +12,9 @@
 | M3c | Độ tin cậy: log, watchdog, mất màn, mẫu thử theo Output, thống kê khung | 🟡 phần mã xong; còn thử trên phần cứng thật | #4 |
 | M4a | Effect trên Layer, Transition mới + Stinger + easing, plug-in shader, Plugin Manager | 🟡 phần mã xong; còn thử trên Windows | #5 |
 | M4b | Xoay/crop/blend Layer, đồng hồ Scene, keyframe, timeline | 🟡 phần mã xong; còn thử trên Windows | (nhánh `m4b`) |
+| M5c | Điều khiển ngoài (HTTP/SSE, OSC), tự khởi động/mở lại project, khoá vận hành, hoàn tác nhập media, timeline nâng cao | 🟡 phần mã xong, test Linux; còn thử trên Windows | (nhánh `m5-control`, **xếp chồng trên `m4b`**) |
 
-Quy mô mã: khoảng 6.500 dòng C++ (gồm test) · 326 kiểm tra tự động · build được trên Linux và Windows (MSVC 2022, Qt 6.8.3, FFmpeg 9.1).
+Quy mô mã: khoảng 11.000 dòng C++ (gồm test) · 709 kiểm tra tự động (326 cũ + 383 của M5c) · build được trên Linux và Windows (MSVC 2022, Qt 6.8.3, FFmpeg 9.1).
 
 **Chưa được xác nhận trên phần cứng thật** (rủi ro đã biết, xem mục 5): nút Dừng hình trên Windows; fullscreen đúng màn LED;
 4 Output 4K; chạy liên tục nhiều giờ.
@@ -62,9 +63,10 @@ Kích cỡ: **S** vài ngày · **M** 1–2 tuần · **L** vài tuần (ước 
 - [x] Giao diện timeline: thước thời gian, playhead (kéo trên thước để tua), 6 làn (X, Y, Rộng, Cao, Alpha, Xoay), nút ◆ thêm/xoá key tại playhead, nhấp đúp thêm key, kéo key (làm tròn 0,05 s), Delete xoá, chuột phải đổi kiểu nội suy; **tự đặt keyframe khi sửa giá trị của thuộc tính đã có track**; mọi thao tác là một bước Hoàn tác (kéo liên tục một lần = một bước).
 - [x] Lưu trong project (thuộc tính tuỳ chọn, vẫn `version` 1); đọc file viết tay có dữ liệu xấu không crash (key sắp xếp lại, giá trị hỏng bị bỏ).
 - [x] **Cảnh báo an toàn:** timeline hiện "Scene đang ở PROGRAM" khi Scene đang chọn đang lên sóng (phát/tua/sửa tác động trực tiếp lên màn hình).
-- [ ] **Chưa làm:** zoom/cuộn timeline, chọn nhiều key và sao chép/dán, keyframe cho crop/blend/tham số Effect, đường cong Bézier, hoàn tác cho thuộc tính Scene (thời lượng/lặp/tự phát lại), âm thanh theo timeline.
+- [x] *(đã làm ở M5c)* zoom/cuộn timeline, chọn nhiều key và sao chép/dán, hoàn tác cho thuộc tính Scene (thời lượng/lặp/tự phát lại).
+- [ ] **Chưa làm:** keyframe cho crop/blend/tham số Effect, đường cong Bézier, âm thanh theo timeline.
 - **Nghiệm thu:** keyframe vị trí/alpha/xoay phát lại đúng thời điểm (✅ test render theo mốc thời gian, cả hình Program thật trên monitor); tua không làm giật Program (**chưa đo trên phần cứng**: T-ANI); hoàn tác được thao tác keyframe (✅ test).
-- **Phụ thuộc:** M4a. **Rủi ro:** thao tác timeline trên Scene đang On Air tác động trực tiếp lên màn hình (đã có cảnh báo, chưa có khoá).
+- **Phụ thuộc:** M4a. **Rủi ro:** thao tác timeline trên Scene đang On Air tác động trực tiếp lên màn hình (đã có cảnh báo; khoá vận hành đã có ở M5c).
 
 ### M5a — Âm thanh theo Channel · Kích cỡ: L
 - [ ] Giải mã âm thanh FFmpeg, mixer thread riêng, bus mỗi Channel, WASAPI ra thiết bị chọn được (AUD-01).
@@ -76,10 +78,16 @@ Kích cỡ: **S** vài ngày · **M** 1–2 tuần · **L** vài tuần (ước 
 - **Nghiệm thu:** nhận NDI, độ trễ < 3 khung; webcam hiện hình; NDI ra mở được bằng phần mềm khác.
 - **Lưu ý:** cần NDI SDK (điều khoản đăng ký/ghi thương hiệu) — xem mục 5.
 
-### M5c — Điều khiển ngoài và vận hành · Kích cỡ: M
-- [ ] HTTP/WebSocket, OSC, MIDI: chọn Scene, TAKE/CUT, Đen, FTB, đặt tham số (CTL-01).
-- [ ] Tự khởi động cùng Windows, mở lại project gần nhất, chế độ Operator tối giản, khoá thao tác khi On Air (OPS-01, UI-06/07).
-- **Nghiệm thu:** điều khiển được từ điện thoại/Companion; thao tác ngoài tuân theo cùng quy tắc an toàn như giao diện.
+### M5c — Điều khiển ngoài và vận hành · Kích cỡ: M · **phần mã xong (đợt A), test Linux; còn thử trên Windows**
+Làm trên nhánh `m5-control`, tách từ `m4b` (PR xếp chồng; chưa merge `m4b` vào `main`).
+- [x] **P0-1** HTTP REST + **SSE** tự viết trên `QTcpServer` (chỉ QtNetwork): trạng thái, preview/cut/take/ftb, Đen/Dừng/Mẫu từng Output, BLACK ALL, phát/tạm dừng/tua Scene; mặc định tắt + `127.0.0.1`, LAN bắt buộc token, giới hạn, 4xx đúng mã, log từ chối (CTL-01). Chi tiết: `CONTROL-API.md`.
+- [x] **P0-2** OSC/UDP: bộ phân tích tự viết (bundle lồng nhau, gói hỏng bị bỏ), địa chỉ phản chiếu API, bật/tắt + cổng trong cài đặt, mặc định tắt (CTL-01).
+- [x] **P0-3** Khởi động cùng Windows (ghi `HKCU\...\Run`), nhớ và tự mở lại project gần nhất (tắt được; mất file → chạy bình thường + thông báo; dùng lại khôi phục autosave) (OPS-01).
+- [x] **P0-4** Khoá vận hành (UI-07): vô hiệu điều khiển sửa, giữ điều khiển live, mở khoá bằng giữ nút 1 s, hiện trên thanh trạng thái, theo phiên; API tôn trọng (có cơ chế `edit` → 423).
+- [x] **P1-5** Hoàn tác cho nhập media/tạo Scene từ Media Pool và thuộc tính Scene (PRJ-07, một phần).
+- [x] **P1-6** Timeline: zoom/cuộn ngang, chọn nhiều keyframe, kéo nhóm, sao chép/dán (SCN-07).
+- [ ] **Chưa làm / để đợt sau (cố ý loại khỏi đợt A):** **MIDI** (cần API Windows, không test được trên Linux), **âm thanh** (M5a), **NDI** và **camera** (M5b); chế độ Operator tối giản và Multiview (UI-06); đặt tham số Layer/Effect qua API; hoàn tác đổi tên/xoá Scene và thêm/xoá Output (chưa có giao diện); phím tắt tuỳ chỉnh.
+- **Nghiệm thu:** điều khiển được từ điện thoại/Companion (✅ test socket thật trên Linux; **chưa thử điện thoại/Companion/LAN thật**); thao tác ngoài tuân theo cùng quy tắc an toàn như giao diện (✅ test: Preview không đổi Program, Đen đúng phạm vi, chỉ số sai → 404/400, khoá → 423).
 
 ### M6 — Hiệu năng và phát hành Windows · Kích cỡ: L
 - [ ] Giải mã phần cứng D3D11VA, YUV→RGB bằng shader, HAP, upload bằng PBO/đồng bộ bất đồng bộ (SRC-04/05).

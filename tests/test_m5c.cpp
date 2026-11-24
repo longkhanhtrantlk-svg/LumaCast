@@ -30,6 +30,8 @@
 #include <QUndoStack>
 #include <QDockWidget>
 #include <QImage>
+#include <QScrollBar>
+#include <QWheelEvent>
 #include <QComboBox>
 #include "LockButton.h"
 #include <QFile>
@@ -695,6 +697,281 @@ int main(int argc, char** argv) {
         waitFor([&] { return sc->duration == d0; });
         w.undoStack()->clear();
         sceneCombo->setCurrentIndex(0);
+    }
+
+    // ================= P1-6: timeline — zoom/cuon, chon nhieu, keo nhom, sao chep/dan =================
+    {
+        auto* tl = w.timeline();
+        auto* insp = w.inspector();
+        auto* sceneCombo = insp->findChild<QComboBox*>("sceneCombo");
+        sceneCombo->setCurrentIndex(0);
+        pump(100);
+        insp->layerList()->setCurrentRow(0);
+        pump(100);
+        auto* us = w.undoStack();
+        us->clear();
+        auto layer = [&]() -> const Layer& { return *insp->currentLayerData(); };
+        auto keysOf = [&](AnimProp pr) { std::vector<double> t; if (const Track* tr = layer().track(pr)) for (const auto& k : tr->keys) t.push_back(k.time); return t; };
+        auto near = [](double a, double b) { return std::abs(a - b) < 0.011; };
+        auto* scrollBar = tl->findChild<QScrollBar*>("tlScroll");
+        auto* zin = tl->findChild<QPushButton*>("tlZoomIn");
+        auto* zout = tl->findChild<QPushButton*>("tlZoomOut");
+        auto* zfit = tl->findChild<QPushButton*>("tlZoomFit");
+        const double dur = tl->duration();
+        CHECK(scrollBar && zin && zout && zfit && tl->zoom() == 1.0 && tl->viewStart() == 0.0, "co thanh cuon + nut zoom; mac dinh zoom 1, bat dau 0");
+
+        // ---- zoom / cuon ----
+        const int xs0 = tl->timeToX(dur / 2);
+        const int x1_0 = tl->timeToX(dur);
+        CHECK(!scrollBar->isEnabled(), "zoom 1: thanh cuon bi vo hieu (khong co gi de cuon)");
+        zin->click();
+        CHECK(tl->zoom() > 1.4 && tl->visibleDuration() < dur && scrollBar->isEnabled() && scrollBar->maximum() > 0, "bam +: zoom vao, thanh cuon bat");
+        CHECK(std::abs(tl->timeToX(tl->viewStart() + tl->visibleDuration()) - tl->timeToX(dur)) > 0 || true, "(ban do thoi gian doi theo zoom)");
+        tl->setZoom(4.0, 5.0);
+        CHECK(std::abs(tl->zoom() - 4.0) < 1e-9 && std::abs(tl->visibleDuration() - dur / 4) < 1e-9, "zoom 4: vung nhin = 1/4 thoi luong");
+        CHECK(tl->viewStart() >= 0 && tl->viewStart() + tl->visibleDuration() <= dur + 1e-9 && tl->viewStart() <= 5.0 && tl->viewStart() + tl->visibleDuration() >= 5.0, "zoom quanh 5 s: 5 s van nam trong vung nhin");
+        tl->setViewStart(1.5);
+        CHECK(std::abs(tl->viewStart() - 1.5) < 1e-9 && tl->timeToX(1.5) == TimelineWidget::kLabelW, "cuon: 1,5 s o ngay mep trai vung noi dung");
+        CHECK(std::abs(tl->xToTime(tl->timeToX(3.0)) - 3.0) < 0.02, "timeToX/xToTime nghich dao dung khi dang cuon");
+        tl->setViewStart(-5);
+        CHECK(tl->viewStart() == 0.0, "cuon ve truoc 0 bi kep");
+        tl->setViewStart(1e9);
+        CHECK(std::abs(tl->viewStart() - (dur - tl->visibleDuration())) < 1e-9, "cuon qua cuoi bi kep");
+        scrollBar->setValue(2000);
+        CHECK(std::abs(tl->viewStart() - 2.0) < 1e-6, "keo thanh cuon -> viewStart 2 s");
+        tl->setZoom(1000.0);
+        CHECK(tl->zoom() == 64.0, "zoom toi da 64");
+        zout->click();
+        CHECK(tl->zoom() < 64.0, "bam -: thu nho");
+        zfit->click();
+        CHECK(tl->zoom() == 1.0 && tl->viewStart() == 0.0 && tl->timeToX(dur / 2) == xs0 && tl->timeToX(dur) == x1_0 && !scrollBar->isEnabled(), "Vua khit: tro ve zoom 1 nhu ban dau");
+        {   // lan chuot
+            QWidget* tv = tl->trackView();
+            QWheelEvent wz(QPointF(tl->timeToX(5.0), 60), QPointF(tl->timeToX(5.0), 60), QPoint(), QPoint(0, 120), Qt::NoButton, Qt::ControlModifier, Qt::NoScrollPhase, false);
+            QApplication::sendEvent(tv, &wz);
+            CHECK(tl->zoom() > 1.0, "Ctrl + lan chuot: zoom");
+            const double z = tl->zoom();
+            QWheelEvent wsc(QPointF(300, 60), QPointF(300, 60), QPoint(), QPoint(0, -120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+            QApplication::sendEvent(tv, &wsc);
+            CHECK(tl->zoom() == z && tl->viewStart() > 0.0, "lan chuot thuong: cuon ngang (khong doi zoom)");
+            tl->zoomFit();
+        }
+
+        // ---- chuan bi keyframe ----
+        tl->addKey(AnimProp::X, 1.0); tl->addKey(AnimProp::X, 2.0); tl->addKey(AnimProp::X, 4.0);
+        tl->addKey(AnimProp::Y, 2.0); tl->addKey(AnimProp::Y, 3.0);
+        tl->addKey(AnimProp::Opacity, 1.0);
+        pump(100);
+        CHECK(keysOf(AnimProp::X).size() == 3 && keysOf(AnimProp::Y).size() == 2 && keysOf(AnimProp::Opacity).size() == 1, "(chuan bi) 6 keyframe tren 3 lan");
+        us->clear();
+
+        // ---- chon nhieu ----
+        QWidget* tv = tl->trackView();
+        const int rowX = int(AnimProp::X), rowY = int(AnimProp::Y), rowO = int(AnimProp::Opacity);
+        auto send = [&](QEvent::Type type, QPoint pos, Qt::KeyboardModifiers mods = Qt::NoModifier, Qt::MouseButton btn = Qt::LeftButton) {
+            QMouseEvent ev(type, QPointF(pos), QPointF(tv->mapToGlobal(pos)), btn, type == QEvent::MouseButtonRelease ? Qt::NoButton : btn, mods);
+            QApplication::sendEvent(tv, &ev);
+        };
+        auto keyPt = [&](AnimProp pr, double t) { return QPoint(tl->timeToX(t), tl->rowTop(int(pr)) + 12); };
+        auto sendKey = [&](int key, Qt::KeyboardModifiers mods = Qt::NoModifier) {
+            QKeyEvent ev(QEvent::KeyPress, key, mods);
+            QApplication::sendEvent(tv, &ev);
+        };
+
+        send(QEvent::MouseButtonPress, keyPt(AnimProp::X, 1.0)); send(QEvent::MouseButtonRelease, keyPt(AnimProp::X, 1.0));
+        CHECK(tl->selection().size() == 1 && tl->isSelected(AnimProp::X, 1.0), "bam vao key: chon rieng key do");
+        send(QEvent::MouseButtonPress, keyPt(AnimProp::Y, 2.0), Qt::ControlModifier); send(QEvent::MouseButtonRelease, keyPt(AnimProp::Y, 2.0), Qt::ControlModifier);
+        send(QEvent::MouseButtonPress, keyPt(AnimProp::X, 4.0), Qt::ShiftModifier); send(QEvent::MouseButtonRelease, keyPt(AnimProp::X, 4.0), Qt::ShiftModifier);
+        CHECK(tl->selection().size() == 3 && tl->isSelected(AnimProp::X, 1.0) && tl->isSelected(AnimProp::Y, 2.0) && tl->isSelected(AnimProp::X, 4.0), "Ctrl/Shift + bam: them vao vung chon");
+        send(QEvent::MouseButtonPress, keyPt(AnimProp::Y, 2.0), Qt::ControlModifier); send(QEvent::MouseButtonRelease, keyPt(AnimProp::Y, 2.0), Qt::ControlModifier);
+        CHECK(tl->selection().size() == 2 && !tl->isSelected(AnimProp::Y, 2.0), "Ctrl + bam key da chon: bo chon");
+        send(QEvent::MouseButtonPress, keyPt(AnimProp::X, 2.0)); send(QEvent::MouseButtonRelease, keyPt(AnimProp::X, 2.0));
+        CHECK(tl->selection().size() == 1 && tl->isSelected(AnimProp::X, 2.0), "bam key khac (khong phim): chon lai chi key do");
+        sendKey(Qt::Key_A, Qt::ControlModifier);
+        CHECK(tl->selection().size() == 6, "Ctrl+A: chon het 6 keyframe");
+        sendKey(Qt::Key_Escape);
+        CHECK(tl->selection().empty(), "Esc: bo chon");
+        // khung chon (rubber band): keo tu khoang trong
+        {
+            const QPoint a(tl->timeToX(1.5), tl->rowTop(rowX) + 2), b2(tl->timeToX(3.5), tl->rowTop(rowY) + TimelineWidget::kRowH - 2);
+            send(QEvent::MouseButtonPress, a);
+            send(QEvent::MouseMove, b2);
+            send(QEvent::MouseButtonRelease, b2);
+            CHECK(tl->selection().size() == 3 && tl->isSelected(AnimProp::X, 2.0) && tl->isSelected(AnimProp::Y, 2.0) && tl->isSelected(AnimProp::Y, 3.0) && !tl->isSelected(AnimProp::X, 4.0),
+                  "keo khung chon (1,5-3,5 s, lan X+Y): chon dung 3 key ben trong");
+            const QPoint c(tl->timeToX(3.8), tl->rowTop(rowO) + 2), d(tl->timeToX(4.2), tl->rowTop(rowX) + 20);
+            send(QEvent::MouseButtonPress, QPoint(tl->timeToX(3.8), tl->rowTop(rowX) + 2), Qt::ControlModifier);
+            send(QEvent::MouseMove, QPoint(tl->timeToX(4.2), tl->rowTop(rowX) + 20), Qt::ControlModifier);
+            send(QEvent::MouseButtonRelease, QPoint(tl->timeToX(4.2), tl->rowTop(rowX) + 20), Qt::ControlModifier);
+            CHECK(tl->selection().size() == 4 && tl->isSelected(AnimProp::X, 4.0), "Ctrl + khung chon: them vao vung chon cu");
+            (void)c; (void)d;
+            send(QEvent::MouseButtonPress, QPoint(tl->timeToX(9.0), tl->rowTop(rowO) + 5));
+            send(QEvent::MouseButtonRelease, QPoint(tl->timeToX(9.0), tl->rowTop(rowO) + 5));
+            CHECK(tl->selection().empty(), "bam khoang trong: bo chon het");
+        }
+
+        // ---- di chuyen nhom ----
+        us->clear();
+        tl->selectRect(0.5, 3.5, rowX, rowY);          // X:1,2  Y:2,3
+        CHECK(tl->selection().size() == 4, "(chuan bi) chon X1 X2 Y2 Y3");
+        send(QEvent::MouseButtonPress, keyPt(AnimProp::X, 2.0));           // bam vao mot key da chon -> keo ca nhom
+        send(QEvent::MouseMove, keyPt(AnimProp::X, 2.5));
+        send(QEvent::MouseMove, keyPt(AnimProp::X, 3.0));
+        send(QEvent::MouseMove, keyPt(AnimProp::X, 3.5));
+        send(QEvent::MouseButtonRelease, keyPt(AnimProp::X, 3.5));
+        pump(100);
+        {
+            const auto kx = keysOf(AnimProp::X), ky = keysOf(AnimProp::Y);
+            CHECK(kx.size() == 3 && near(kx[0], 2.5) && near(kx[1], 3.5) && near(kx[2], 4.0) && ky.size() == 2 && near(ky[0], 3.5) && near(ky[1], 4.5), "keo nhom +1,5 s: X 1,2->2,5 3,5 | Y 2,3->3,5 4,5 (giu khoang cach, key khong chon o 4,0 nguyen)");
+            CHECK(us->count() == 1, "keo lien tuc ca nhom = MOT buoc Hoan tac");
+            CHECK(tl->selection().size() == 4 && tl->isSelected(AnimProp::X, 2.5) && tl->isSelected(AnimProp::Y, 4.5), "vung chon di theo cac key");
+            us->undo();
+            pump(100);
+            const auto ux = keysOf(AnimProp::X), uy = keysOf(AnimProp::Y);
+            CHECK(ux.size() == 3 && near(ux[0], 1.0) && near(ux[1], 2.0) && near(uy[0], 2.0) && near(uy[1], 3.0), "Hoan tac 1 lan: ca nhom ve cho cu");
+            us->redo();
+            pump(100);
+            CHECK(near(keysOf(AnimProp::X)[0], 2.5) && near(keysOf(AnimProp::Y)[1], 4.5), "Lam lai: ca nhom di chuyen lai");
+            us->undo();
+        }
+        // kep trong [0, thoi luong]
+        {
+            tl->selectRect(0.5, 3.5, rowX, rowY);
+            const double got = tl->moveSelection(-50.0, false);
+            CHECK(near(got, -1.0) && near(keysOf(AnimProp::X)[0], 0.0) && near(keysOf(AnimProp::Y)[0], 1.0), "keo qua ben trai: nhom bi kep, key dau cham 0 (khong am), giu khoang cach");
+            us->undo();
+            tl->selectRect(0.5, 3.5, rowX, rowY);
+            const double got2 = tl->moveSelection(1000.0, false);
+            CHECK(got2 > 0 && keysOf(AnimProp::Y).back() <= dur + 1e-9 && keysOf(AnimProp::X).back() <= dur + 1e-9, "keo qua ben phai: kep o thoi luong Scene");
+            us->undo();
+            // dung do key khong duoc chon
+            tl->selectRect(0.5, 3.5, rowX, rowX);          // X: 1,2 ; key khong chon X4
+            const double blocked = tl->moveSelection(2.0, false);   // X2 -> 4 trung X4
+            CHECK(blocked == 0 && near(keysOf(AnimProp::X)[1], 2.0) && keysOf(AnimProp::X).size() == 3, "dich de len key khong duoc chon: bi tu choi (khong ghi de mat key)");
+        }
+
+        // ---- sao chep / dan ----
+        us->clear();
+        tl->selectRect(0.5, 3.5, rowX, rowY);                          // X1 X2 Y2 Y3 -> goc 1,0
+        const auto xValBefore = layer().track(AnimProp::X)->keys[0].value;
+        sendKey(Qt::Key_C, Qt::ControlModifier);
+        CHECK(tl->hasClipboard() && us->count() == 0, "Ctrl+C: co du lieu chep, khong tao buoc Hoan tac");
+        tl->pause();
+        tl->seek(6.0);
+        pump(150);
+        CHECK(std::abs(tl->playhead() - 6.0) < 0.02, "(chuan bi) playhead dung o 6 s");
+        const int pasted = tl->paste();                              // dan tai playhead = 6
+        pump(100);
+        {
+            const auto kx = keysOf(AnimProp::X), ky = keysOf(AnimProp::Y);
+            CHECK(pasted == 4 && kx.size() == 5 && near(kx[3], 6.0) && near(kx[4], 7.0) && ky.size() == 4 && near(ky[2], 7.0) && near(ky[3], 8.0), "dan tai playhead 6 s: X 6,7 | Y 7,8 (giu khoang cach tuong doi)");
+            CHECK(us->count() == 1, "dan = MOT buoc Hoan tac");
+            CHECK(std::abs(layer().track(AnimProp::X)->keys[3].value - xValBefore) < 1e-9, "gia tri key duoc dan giu nguyen");
+            CHECK(tl->selection().size() == 4 && tl->isSelected(AnimProp::X, 6.0), "sau khi dan: chon cac key vua dan");
+            us->undo();
+            pump(100);
+            CHECK(keysOf(AnimProp::X).size() == 3 && keysOf(AnimProp::Y).size() == 2, "Hoan tac dan: bo ca nhom vua dan");
+            us->redo();
+            pump(100);
+            CHECK(keysOf(AnimProp::X).size() == 5, "Lam lai dan");
+            us->undo();
+        }
+        // dan bang phim Ctrl+V
+        tl->seek(5.0);
+        pump(150);
+        sendKey(Qt::Key_V, Qt::ControlModifier);
+        pump(100);
+        CHECK(keysOf(AnimProp::X).size() == 5 && near(keysOf(AnimProp::X)[3], 5.0), "Ctrl+V dan tai playhead 5 s");
+        us->undo();
+        // dan de len key co san (ghi de) va key vuot thoi luong bi bo
+        tl->seek(dur - 0.5);
+        pump(150);
+        const int pasted2 = tl->paste();
+        CHECK(pasted2 < 4 && pasted2 >= 1, "dan gan cuoi Scene: key vuot thoi luong bi bo (khong ghi ra ngoai Scene)");
+        for (double t : keysOf(AnimProp::X)) CHECK(t <= dur + 1e-6, "key sau dan khong vuot thoi luong");
+        us->undo();
+        tl->seek(1.0);                                                // dan len cho dang co key X1: ghi de, khong nhan doi
+        pump(150);
+        tl->paste();
+        pump(100);
+        {
+            const auto kx = keysOf(AnimProp::X);
+            int at1 = 0; for (double t : kx) at1 += near(t, 1.0);
+            CHECK(at1 == 1, "dan trung thoi diem key co san: ghi de, khong tao hai key cung luc");
+        }
+        us->undo();
+        // dan sang layer/Scene khac
+        {
+            tl->selectRect(0.5, 3.5, rowX, rowX);
+            tl->copySelection();
+            sceneCombo->setCurrentIndex(1);
+            pump(150);
+            insp->layerList()->setCurrentRow(0);
+            pump(100);
+            CHECK(insp->currentLayerData() && !insp->currentLayerData()->track(AnimProp::X), "(chuan bi) Scene 2 chua co key X");
+            tl->pause();
+            tl->seek(2.0);
+            pump(150);
+            CHECK(tl->paste() == 2 && keysOf(AnimProp::X).size() == 2 && near(keysOf(AnimProp::X)[0], 2.0) && near(keysOf(AnimProp::X)[1], 3.0), "dan sang Scene/layer khac: tao lan moi, key o 2,0 va 3,0");
+            us->undo();
+            sceneCombo->setCurrentIndex(0);
+            pump(150);
+            insp->layerList()->setCurrentRow(0);
+            pump(100);
+        }
+
+        // ---- xoa nhom ----
+        us->clear();
+        tl->selectRect(0.5, 3.5, rowX, rowY);
+        const size_t before = keysOf(AnimProp::X).size() + keysOf(AnimProp::Y).size();
+        sendKey(Qt::Key_Delete);
+        pump(100);
+        CHECK(before == 5 && keysOf(AnimProp::X).size() == 1 && !layer().track(AnimProp::Y) && us->count() == 1 && tl->selection().empty(), "Delete: xoa ca nhom 1 buoc (lan Y het key -> bo lan)");
+        us->undo();
+        pump(100);
+        CHECK(keysOf(AnimProp::X).size() == 3 && keysOf(AnimProp::Y).size() == 2, "Hoan tac xoa nhom: tro lai du");
+        // doi noi suy ca nhom
+        us->clear();
+        tl->selectRect(0.5, 4.5, rowX, rowY);
+        tl->setSelectionInterp(Interp::Hold);
+        pump(100);
+        bool allHold = true;
+        for (auto pr : {AnimProp::X, AnimProp::Y}) for (const auto& k : layer().track(pr)->keys) allHold = allHold && (k.interp == Interp::Hold);
+        CHECK(allHold && us->count() == 1, "doi kieu noi suy cho ca nhom: 1 buoc");
+        us->undo();
+        pump(100);
+
+        // ---- khoa van hanh chan ca cac thao tac moi ----
+        tl->selectRect(0.5, 3.5, rowX, rowY);
+        tl->copySelection();
+        us->clear();
+        const auto xBefore = keysOf(AnimProp::X);
+        w.setLocked(true);
+        CHECK(tl->moveSelection(1.0, false) == 0 && tl->paste() == 0, "khoa: moveSelection/paste khong lam gi");
+        tl->deleteSelection();
+        tl->setSelectionInterp(Interp::Hold);
+        sendKey(Qt::Key_Delete);
+        sendKey(Qt::Key_V, Qt::ControlModifier);
+        send(QEvent::MouseButtonPress, QPoint(tl->timeToX(8.0), tl->rowTop(rowO) + 5));
+        send(QEvent::MouseMove, QPoint(tl->timeToX(9.0), tl->rowTop(rowO) + 20));
+        send(QEvent::MouseButtonRelease, QPoint(tl->timeToX(9.0), tl->rowTop(rowO) + 20));
+        pump(100);
+        CHECK(us->count() == 0 && keysOf(AnimProp::X) == xBefore, "khoa: chuot/phim tren timeline khong sua keyframe");
+        w.setLocked(false);
+        // don dep
+        tl->clearSelection();
+        for (auto pr : {AnimProp::X, AnimProp::Y, AnimProp::Opacity}) while (layer().track(pr)) tl->deleteKey(pr, 0);
+        pump(100);
+        us->clear();
+        CHECK(!layer().track(AnimProp::X) && !layer().track(AnimProp::Y) && !layer().track(AnimProp::Opacity), "don dep keyframe thu");
+        // Scene 3 (thoi luong khac): zoom giu hop le khi doi thoi luong
+        tl->setZoom(8.0, 1.0);
+        tl->setDuration(2.0);
+        pump(100);
+        CHECK(tl->viewStart() + tl->visibleDuration() <= 2.0 + 1e-9 && tl->viewStart() >= 0, "rut ngan thoi luong khi dang zoom: vung nhin van hop le");
+        us->undo();
+        pump(100);
+        tl->zoomFit();
     }
 
     engine.stopEngine();

@@ -25,6 +25,7 @@ class InspectorPanel : public QTabWidget {
 public:
     InspectorPanel(Project& project, RenderEngine& engine, QUndoStack* undo, QWidget* parent = nullptr);
     void refreshFromProject();            // goi tren UI thread sau khi them scene/nguon
+    void sceneRemoved(int sceneIdx);      // UI thread: Scene sceneIdx da bi go khoi project (hoan tac nhap media) -> bo ban sao tuong ung
 
     // Goi boi lenh Undo/Redo (khong ghi them vao stack):
     void applyLayers(int sceneIdx, const std::vector<Layer>& layers);

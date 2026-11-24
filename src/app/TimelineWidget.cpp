@@ -9,6 +9,8 @@
 #include <QPainter>
 #include <QPushButton>
 #include <QSignalBlocker>
+#include <QUndoCommand>
+#include <QUndoStack>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <cmath>
@@ -39,6 +41,30 @@ void setBase(Layer& l, AnimProp p, double v) {
     }
 }
 double snap(double t) { return std::round(t / 0.05) * 0.05; }
+} // namespace
+
+namespace {
+// Hoan tac thuoc tinh Scene (thoi luong / lap / tu phat lai). Buoc dau (redo khi push) bo qua vi UI da ap dung.
+class ScenePropsCmd : public QUndoCommand {
+public:
+    ScenePropsCmd(TimelineWidget* t, int si, std::shared_ptr<Scene> sc, TimelineWidget::SceneProps b, TimelineWidget::SceneProps a, const QString& text, int mergeId)
+        : QUndoCommand(text), t_(t), si_(si), sc_(std::move(sc)), before_(b), after_(a), id_(mergeId) {}
+    int id() const override { return id_; }
+    void undo() override { t_->applySceneProps(si_, sc_, before_); }
+    void redo() override { if (first_) { first_ = false; return; } t_->applySceneProps(si_, sc_, after_); }
+    bool mergeWith(const QUndoCommand* o) override {
+        if (o->id() != id_ || id_ < 0) return false;
+        after_ = static_cast<const ScenePropsCmd*>(o)->after_;
+        return true;
+    }
+private:
+    TimelineWidget* t_;
+    int si_;
+    std::shared_ptr<Scene> sc_;
+    TimelineWidget::SceneProps before_, after_;
+    int id_;
+    bool first_ = true;
+};
 } // namespace
 
 // ---------------------------------------------------------------- TrackView
@@ -353,28 +379,48 @@ void TimelineWidget::seek(double t) {
 
 // ---- thuoc tinh Scene (khong qua Hoan tac) ----
 
-void TimelineWidget::setDuration(double d) {
-    if (locked_) return;
-    auto sc = insp_.currentScenePtr();
-    if (!sc) return;
-    d = std::max(0.1, d);
-    props().duration = d;
-    post([sc, d](double) { sc->duration = d; if (sc->clock.time > d) sc->clock.time = d; });
+void TimelineWidget::sceneRemoved(int si) {
+    if (si >= 0 && si < int(cache_.size())) cache_.erase(cache_.begin() + si);
+    while (cache_.size() > project_.scenes.size() && !project_.scenes.empty()) cache_.pop_back();
+    lastScene_ = lastLayer_ = -2;
+}
+
+// Ap dung thuoc tinh Scene (tu Hoan tac/Lam lai): cap nhat cache UI + gui render thread.
+void TimelineWidget::applySceneProps(int si, std::shared_ptr<Scene> sc, const SceneProps& p) {
+    if (si >= 0 && si < int(cache_.size()) && si < int(project_.scenes.size()) && project_.scenes[si] == sc) cache_[si] = p;
+    post([sc, p](double) { sc->duration = p.duration; sc->loop = p.loop; sc->restartOnAir = p.restart; if (sc->clock.time > p.duration) sc->clock.time = p.duration; });
     refresh();
 }
-void TimelineWidget::setLoop(bool on) {
-    if (locked_) return;
+
+void TimelineWidget::editSceneProps(const std::function<void(SceneProps&)>& mutate, const QString& text, int propId) {
     auto sc = insp_.currentScenePtr();
     if (!sc) return;
-    props().loop = on;
-    post([sc, on](double) { sc->loop = on; });
+    const int si = std::max(0, insp_.currentSceneIndex());
+    SceneProps& cur = props();
+    const SceneProps before = cur;
+    SceneProps after = before;
+    mutate(after);
+    cur = after;
+    post([sc, after](double) { sc->duration = after.duration; sc->loop = after.loop; sc->restartOnAir = after.restart; if (sc->clock.time > after.duration) sc->clock.time = after.duration; });
+    insp_.undoStack()->push(new ScenePropsCmd(this, si, sc, before, after, text, 5000000 + (si % 10000) * 10 + propId));
+    refresh();
+}
+
+// ---- thuoc tinh Scene (co Hoan tac; cung loai sua lien tiep gop thanh mot buoc) ----
+
+void TimelineWidget::setDuration(double d) {
+    if (locked_) return;
+    d = std::max(0.1, d);
+    if (std::abs(props().duration - d) < 1e-9) return;
+    editSceneProps([d](SceneProps& p) { p.duration = d; }, "Đổi thời lượng Scene", 0);
+}
+void TimelineWidget::setLoop(bool on) {
+    if (locked_ || props().loop == on) return;
+    editSceneProps([on](SceneProps& p) { p.loop = on; }, on ? "Bật lặp Scene" : "Tắt lặp Scene", 1);
 }
 void TimelineWidget::setRestartOnAir(bool on) {
-    if (locked_) return;
-    auto sc = insp_.currentScenePtr();
-    if (!sc) return;
-    props().restart = on;
-    post([sc, on](double) { sc->restartOnAir = on; });
+    if (locked_ || props().restart == on) return;
+    editSceneProps([on](SceneProps& p) { p.restart = on; }, on ? "Bật phát lại khi lên Program" : "Tắt phát lại khi lên Program", 2);
 }
 
 // ---- keyframe (moi thao tac la mot buoc Hoan tac) ----

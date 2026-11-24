@@ -6,6 +6,7 @@
 #include <QOffscreenSurface>
 #include <QThread>
 #include <atomic>
+#include <condition_variable>
 #include <functional>
 #include <mutex>
 
@@ -22,6 +23,9 @@ public:
     void stopEngine();
     // Gui lenh cho render thread (chay o dau khung hinh ke tiep). fn nhan thoi gian hien tai (giay).
     void post(std::function<void(double)> fn);
+    // Nhu post() nhung cho (toi da timeoutMs) cho den khi render thread chay xong lenh. Dung cho thao tac hiem (Hoan tac/Lam lai nhap media)
+    // can du lieu da doi truoc khi UI cap nhat tiep. Khong chay thread -> chay ngay. Tra false neu het thoi gian (lenh van se chay sau).
+    bool postAndWait(std::function<void(double)> fn, int timeoutMs = 2000);
     double now() const;
     double fps() const { return fps_; }
     int outputCount() const { return int(sinks_.size()); }

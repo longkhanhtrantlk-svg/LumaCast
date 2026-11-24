@@ -13,6 +13,8 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QJsonArray>
+#include <QMenu>
 #include <QMenuBar>
 #include <QPushButton>
 #include <QSettings>
@@ -27,6 +29,8 @@
 #include <QSlider>
 #include <QUndoStack>
 #include <QDockWidget>
+#include <QImage>
+#include <QComboBox>
 #include "LockButton.h"
 #include <QFile>
 #include <QDir>
@@ -503,6 +507,194 @@ int main(int argc, char** argv) {
         w.setLocked(false);
         QFile pf(p.filePath);
         CHECK(!pf.exists() || !pf.open(QIODevice::ReadOnly) || !QString::fromUtf8(pf.readAll()).contains("locked", Qt::CaseInsensitive), "khoa KHONG luu vao file project");
+    }
+
+    // ================= P1-5: hoan tac Nhap media =================
+    {
+        QImage img(32, 18, QImage::Format_RGB32); img.fill(Qt::yellow);
+        const QString png = dir.filePath("nhap1.png"), png2 = dir.filePath("nhap2.png");
+        img.save(png); img.fill(Qt::cyan); img.save(png2);
+        auto* scenesL = w.findChild<QListWidget*>("sceneList");
+        auto* mediaL = w.findChild<QListWidget*>("mediaList");
+        auto* insp = w.inspector();
+        auto* sceneCombo = insp->findChild<QComboBox*>("sceneCombo");
+        const int s0 = int(p.scenes.size()), src0 = int(p.sources.size());
+        const int pg0 = ch->program, pv0 = ch->preview;
+        w.undoStack()->clear();
+
+        CHECK(w.addMediaFile(png), "nhap anh 1");
+        CHECK(waitFor([&] { return int(p.scenes.size()) == s0 + 1 && scenesL->count() == s0 + 1; }), "nhap: them Scene + nguon, danh sach Scene va Media Pool cap nhat");
+        CHECK(int(p.sources.size()) == src0 + 1 && mediaL->count() == src0 + 1 && int(ch->scenes.size()) == s0 + 1 && w.undoStack()->count() == 1, "nhap: nguon + Scene vao project va kenh, co 1 buoc Hoan tac");
+        auto scene1 = p.scenes.back();
+        const QString id1 = p.sources.back().id;
+        CHECK(!id1.isEmpty() && w.undoStack()->undoText().contains("Nhập media"), "nhap: nguon co id, ten buoc Hoan tac ro rang");
+
+        // dat Preview vao Scene vua nhap roi Hoan tac -> Preview ve -1 (khong tro vao Scene da go)
+        emit scenesL->itemClicked(scenesL->item(s0));
+        CHECK(waitFor([&] { return ch->preview == s0; }), "(chuan bi) Preview tro vao Scene vua nhap");
+        // chon Scene do trong Inspector va them layer (buoc hoan tac khac) de kiem tra cache Inspector
+        w.undoStack()->undo();
+        CHECK(waitFor([&] { return int(p.scenes.size()) == s0; }), "Hoan tac nhap: Scene bi go khoi project");
+        pump(150);
+        CHECK(int(p.sources.size()) == src0 && int(ch->scenes.size()) == s0 && scenesL->count() == s0 && mediaL->count() == src0, "Hoan tac: nguon, Scene kenh, danh sach UI deu go");
+        CHECK(ch->program == pg0 && ch->preview == -1, "Hoan tac: Program khong doi; Preview tro vao Scene da go -> -1 (khong treo)");
+        CHECK(int(p.scenes.size()) == s0 && w.controlApi().state()["scenes"].toArray().size() == s0, "Hoan tac: ban chup cua API dieu khien ngoai cung cap nhat");
+        // khong tham chieu treo: Inspector/Timeline/Monitor van dung duoc
+        CHECK(insp->currentScenePtr() != nullptr && w.timeline()->duration() > 0, "Hoan tac: Inspector/Timeline van tro vao Scene hop le");
+        pump(300);
+        CHECK(engine.error().isEmpty() && !engine.stalled(), "Hoan tac: engine van chay binh thuong");
+
+        // Lam lai: khoi phuc dung doi tuong (cung Scene, cung id nguon)
+        w.undoStack()->redo();
+        CHECK(waitFor([&] { return int(p.scenes.size()) == s0 + 1; }), "Lam lai nhap: Scene tro lai");
+        pump(150);
+        CHECK(p.scenes.back() == scene1 && p.sources.back().id == id1 && int(ch->scenes.size()) == s0 + 1 && scenesL->count() == s0 + 1 && mediaL->count() == src0 + 1,
+              "Lam lai: dung Scene cu, dung id nguon, UI day du");
+        CHECK(ch->program == pg0, "Lam lai: Program khong doi");
+
+        // hai lan nhap lien tiep, hoan tac theo thu tu nguoc
+        CHECK(w.addMediaFile(png2) && waitFor([&] { return int(p.scenes.size()) == s0 + 2; }), "nhap anh 2");
+        pump(100);
+        CHECK(w.undoStack()->count() == 2, "hai buoc Hoan tac rieng");
+        w.undoStack()->undo();
+        CHECK(waitFor([&] { return int(p.scenes.size()) == s0 + 1; }) && p.scenes.back() == scene1, "Hoan tac #1: chi anh 2 bi go");
+        w.undoStack()->undo();
+        CHECK(waitFor([&] { return int(p.scenes.size()) == s0; }) && int(p.sources.size()) == src0, "Hoan tac #2: ve trang thai ban dau");
+        w.undoStack()->redo(); w.undoStack()->redo();
+        CHECK(waitFor([&] { return int(p.scenes.size()) == s0 + 2; }), "Lam lai x2: ca hai tro lai");
+        pump(100);
+        w.undoStack()->undo(); w.undoStack()->undo();
+        waitFor([&] { return int(p.scenes.size()) == s0; });
+
+        // sua layer cua Scene vua nhap roi hoan tac ca hai (LIFO) -> khong crash, cache khop
+        w.addMediaFile(png);
+        waitFor([&] { return int(p.scenes.size()) == s0 + 1; });
+        pump(150);
+        sceneCombo->setCurrentIndex(s0);
+        pump(100);
+        insp->layerList()->setCurrentRow(0);
+        insp->editCurrentLayer([](Layer& l) { l.opacity = 0.25f; }, "sua layer scene moi");
+        pump(150);
+        CHECK(waitFor([&] { return std::abs(p.scenes[s0]->layers[0].opacity - 0.25f) < 1e-4; }), "sua layer cua Scene moi nhap");
+        w.undoStack()->undo();
+        w.undoStack()->undo();
+        CHECK(waitFor([&] { return int(p.scenes.size()) == s0; }), "hoan tac sua layer roi hoan tac nhap: Scene go");
+        pump(200);
+        CHECK(sceneCombo->count() == s0 && insp->currentScenePtr() != nullptr, "Inspector khong con muc cua Scene da go");
+        w.undoStack()->redo(); w.undoStack()->redo();
+        CHECK(waitFor([&] { return int(p.scenes.size()) == s0 + 1; }), "lam lai ca hai");
+        pump(150);
+        CHECK(std::abs(p.scenes[s0]->layers[0].opacity - 0.25f) < 1e-4, "Lam lai: layer co lai gia tri da sua (0,25)");
+        w.undoStack()->undo(); w.undoStack()->undo();
+        waitFor([&] { return int(p.scenes.size()) == s0; });
+        w.undoStack()->clear();
+
+        // Scene dang On Air: hoan tac bi tu choi (khong doi hinh dang len song)
+        w.addMediaFile(png);
+        waitFor([&] { return int(p.scenes.size()) == s0 + 1; });
+        pump(100);
+        emit scenesL->itemDoubleClicked(scenesL->item(s0));       // dua len Program bang CUT
+        CHECK(waitFor([&] { return ch->program == s0; }), "(chuan bi) Scene vua nhap dang o Program");
+        auto* undoA = [&]() -> QAction* { for (auto* m : w.menuBar()->findChildren<QMenu*>()) for (auto* a : m->actions()) if (a->text().startsWith("Hoàn tác")) return a; return nullptr; }();
+        undoA->trigger();
+        pump(300);
+        CHECK(int(p.scenes.size()) == s0 + 1 && ch->program == s0 && w.undoStack()->canUndo() && w.undoStack()->index() == w.undoStack()->count(),
+              "Scene dang On Air: Hoan tac nhap bi tu choi, Scene va Program giu nguyen, ngan xep khong doi");
+        // roi doi Program di roi hoan tac duoc
+        emit scenesL->itemDoubleClicked(scenesL->item(0));
+        waitFor([&] { return ch->program == 0; });
+        undoA->trigger();
+        CHECK(waitFor([&] { return int(p.scenes.size()) == s0; }), "het On Air: Hoan tac nhap chay duoc");
+        pump(100);
+        CHECK(ch->program == 0, "Program khong doi sau hoan tac");
+        // truong hop dua lenh Hoan tac thang (khong qua kiem tra UI) khi Scene On Air: render thread tu choi + khoi phuc ngan xep
+        w.undoStack()->redo();
+        waitFor([&] { return int(p.scenes.size()) == s0 + 1; });
+        emit scenesL->itemDoubleClicked(scenesL->item(s0));
+        waitFor([&] { return ch->program == s0; });
+        const int idxBefore = w.undoStack()->index();
+        w.undoStack()->undo();                                      // bo qua kiem tra UI
+        pump(500);
+        CHECK(int(p.scenes.size()) == s0 + 1 && ch->program == s0 && w.undoStack()->index() == idxBefore, "Hoan tac truc tiep khi On Air: render thread tu choi va ngan xep tu khoi phuc");
+        emit scenesL->itemDoubleClicked(scenesL->item(0));
+        waitFor([&] { return ch->program == 0; });
+        w.undoStack()->undo();
+        waitFor([&] { return int(p.scenes.size()) == s0; });
+
+        // tao Scene tu Media Pool (khong them nguon) + hoan tac
+        const int srcN = int(p.sources.size());
+        emit mediaL->itemDoubleClicked(mediaL->item(0));
+        CHECK(waitFor([&] { return int(p.scenes.size()) == s0 + 1; }) && int(p.sources.size()) == srcN, "Media Pool: tao Scene tu nguon co san (khong them nguon)");
+        pump(100);
+        w.undoStack()->undo();
+        CHECK(waitFor([&] { return int(p.scenes.size()) == s0; }) && int(p.sources.size()) == srcN, "Hoan tac tao Scene: go Scene, GIU nguon (con dung boi Scene khac)");
+        w.undoStack()->clear();
+        pump(100);
+        CHECK(engine.error().isEmpty(), "sau chuoi nhap/hoan tac: engine khong loi");
+    }
+
+    // ================= P1-5: hoan tac thuoc tinh Scene (thoi luong / lap / tu phat lai) =================
+    {
+        auto* tl = w.timeline();
+        auto* sceneCombo = w.inspector()->findChild<QComboBox*>("sceneCombo");
+        sceneCombo->setCurrentIndex(1);
+        pump(100);
+        auto sc = p.scenes[1];
+        auto* durSpin = tl->findChild<QDoubleSpinBox*>("tlDuration");
+        auto* loopChk = tl->findChild<QCheckBox*>("tlLoop");
+        auto* restartChk = tl->findChild<QCheckBox*>("tlRestart");
+        w.undoStack()->clear();
+        const double d0 = sc->duration;
+        const bool l0 = sc->loop, r0 = sc->restartOnAir;
+
+        durSpin->setValue(25.0);
+        CHECK(waitFor([&] { return sc->duration == 25.0; }) && w.undoStack()->count() == 1, "doi thoi luong 25 s: ap dung + 1 buoc Hoan tac");
+        durSpin->setValue(26.0); durSpin->setValue(27.0);
+        pump(100);
+        CHECK(w.undoStack()->count() == 1 && waitFor([&] { return sc->duration == 27.0; }), "chinh lien tiep cung truong gop thanh 1 buoc");
+        w.undoStack()->undo();
+        CHECK(waitFor([&] { return sc->duration == d0; }) && std::abs(durSpin->value() - d0) < 1e-9 && tl->duration() == d0, "Hoan tac thoi luong: Scene va o nhap ve gia tri cu");
+        w.undoStack()->redo();
+        CHECK(waitFor([&] { return sc->duration == 27.0; }) && std::abs(durSpin->value() - 27.0) < 1e-9, "Lam lai thoi luong");
+        w.undoStack()->undo();
+        waitFor([&] { return sc->duration == d0; });
+        w.undoStack()->clear();
+
+        loopChk->setChecked(!l0);
+        CHECK(waitFor([&] { return sc->loop == !l0; }) && w.undoStack()->count() == 1, "tat/bat lap: ap dung + 1 buoc");
+        w.undoStack()->undo();
+        CHECK(waitFor([&] { return sc->loop == l0; }) && loopChk->isChecked() == l0, "Hoan tac lap: Scene va checkbox ve cu");
+        w.undoStack()->redo();
+        CHECK(waitFor([&] { return sc->loop == !l0; }) && loopChk->isChecked() == !l0, "Lam lai lap");
+        w.undoStack()->undo();
+        w.undoStack()->clear();
+
+        restartChk->setChecked(!r0);
+        CHECK(waitFor([&] { return sc->restartOnAir == !r0; }) && w.undoStack()->count() == 1, "tat/bat tu phat lai: ap dung + 1 buoc");
+        w.undoStack()->undo();
+        CHECK(waitFor([&] { return sc->restartOnAir == r0; }) && restartChk->isChecked() == r0, "Hoan tac tu phat lai");
+        w.undoStack()->clear();
+
+        // khong dong bo buoc: khac truong thi khong gop
+        durSpin->setValue(12.0);
+        loopChk->setChecked(!l0);
+        pump(100);
+        CHECK(w.undoStack()->count() == 2, "thoi luong va lap la hai buoc rieng");
+        w.undoStack()->undo(); w.undoStack()->undo();
+        CHECK(waitFor([&] { return sc->duration == d0 && sc->loop == l0; }), "hoan tac ca hai ve nguyen trang");
+        w.undoStack()->clear();
+        // gia tri trung: khong tao buoc
+        durSpin->setValue(d0);
+        pump(50);
+        CHECK(w.undoStack()->count() == 0, "dat dung gia tri hien tai: khong tao buoc Hoan tac");
+        // hoan tac thoi luong khi dong ho dang vuot: kep ve duoi
+        sc->clock.seek(8.0);
+        durSpin->setValue(5.0);
+        CHECK(waitFor([&] { return sc->duration == 5.0 && sc->clock.time.load() <= 5.0 + 1e-6; }), "rut ngan thoi luong: dong ho duoc kep");
+        w.undoStack()->undo();
+        waitFor([&] { return sc->duration == d0; });
+        w.undoStack()->clear();
+        sceneCombo->setCurrentIndex(0);
     }
 
     engine.stopEngine();

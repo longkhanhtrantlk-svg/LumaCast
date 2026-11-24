@@ -33,6 +33,7 @@
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QToolButton>
+#include <QUndoCommand>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -40,6 +41,22 @@ namespace lc {
 
 static const QStringList kImageExt = {"png", "jpg", "jpeg", "bmp", "gif", "webp"};
 static const char* kMediaFilter = "Media (*.mp4 *.mov *.mkv *.avi *.webm *.png *.jpg *.jpeg *.bmp *.gif *.webp);;Tất cả (*.*)";
+
+namespace {
+// Hoan tac/Lam lai cho nhap media va tao Scene tu Media Pool (PRJ-07). Khong gop buoc.
+constexpr int kImportCmdId = 7000001;
+class ImportCmd : public QUndoCommand {
+public:
+    ImportCmd(MainWindow* w, std::shared_ptr<MainWindow::ImportEntry> e, const QString& text) : QUndoCommand(text), w_(w), e_(std::move(e)) {}
+    int id() const override { return kImportCmdId; }
+    void redo() override { w_->applyImport(e_); }
+    void undo() override { w_->unapplyImport(e_, this); }
+    const MainWindow::ImportEntry& entry() const { return *e_; }
+private:
+    MainWindow* w_;
+    std::shared_ptr<MainWindow::ImportEntry> e_;
+};
+} // namespace
 
 MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList pluginDirs)
     : project_(project), engine_(engine), sup_(engine), pm_(engine.registry(), std::move(pluginDirs)) {
@@ -368,15 +385,14 @@ void MainWindow::buildDocks() {
         const int k = it->data(Qt::UserRole).toInt();
         if (k < 0 || k >= int(project_.sources.size())) return;
         auto src = project_.sources[k].source;
-        auto scene = std::make_shared<Scene>();
-        scene->name = src->name();
-        scene->size = project_.channels[0]->size;
-        scene->layers.push_back({src, {0, 0, 1, 1}, 1.0f, LayerFit::Fit, true});
-        engine_.post([this, scene](double) {
-            project_.scenes.push_back(scene);
-            for (auto& c : project_.channels) c->scenes.push_back(scene);
-            QMetaObject::invokeMethod(this, [this] { onProjectChanged(); }, Qt::QueuedConnection);
-        });
+        auto e = std::make_shared<ImportEntry>();
+        e->addsSource = false;
+        e->def = project_.sources[k];
+        e->scene = std::make_shared<Scene>();
+        e->scene->name = src->name();
+        e->scene->size = project_.channels[0]->size;
+        e->scene->layers.push_back({src, {0, 0, 1, 1}, 1.0f, LayerFit::Fit, true});
+        pushImport(e, "Tạo Scene: " + src->name());
     });
 
 
@@ -482,7 +498,7 @@ void MainWindow::buildMenus() {
     undoAct_->setShortcut(QKeySequence::Undo);
     redoAct_ = new QAction("Làm lại", this);
     redoAct_->setShortcuts({QKeySequence::Redo, QKeySequence(Qt::CTRL | Qt::Key_Y)});
-    connect(undoAct_, &QAction::triggered, this, [this] { if (!locked_) undo_.undo(); });
+    connect(undoAct_, &QAction::triggered, this, [this] { if (!locked_) doUndo(); });
     connect(redoAct_, &QAction::triggered, this, [this] { if (!locked_) undo_.redo(); });
     for (auto sig : {&QUndoStack::canUndoChanged, &QUndoStack::canRedoChanged}) connect(&undo_, sig, this, [this] { updateUndoActions(); });
     for (auto sig : {&QUndoStack::undoTextChanged, &QUndoStack::redoTextChanged}) connect(&undo_, sig, this, [this] { updateUndoActions(); });
@@ -732,6 +748,8 @@ void MainWindow::onProjectChanged() {
     rebuildSceneList();
     rebuildMediaList();
     inspector_->refreshFromProject();
+    rebuildTransitionCombo();                              // danh sach nguon Stinger co the doi
+    timeline_->refresh();
     ctlApi_->refreshProject();
 }
 
@@ -746,21 +764,113 @@ bool MainWindow::addMediaFile(const QString& path) {
     auto src = createSource(d, &err);
     if (!src) { showMessage("Không nhập được: " + err); return false; }
     d.source = src;
-    auto scene = std::make_shared<Scene>();
-    scene->name = src->name();
-    scene->size = project_.channels[0]->size;
-    scene->layers.push_back({src, {0, 0, 1, 1}, 1.0f, LayerFit::Fit, true});
-    engine_.post([this, d, scene](double) mutable {
-        int n = int(project_.sources.size()) + 1;
-        auto taken = [&](const QString& id) { for (const auto& s : project_.sources) if (s.id == id) return true; return false; };
-        while (taken(QString("src%1").arg(n))) ++n;
-        d.id = QString("src%1").arg(n);
-        project_.sources.push_back(d);
-        project_.scenes.push_back(scene);
-        for (auto& c : project_.channels) c->scenes.push_back(scene);
-        QMetaObject::invokeMethod(this, [this] { onProjectChanged(); }, Qt::QueuedConnection);
-    });
+    auto e = std::make_shared<ImportEntry>();
+    e->def = d;
+    e->scene = std::make_shared<Scene>();
+    e->scene->name = src->name();
+    e->scene->size = project_.channels[0]->size;
+    e->scene->layers.push_back({src, {0, 0, 1, 1}, 1.0f, LayerFit::Fit, true});
+    pushImport(e, "Nhập media: " + src->name());
     return true;
+}
+
+void MainWindow::pushImport(std::shared_ptr<ImportEntry> e, const QString& text) { undo_.push(new ImportCmd(this, std::move(e), text)); }
+
+void MainWindow::doUndo() {
+    // Khong hoan tac nhap media khi Scene do dang On Air (go ra se doi hinh dang len song): bao va giu nguyen.
+    if (undo_.canUndo())
+        if (auto* c = dynamic_cast<const ImportCmd*>(undo_.command(undo_.index() - 1)); c && importInUse(c->entry())) {
+            showMessage("Không hoàn tác được: Scene này đang ở PROGRAM/đang chuyển cảnh. Đưa Scene khác lên Program rồi hoàn tác lại.");
+            qWarning().noquote() << "Hoàn tác nhập media bị từ chối: Scene đang On Air";
+            return;
+        }
+    undo_.undo();
+}
+
+bool MainWindow::importInUse(const ImportEntry& e) const {
+    for (const auto& c : project_.channels) {
+        const int pg = c->program, pv = c->preview;
+        const auto& sc = c->scenes;
+        if (pg >= 0 && pg < int(sc.size()) && sc[pg] == e.scene) return true;
+        if (c->inTransition() && pv >= 0 && pv < int(sc.size()) && sc[pv] == e.scene) return true;
+    }
+    return false;
+}
+
+// Them (hoac them lai khi Lam lai) nguon + Scene. Doi render thread chay xong roi cap nhat ban sao UI NGAY, de cac buoc Hoan tac/Lam lai
+// ke tiep (vd. sua layer cua Scene nay) thay du lieu nhat quan. Bo qua phan da co (an toan khi lap).
+void MainWindow::applyImport(const std::shared_ptr<ImportEntry>& e) {
+    engine_.postAndWait([this, e](double) {
+        if (e->addsSource) {
+            bool have = false;
+            for (const auto& s : project_.sources) have = have || (s.source == e->def.source);
+            if (!have) {
+                if (e->def.id.isEmpty()) {
+                    int n = int(project_.sources.size()) + 1;
+                    auto taken = [&](const QString& id) { for (const auto& s : project_.sources) if (s.id == id) return true; return false; };
+                    while (taken(QString("src%1").arg(n))) ++n;
+                    e->def.id = QString("src%1").arg(n);
+                }
+                project_.sources.push_back(e->def);
+            }
+        }
+        if (std::find(project_.scenes.begin(), project_.scenes.end(), e->scene) == project_.scenes.end()) {
+            project_.scenes.push_back(e->scene);
+            for (auto& c : project_.channels) c->scenes.push_back(e->scene);
+        }
+    });
+    onProjectChanged();
+}
+
+// Go Scene (va nguon neu khong con ai dung) ra khoi project + moi Channel; dieu chinh chi so Program/Preview.
+// Neu luc nay Scene dang On Air (lenh live xen vao giua kiem tra UI va render thread) thi KHONG go, bao lai va khoi phuc buoc hoan tac.
+void MainWindow::unapplyImport(const std::shared_ptr<ImportEntry>& e, const QUndoCommand* cmd) {
+    auto removedIdx = std::make_shared<std::atomic<int>>(-1);
+    auto busy = std::make_shared<std::atomic<bool>>(false);
+    engine_.postAndWait([this, e, removedIdx, busy](double) {
+        auto sit = std::find(project_.scenes.begin(), project_.scenes.end(), e->scene);
+        if (sit == project_.scenes.end()) return;
+        for (const auto& c : project_.channels) {
+            auto it = std::find(c->scenes.begin(), c->scenes.end(), e->scene);
+            if (it == c->scenes.end()) continue;
+            const int k = int(it - c->scenes.begin());
+            if (c->program == k || (c->inTransition() && c->preview == k)) { *busy = true; return; }
+        }
+        for (auto& c : project_.channels) {
+            auto it = std::find(c->scenes.begin(), c->scenes.end(), e->scene);
+            if (it == c->scenes.end()) continue;
+            const int k = int(it - c->scenes.begin());
+            c->scenes.erase(it);
+            const int pv = c->preview;
+            if (pv == k) c->preview = -1;
+            else if (pv > k) c->preview = pv - 1;
+            const int pg = c->program;
+            if (pg > k) c->program = pg - 1;
+        }
+        *removedIdx = int(sit - project_.scenes.begin());
+        project_.scenes.erase(sit);
+        if (e->addsSource) {                                   // chi go nguon neu khong Scene nao khac con dung
+            bool used = false;
+            for (const auto& sc : project_.scenes)
+                for (const auto& l : sc->layers) used = used || l.source == e->def.source;
+            if (!used)
+                project_.sources.erase(std::remove_if(project_.sources.begin(), project_.sources.end(),
+                                                      [&](const SourceDef& s) { return s.source == e->def.source; }), project_.sources.end());
+        }
+    });
+    if (*busy) {
+        QMetaObject::invokeMethod(this, [this, cmd] {
+            showMessage("Hoàn tác nhập media bị huỷ: Scene vừa được đưa lên PROGRAM");
+            qWarning().noquote() << "Hoàn tác nhập media bị huỷ giữa chừng: Scene đang On Air";
+            if (undo_.index() < undo_.count() && undo_.command(undo_.index()) == cmd) undo_.redo();   // giu ngan xep nhat quan voi project
+        }, Qt::QueuedConnection);
+        return;
+    }
+    if (*removedIdx >= 0) {
+        inspector_->sceneRemoved(*removedIdx);
+        timeline_->sceneRemoved(*removedIdx);
+    }
+    onProjectChanged();
 }
 
 // ---------------- project ----------------

@@ -40,6 +40,9 @@ public:
     // Khoa van hanh: chan sua keyframe/thoi luong/lap va keo thuoc tua; Phat/Tam dung/Ve 0 van dung duoc.
     void setLocked(bool on) { locked_ = on; refresh(); }
     bool locked() const { return locked_; }
+    void sceneRemoved(int sceneIdx);             // UI thread: bo cache cua Scene da go (hoan tac nhap media)
+    struct SceneProps { double duration = 10; bool loop = true; bool restart = true; };
+    void applySceneProps(int sceneIdx, std::shared_ptr<Scene> scene, const SceneProps& p);   // dung cho Hoan tac/Lam lai
     double duration() const;
     double playhead() const;
     bool playing() const;
@@ -58,10 +61,10 @@ public slots:
 
 private:
     friend class TrackView;
-    struct SceneProps { double duration = 10; bool loop = true; bool restart = true; };
     SceneProps& props();                         // cache cua Scene dang chon (UI thread)
     void post(std::function<void(double)> fn) { engine_.post(std::move(fn)); }
     void afterEdit();
+    void editSceneProps(const std::function<void(SceneProps&)>& mutate, const QString& text, int propId);
 
     InspectorPanel& insp_;
     RenderEngine& engine_;

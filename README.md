@@ -1,4 +1,4 @@
-# LumaCast (M1) - LED Display Controller
+# LumaCast - LED Display Controller
 
 Bo dieu khien man hinh LED nhieu kenh / nhieu do phan giai. Xem thiet ke: `docs/KienTruc.md`; yeu cau: `docs/SPEC.md`.
 
@@ -13,10 +13,11 @@ Bo dieu khien man hinh LED nhieu kenh / nhieu do phan giai. Xem thiet ke: `docs/
 | `docs/PROJECT-FORMAT.md` | Đặc tả định dạng file project (phiên bản 1) |
 | `docs/TEST-PLAN.md` | Test tự động, checklist thử tay trên Windows, benchmark |
 | `docs/TEST-WINDOWS.md` | Hướng dẫn build và chạy trên Windows |
+| `THIRD-PARTY-NOTICES.txt` | Giấy phép thư viện bên thứ ba (Qt, FFmpeg, NDI®) — đi kèm bộ cài |
 
 ## Build
 Linux (de phat trien / chay test): `apt install qt6-base-dev libqt6opengl6-dev libavcodec-dev libavformat-dev libswscale-dev libswresample-dev libavutil-dev`
-Windows (muc tieu): Qt 6 + FFmpeg qua vcpkg (`vcpkg install ffmpeg[core,avcodec,avformat,swscale]` -- ban LGPL), roi:
+Windows (muc tieu): Qt 6 + FFmpeg qua vcpkg (`vcpkg install ffmpeg:x64-windows` hoac manifest `vcpkg.json` -- ban LGPL, **khong bat feature gpl/nonfree**), roi:
 
     cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
     cmake --build build
@@ -27,6 +28,16 @@ Windows (muc tieu): Qt 6 + FFmpeg qua vcpkg (`vcpkg install ffmpeg[core,avcodec,
 
 `-o WxH[@man_hinh][/kenh]` (lap lai cho nhieu output), `--scale fit|fill|stretch|pixel`, `--fps 60`.
 Phim tat (kenh 1): `1..9` chon Preview, `Space` = AUTO, `Enter` = CUT.
+
+## M6 them (hieu nang va phat hanh Windows)
+- **Doi mau YUV->RGB bang shader tren GPU** (mac dinh): plane Y/UV (8/10 bit, NV12/P010, 4:2:0/4:2:2/4:4:4, BT.601/709/2020, gioi han/day du) len GPU thay vi `sws_scale` RGBA tren CPU. `--no-gpu-yuv` / `LUMACAST_GPU_YUV=0` ve duong CPU.
+- **Giai ma phan cung D3D11VA** (Windows, mac dinh `auto`): `--hwdec auto|off|<ten thiet bi FFmpeg>` / `LUMACAST_HWDEC` / khoa cai dat `video/hwdec`. Khong dung duoc -> tu ve phan mem. **Chua chay voi D3D11VA that** (T-HWDEC).
+- **HAP** (Hap, Hap Alpha, Hap Q): upload khoi DXT thang len GPU, khong giai ma CPU. `LUMACAST_HAP=0` tat.
+- **Upload bat dong bo qua PBO** (`LUMACAST_NO_PBO=1` tat), thumbnail monitor doc bat dong bo, bo shader hieu chinh khi Output khong hieu chinh.
+- **Benchmark lap lai duoc:** `lumacast --benchmark "outputs=4,size=3840x2160,source=synthetic-yuv,seconds=10" --bench-json ket_qua.json` (p50/p99/roi khung tung giai doan; so tren llvmpipe KHONG dai dien GPU that - `docs/TEST-PLAN.md` muc 4). `GET /api/state` -> `engine.stages`.
+- **Phat hanh:** `cpack --config build/CPackConfig.cmake -C Release` -> NSIS + ZIP (Qt qua windeployqt, FFmpeg DLL; **khong kem NDI**, co rao chan `cmake/CheckNoNdi.cmake`). `THIRD-PARTY-NOTICES.txt` (Qt/FFmpeg LGPL lien ket dong). Help > Gioi thieu co dong "NDI® is a registered trademark of Vizrt NDI AB.". CI: `.github/workflows/ci.yml`, `release.yml` (chua chay tren GitHub).
+- **Co tinh nang theo goi** doc tu `license.json` (mau `license.example.json`; khong co file = khong khoa gi). Chinh sach phan goi chua chot (`docs/SPEC.md` muc 5, cau hoi mo 6).
+- **Chua kiem chung:** D3D11VA that, hieu nang 4 Output 4K tren GPU that, PBO co loi that tren GPU that khong, trinh cai tren Windows sach, CI tren GitHub (T-HWDEC, T-HAP, T-PERF, T-INST, T-LIC).
 
 ## M5b them (NDI va camera)
 - **Nguon truc tiep** (NDI, camera): khong co dong ho file; chi giu khung moi nhat; **mat nguon -> giu khung cuoi + bao "Mat tin hieu" + tu noi lai** (khong bao gio treo render). Trang thai o Media Pool (● xanh/vang/do, ○ xam = khong kha dung) va `GET /api/sources`.

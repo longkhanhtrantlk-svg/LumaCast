@@ -16,6 +16,10 @@ Liên quan: `SPEC.md` (tiêu chí nghiệm thu), `PLAN.md` (Definition of Done),
 | Tự động — âm thanh qua engine thật: mute/âm lượng/crossfade/T-bar/FTB qua meter, HTTP + OSC, panel Âm thanh, Inspector, khoá vận hành | `lumacast_audio_ui_tests` | Linux (xvfb), Windows | 44 |
 | Tự động — nguồn trực tiếp: bù trôi đồng hồ (mô phỏng 10 phút), NDI giả (nhận, mất nguồn, giữ khung cuối, nối lại, Unavailable), âm thanh NDI qua mixer, camera giả (cắm/rút/bận/đổi id), lưu/mở project (kể cả dữ liệu xấu), Output NDI (GPU → đọc ngược → người gửi: chiều ảnh, Đen/Mẫu/Dừng, âm thanh, vòng NDI ra → NDI vào), nạp động runtime bằng **thư viện NDI giả** (chuyển đổi BGRA/RGBX/planar, gửi) | `lumacast_live_tests` | Linux (xvfb), Windows | 88 |
 | Tự động — nguồn trực tiếp qua giao diện + engine thật: hộp thoại NDI/camera/Output NDI, Media Pool (thêm, trạng thái, Hoàn tác), Output NDI thêm lúc đang chạy (Program thật → NDI), khoá vận hành, HTTP `/api/sources` | `lumacast_live_ui_tests` | Linux (xvfb), Windows | 45 |
+| Tự động — M6 hiệu năng: shader YUV (12 định dạng/ma trận/khoảng, đối chiếu CPU và `sws_scale`, màu thuần so với ffmpeg), chiều ảnh, PBO ≡ upload trực tiếp, đường Output không hiệu chỉnh, thumbnail bất đồng bộ, video thật 7 định dạng, HAP (phân tích khung, snappy, complex, phá ngẫu nhiên, 4 biến thể ffmpeg), giải mã phần cứng → dự phòng phần mềm, restart/lặp, benchmark + số liệu giai đoạn + JSON | `lumacast_perf_tests` | Linux (xvfb), Windows | 91 |
+| Tự động — M6 phát hành: giấy phép tính năng (preset, file hỏng, thi hành ở nguồn/plug-in/Output/HTTP/OSC/NDI), Giới thiệu + dòng NDI® | `lumacast_release_tests` | Linux (xvfb), Windows | 31 |
+| Tự động — M6 giấy phép thư viện (không cần GL): Qt động, FFmpeg LGPL (`LUMACAST_REQUIRE_LGPL=1`), `THIRD-PARTY-NOTICES.txt`, không có NDI/DLL trong cây mã | `lumacast_license_tests` | Linux, Windows | 9 |
+| Tự động — M6 gói cài đặt: `cmake --install` ra thư mục tạm, kiểm tra bộ file (exe, plug-in mẫu, tài liệu, notices, không có file kiểm thử), rào chặn NDI bắt được 3 tên file NDI | `ctest -R package` (`cmake/TestInstall.cmake`) | Linux, Windows | 1 bước |
 | Thử tay trên phần cứng thật | Checklist mục 3 | Windows, màn LED/bộ gửi tín hiệu thật | theo bảng |
 | Benchmark hiệu năng | Mục 4 | Windows, máy mục tiêu | theo bảng |
 
@@ -108,6 +112,11 @@ Trạng thái: **Đạt** · **Lỗi** · **Chưa thử**. Cập nhật cột n�
 | T-CAM | Cắm webcam USB (và card capture HDMI nếu có): *File ▸ Thêm camera…* → chọn thiết bị và chế độ (720p/1080p, 30/60 fps) → thêm → Scene → TAKE. Thử chương trình khác (Zoom) đang dùng camera | Hình đúng chiều (không lộn ngược/đảo màu), đúng tỉ lệ, fps gần chế độ chọn; liệt kê đúng chế độ; camera bận → trạng thái nêu rõ lý do; mở lại project nhận đúng camera | **Chưa thử — SRC-07 (nghiệm thu M5b)** |
 | T-CAM-HOT | Đang nhận camera: rút USB, cắm lại (cổng khác), thử đổi chế độ khi đang chạy; đưa máy vào Sleep rồi dậy | Rút → "Mất tín hiệu" + giữ khung cuối, không crash/treo (kể cả khi thoát chương trình lúc rút); cắm lại → tự nối lại ≤ vài giây (cổng khác: nhận theo tên) | **Chưa thử** |
 | T-AUD-SOAK | Chạy ≥ 1 giờ với 2–4 Channel có tiếng, nhiều video lặp, chuyển cảnh định kỳ | `GET /api/audio` cho `underruns` không tăng đều, CPU âm thanh thấp, bộ nhớ ổn định, meter không kẹt | **Chưa thử** |
+| T-HWDEC | Máy có GPU hỗ trợ D3D11VA: `lumacast.exe --hwdec auto -m clip_h264_4k.mp4` (mặc định đã là auto). Xem log `Video '...': giải mã D3D11VA (phần cứng) → nv12 → shader`; Task Manager: so CPU với `--hwdec off` và `--no-gpu-yuv`. Thử H.264 10-bit/HEVC (P010), video dọc có cờ xoay, restart Stinger, lặp. Thử `--hwdec d3d11va` trên máy GPU cũ/không hỗ trợ codec | Dòng log nói rõ chế độ; CPU thấp hơn đáng kể so với `off`; hình ĐÚNG MÀU (so với VLC/ffplay: cùng ma trận 709/601, cùng khoảng) và đúng chiều; xoay/restart/lặp như trước; codec/thiết bị không hỗ trợ → log "→ phần mềm" và vẫn phát, không đứng hình | **Chưa thử — SRC-04 (cần Windows + GPU)** |
+| T-HAP | Mã hoá HAP/HAP Alpha/HAP Q 1080p và 4K bằng ffmpeg (`-c:v hap -format hap\|hap_alpha\|hap_q`) hoặc Adobe/Resolume; phát trong Scene, TAKE qua lại giữa 2–3 clip HAP | Log "HAP (...) → GPU trực tiếp"; hình đúng màu (HAP Q không lệch sắc); CPU thấp; 4K không rơi khung (xem B6); GPU không có S3TC (hiếm) → log "→ giải mã bằng FFmpeg" | **Chưa thử — SRC-05** |
+| T-PERF | Chạy benchmark mục 4 (B1–B6) trên máy mục tiêu, ghi JSON, so với bản `--hwdec off --no-gpu-yuv` và `LUMACAST_NO_PBO=1` | p99 thời gian khung < 1000/fps ms; rơi khung < 0,1 %; mỗi giai đoạn (upload/scene/output) ghi nhận; PBO/giải mã phần cứng không tệ hơn đường CPU | **Chưa thử — NFR-01/02** |
+| T-INST | Máy Windows SẠCH (chưa có Qt/FFmpeg/VC++): chạy `LumaCast-0.1.0-win64.exe` (NSIS), cài, mở từ Start Menu; gỡ cài đặt; thử bản ZIP mang theo | Cài được không cần cài thêm gì (ngoại trừ driver GPU); chạy được; có `THIRD-PARTY-NOTICES.txt` + `licenses/` + plug-in mẫu; **không có `Processing.NDI.Lib*.dll`**; gỡ sạch (giữ cài đặt người dùng); Help ▸ Giới thiệu đúng phiên bản, giấy phép LGPL, dòng NDI® | **Chưa thử** |
+| T-LIC | Đặt `license.json` (mẫu `license.example.json`, `"edition":"basic"`) cạnh `lumacast.exe` rồi mở project có 3 Output + nguồn NDI/camera + plug-in + HTTP bật; sau đó `commercial`; xoá file | Basic: chỉ 2 Output chạy (Output 3 "tắt", project lưu lại vẫn còn đủ 3), NDI/camera/plug-in/HTTP/OSC bị chặn kèm giải thích, timeline xám; Giới thiệu hiện gói; commercial/không có file: đủ tính năng | **Chưa thử** |
 | T-TLZ | Timeline: Ctrl + lăn chuột để zoom, kéo thanh cuộn; chọn nhiều key (Ctrl+nhấp, kéo khung); kéo nhóm; Ctrl+C/Ctrl+V tại playhead; Delete; Ctrl+Z | Đúng như mô tả, mượt với Scene dài (≥ 1 phút), mỗi thao tác một bước Hoàn tác | **Chưa thử** |
 
 ## 4. Benchmark hiệu năng
@@ -120,8 +129,36 @@ Mỗi cấu hình đo 5 phút và ghi: FPS trung bình, số khung rơi, thời 
 | B3: 2 Output 4K + 2 Output 1080p | Video 4K30, test pattern | 60 fps, rơi < 0,1 % |
 | B4: 4 Output 4K | Video 4K | Ghi nhận giới hạn thật (có thể chưa đạt khi chưa có giải mã phần cứng) |
 | B5: B2 + chuỗi Effect (blur 64 px, glow, chỉnh màu) trên 1–4 Layer | Video 1080p60 | Ghi chi phí mỗi Effect (p99 thời gian khung); blur/glow dùng 32 mẫu nên đáng chú ý ở 4K |
+| B6 (M6): 1 Output 4K + HAP 4K / H.264 4K giải mã phần cứng | HAP 4K30, H.264 4K30 | 60 fps; so CPU với `--hwdec off` và `--no-gpu-yuv` |
 
 Phần cứng đã đo: AMD Radeon (model chưa ghi), 2 Output cửa sổ, 60 fps. **Cần ghi đủ tên GPU, driver, phiên bản Windows cho mỗi lần đo.**
+
+### 4.1 Công cụ benchmark lặp lại được (M6)
+`lumacast --benchmark "<khoá=giá trị,...>" [--bench-json kết_quả.json]` — chạy `RenderEngine` thật với N "Output ngoài màn hình" (FBO W×H, cùng đường vẽ `drawToCurrent` như cửa sổ thật), nguồn tổng hợp hoặc video thật, rồi in và ghi JSON: fps, số khung rơi, số khung vượt hạn, p50/p99/max/trung bình **của từng giai đoạn** (khung, upload, scene, transition, monitor, output) trên TOÀN đoạn đo (không phải cửa sổ trượt 300 khung).
+Khoá: `outputs` (1–16), `size` (WxH mỗi Output), `canvas`, `channels`, `source` (`synthetic-yuv` NV12 | `synthetic-rgba` | `color` | `file:<đường dẫn>`), `srcsize`, `srcfps`, `layers`, `transition=1` (Fade liên tục), `seconds`, `warmup`, `fps`, `pbo=0/1`, `gpucolor=0/1` (file), `hwdec=1` (file), `sync=1` (glFinish sau mỗi giai đoạn → thời gian GPU thật, chậm hơn).
+Các cấu hình trên:
+
+    B1  lumacast --benchmark "outputs=1,size=1920x1080,source=file:clip1080p60.mp4,fps=60,seconds=300"
+    B2  lumacast --benchmark "outputs=4,size=1920x1080,source=file:clip1080p60.mp4,fps=60,seconds=300"
+    B3  (hai kích thước khác nhau: chạy 2 lần hoặc dùng dự án thật + thanh trạng thái)  outputs=2,size=3840x2160 và outputs=2,size=1920x1080
+    B4  lumacast --benchmark "outputs=4,size=3840x2160,source=file:clip4k30.mp4,fps=60,seconds=300,hwdec=1"
+    So sánh: thêm gpucolor=0 (CPU sws_scale), hwdec=0, pbo=0, hoặc đặt LUMACAST_NO_PBO=1 / LUMACAST_HWDEC=off / LUMACAST_GPU_YUV=0
+
+Trong ứng dụng đang chạy: `GET /api/state` → `engine.stages` (p50/p99 từng giai đoạn); thanh trạng thái vẫn hiện p50/p99 cả khung.
+
+### 4.2 Số liệu đã đo — chỉ trên llvmpipe (KHÔNG đại diện GPU thật)
+Máy phát triển Linux, 4 lõi, Mesa llvmpipe (rasterizer phần mềm), `outputs=4,size=3840x2160,source=synthetic-yuv,fps=30,sync=1` (mỗi giai đoạn kết thúc bằng `glFinish`). **Đây là chi phí CPU của bộ rasterizer phần mềm; trên GPU thật các số này nhỏ hơn nhiều bậc và tỉ lệ giữa các giai đoạn có thể khác hẳn.** Dùng chủ yếu để (1) kiểm tra công cụ chạy và (2) phát hiện hot spot về *khối lượng việc* (số điểm ảnh vẽ), không phải để cam kết fps.
+
+| Giai đoạn (p50, ms) | Trước (chưa có đường không-hiệu-chỉnh) | Sau |
+|---|---|---|
+| upload (NV12 4K → đổi màu) | 66,6 | 61,7 (nhiễu) |
+| scene | 28,0 | 26,4 |
+| monitor (thumbnail) | 23,3 | 21,3 |
+| **output (4 × 4K)** | **136,8** | **82,4** (−40 %: bỏ shader hiệu chỉnh màu khi Output không hiệu chỉnh) |
+| cả khung | 243 | 184 |
+
+Các phát hiện khác trên llvmpipe: upload qua PBO **không nhanh hơn** upload trực tiếp (PBO thêm một lần `memcpy`; lợi ích của PBO — DMA chạy song song, CPU không chờ driver — chỉ có ở driver GPU thật, **chưa đo**: T-PERF); đọc thumbnail bất đồng bộ cũng không đổi số liệu trên llvmpipe (giai đoạn monitor ở đây chủ yếu là chờ việc dồn của rasterizer). Cả hai được giữ vì là thực hành chuẩn trên GPU thật nhưng **lợi ích chưa được chứng minh**; tắt bằng `LUMACAST_NO_PBO=1` / `pbo=0` nếu thấy tệ hơn trên máy mục tiêu.
+Xem thêm kết luận về "render theo nhóm Output" trong `KienTruc.md` mục 3.5.
 
 ## 5. Mẫu báo kết quả (dán vào mô tả PR)
 ```

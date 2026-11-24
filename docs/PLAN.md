@@ -1,6 +1,6 @@
 # LumaCast — Kế hoạch phát triển (PLAN)
 
-**Cập nhật:** sau M5b (nhánh `m5b-ndi-camera`, từ `main` đã gồm M4b, M5c, M5a) · Yêu cầu: `SPEC.md` · Thiết kế: `KienTruc.md` · Kiểm thử: `TEST-PLAN.md`
+**Cập nhật:** sau M6 (nhánh `m6-perf-release`, từ `main` đã gồm M4b, M5a, M5b, M5c) · Yêu cầu: `SPEC.md` · Thiết kế: `KienTruc.md` · Kiểm thử: `TEST-PLAN.md`
 
 ## 1. Hiện trạng
 | Mốc | Nội dung | Trạng thái | PR |
@@ -14,9 +14,10 @@
 | M4b | Xoay/crop/blend Layer, đồng hồ Scene, keyframe, timeline | 🟡 phần mã xong; còn thử trên Windows | (nhánh `m4b`) |
 | M5a | Âm thanh theo Channel: giải mã, mixer thread, WASAPI/Null, mute/âm lượng, crossfade theo transition, hình theo đồng hồ âm thanh, meter | 🟡 phần mã xong, test Linux (backend Null); còn thử WASAPI/đo lệch 30 phút trên Windows | (nhánh `m5a-audio`, **xếp chồng trên `m4b`**) |
 | M5c | Điều khiển ngoài (HTTP/SSE, OSC), tự khởi động/mở lại project, khoá vận hành, hoàn tác nhập media, timeline nâng cao | 🟡 phần mã xong, test Linux; còn thử trên Windows | (nhánh `m5-control`, **xếp chồng trên `m4b`**) |
-| M5b | NDI vào/ra, camera (Media Foundation), nguồn trực tiếp giữ khung cuối + tự nối lại, bù trôi đồng hồ âm thanh | 🟡 phần mã xong, test Linux (backend giả); còn thử NDI Runtime thật, Media Foundation, độ trễ trên Windows | (nhánh `m5b-ndi-camera`) |
+| M5b | NDI vào/ra, camera (Media Foundation), nguồn trực tiếp giữ khung cuối + tự nối lại, bù trôi đồng hồ âm thanh | 🟡 phần mã xong, test Linux (backend giả); còn thử NDI Runtime thật, Media Foundation, độ trễ trên Windows | #11 |
+| M6 | Hiệu năng + phát hành: YUV→RGB bằng shader, D3D11VA (dự phòng phần mềm), HAP, upload PBO, số liệu từng giai đoạn + benchmark, cờ tính năng theo gói, Giới thiệu NDI®, THIRD-PARTY-NOTICES, CPack/NSIS, CI | 🟡 phần mã xong, test Linux; **chưa chạy**: D3D11VA thật, hiệu năng GPU thật, bộ cài trên Windows sạch, CI trên GitHub | (nhánh `m6-perf-release`) |
 
-Quy mô mã: khoảng 11.000 dòng C++ (gồm test) · 966 kiểm tra tự động (833 cũ + 133 của M5b) · build được trên Linux và Windows (MSVC 2022, Qt 6.8.3, FFmpeg 9.1).
+Quy mô mã: khoảng 20.800 dòng C++ (gồm test) · 1097 kiểm tra tự động (966 cũ + 131 của M6: 91 hiệu năng, 31 phát hành, 9 giấy phép) + 1 kiểm tra gói cài đặt · build được trên Linux và Windows (MSVC 2022, Qt 6.8.3, FFmpeg 9.1).
 
 **Chưa được xác nhận trên phần cứng thật** (rủi ro đã biết, xem mục 5): nút Dừng hình trên Windows; fullscreen đúng màn LED;
 4 Output 4K; chạy liên tục nhiều giờ.
@@ -99,11 +100,21 @@ Làm trên nhánh `m5-control`, tách từ `m4b` (PR xếp chồng; chưa merge 
 - [ ] **Chưa làm / để đợt sau (cố ý loại khỏi đợt A):** **MIDI** (cần API Windows, không test được trên Linux), ~~NDI và camera~~ (đã làm ở M5b); chế độ Operator tối giản và Multiview (UI-06); đặt tham số Layer/Effect qua API; hoàn tác đổi tên/xoá Scene và thêm/xoá Output (chưa có giao diện); phím tắt tuỳ chỉnh.
 - **Nghiệm thu:** điều khiển được từ điện thoại/Companion (✅ test socket thật trên Linux; **chưa thử điện thoại/Companion/LAN thật**); thao tác ngoài tuân theo cùng quy tắc an toàn như giao diện (✅ test: Preview không đổi Program, Đen đúng phạm vi, chỉ số sai → 404/400, khoá → 423).
 
-### M6 — Hiệu năng và phát hành Windows · Kích cỡ: L
-- [ ] Giải mã phần cứng D3D11VA, YUV→RGB bằng shader, HAP, upload bằng PBO/đồng bộ bất đồng bộ (SRC-04/05).
-- [ ] Tối ưu 4 Output 4K; xem xét thread render theo từng nhóm Output khi cần.
-- [ ] Trình cài đặt Windows, kiểm tra giấy phép phụ thuộc (FFmpeg LGPL, Qt LGPL), cờ tính năng cho gói Cơ bản/Thương mại (SPEC mục 5).
-- **Nghiệm thu:** NFR-01/02/03 đạt trên máy mục tiêu; cài đặt sạch trên Windows chưa có Qt/FFmpeg.
+### M6 — Hiệu năng và phát hành Windows · Kích cỡ: L · **phần mã xong, test Linux; còn thử trên Windows/GPU thật**
+Làm trên nhánh `m6-perf-release` (từ `main` đã gồm M4b, M5a, M5b, M5c).
+- [x] **YUV→RGB bằng shader (SRC-04):** plane Y/UV lên GPU (8/10 bit; 4:2:0/4:2:2/4:4:4; NV12/P010), một pass vào texture RGBA; ma trận 601/709/2020 theo `colorspace`, khoảng giới hạn/đầy đủ; đường `sws_scale` giữ làm dự phòng (cùng ma trận). Có test điểm ảnh với CPU và `sws_scale`.
+- [x] **D3D11VA (mã):** `hw_device_ctx` + `get_format`, chép NV12/P010 xuống RAM trong thread giải mã rồi đi đường shader; mọi lỗi (không thiết bị/codec, mở/giải mã/chép lỗi, nuốt gói không ra khung) → decoder phần mềm + log. `--hwdec`, `LUMACAST_HWDEC`. *Không phải zero-copy.*
+- [x] **HAP (SRC-05):** Hap/Hap Alpha/Hap Q (none/snappy/complex) tách khung tự viết + upload DXT thẳng + shader YCoCg; khung không hỗ trợ → FFmpeg. Test khung dựng tay, phá ngẫu nhiên, 4 biến thể ffmpeg.
+- [x] **PBO bất đồng bộ:** upload (RGBA/YUV/HAP) qua vòng 2 PBO; đọc thumbnail monitor bất đồng bộ. Tắt được để so sánh.
+- [x] **Số liệu từng giai đoạn:** upload / scene / transition / monitor / output (`RenderEngine::stages()`, HTTP `engine.stages`), ghi từng khung cho benchmark, `sync` để đo thời gian GPU thật.
+- [x] **Benchmark lặp lại được:** `lumacast --benchmark ... --bench-json` (nguồn tổng hợp NV12/RGBA hoặc file thật; N Output ngoài màn hình WxH); số đo mẫu trên llvmpipe (ghi rõ không đại diện).
+- [x] **Tối ưu hot spot đo được:** Output không hiệu chỉnh bỏ shader contrast/gain/pow → giai đoạn *output* 4×4K trên llvmpipe 136,8 → 82,4 ms. PBO/đọc bất đồng bộ **không** cho thấy lợi ích trên llvmpipe (ghi thẳng trong `TEST-PLAN.md` 4.2). Quyết định "render theo nhóm Output": **chưa làm, chưa có số GPU thật** (`KienTruc.md` 3.5).
+- [x] **Phát hành:** `install()` + CPack (NSIS, ZIP; WiX qua `LUMACAST_INSTALLER`), windeployqt qua `qt_generate_deploy_app_script`, FFmpeg DLL + phụ thuộc, plug-in mẫu, **không kèm NDI** (rào chặn + test), `THIRD-PARTY-NOTICES.txt`, kiểm tra giấy phép tự động, dòng "NDI®" trong Giới thiệu.
+- [x] **Cờ tính năng theo gói:** `license.json` tách khỏi lõi, **mặc định không khoá gì**, preset basic/commercial, thi hành ở nguồn NDI/camera, plug-in, HTTP/OSC, số Output, timeline.
+- [x] **CI:** `.github/workflows/ci.yml` (Linux ctest; Windows build + giấy phép + gói + ctest không chặn), `release.yml`.
+- [ ] **Chưa làm / chưa kiểm chứng:** D3D11VA chạy thật (T-HWDEC); zero-copy D3D11↔GL (`WGL_NV_DX_interop`); HAP 4K trên GPU thật (T-HAP); hiệu năng 4 Output 4K trên GPU thật (T-4K, T-PERF) — kể cả việc PBO có lợi thật không; bộ cài chạy trên Windows sạch (T-INST) và WiX; workflow GitHub Actions chưa chạy (đúng cú pháp YAML, chưa chạy thử; tên feature `vcpkg.json`, input của `install-qt-action` cần xác nhận khi chạy lần đầu); ký số bộ cài; EULA riêng; HAP không chia hết 4/Hap-M đi đường FFmpeg; chính sách phân gói (**cần bạn quyết**, `SPEC.md` mục 5/câu hỏi 6) và giấy phép Qt (LGPL động hay thương mại).
+- **Nghiệm thu:** NFR-01/02/03 đạt trên máy mục tiêu (**chưa đo — cần GPU thật**); cài đặt sạch trên Windows chưa có Qt/FFmpeg (**chưa thử**). Phần đã kiểm chứng trên Linux: shader YUV đúng, HAP đúng, đường dự phòng, công cụ benchmark, bộ file cài đặt, rào chặn NDI, kiểm tra giấy phép (bắt được FFmpeg GPL ở máy dev).
+- **Phụ thuộc:** M4a, M5*. **Rủi ro:** R2/R3 (cần số đo thật), R7 (NDI: xem `SPEC.md` 5.1; M6 đã thêm ghi nhận + rào chặn, vẫn cần bạn xác nhận điều khoản).
 
 ### M7 — macOS · Kích cỡ: L
 - [ ] Lớp RHI (ưu tiên QRhi/Metal) thay phần GPU hiện tại; kiểm chứng nhiều Output trên máy Mac thật.
@@ -117,12 +128,12 @@ M5a/M5b/M5c có thể đổi thứ tự theo nhu cầu thực tế của buổi 
 | # | Rủi ro | Ảnh hưởng | Giảm thiểu |
 |---|---|---|---|
 | R1 | Dừng hình dựa vào việc không hoán đổi bộ đệm; hành vi trên Windows (DWM) chưa xác nhận | Dừng hình không đứng yên | T-FRZ trong M3c; nếu sai, giữ một bản sao khung cuối và vẽ lại |
-| R2 | Nhiều Output cùng tần số quét nhưng không đồng bộ tuyệt đối, có thể xé hình/lệch khung | Chất lượng hình trên LED ghép | Một render thread, đo bằng T-4K; cân nhắc card có Genlock khi ghép lớn |
-| R3 | Băng thông GPU/VRAM với nhiều Output 4K | Rớt khung | Benchmark sớm (M3c), render theo độ phân giải Output chọn lọc, giải mã phần cứng (M6) |
+| R2 | Nhiều Output cùng tần số quét nhưng không đồng bộ tuyệt đối, có thể xé hình/lệch khung | Chất lượng hình trên LED ghép | Một render thread, đo bằng T-4K; cân nhắc card có Genlock khi ghép lớn. **M6:** không tách thread render theo nhóm khi chưa có số đo (`KienTruc.md` 3.5) |
+| R3 | Băng thông GPU/VRAM với nhiều Output 4K | Rớt khung | Benchmark sớm (M3c), render theo độ phân giải Output chọn lọc, giải mã phần cứng (M6). **M6:** có công cụ benchmark + số liệu từng giai đoạn; YUV lên GPU giảm băng thông CPU→GPU (1,5 thay vì 4 byte/điểm ảnh); **chưa đo trên GPU thật** |
 | R4 | Plug-in bên thứ ba treo/crash | Sập cả show | Shader plug-in là đường chính, native có hạn chạy và vô hiệu hoá, tách tiến trình sau |
 | R5 | Chuyển Qt/FFmpeg bản mới làm vỡ build (đã gặp: Qt 6.8 yêu cầu `Q_OBJECT`) | Chặn phát triển | Build thử Windows trước mỗi merge; ghi phiên bản đã dùng trong README |
 | R6 | OpenGL bị Apple ngừng phát triển | Chặn macOS | Giữ ranh giới GPU hẹp (nguyên tắc 4), làm M7 qua RHI |
-| R7 | Điều khoản NDI SDK và giấy phép thương mại của Qt khi bán gói Thương mại | Pháp lý | **M5b đã làm theo hướng giảm rủi ro:** không commit/không liên kết tĩnh NDI SDK, nạp động runtime, tự tắt khi không có; **vẫn cần bạn xác nhận điều khoản NDI (đăng ký, ghi "NDI®", không phát hành kèm runtime) và đối chiếu ABI trước khi phát hành** (`SPEC.md` 5.1); giữ liên kết động LGPL cho Qt |
+| R7 | Điều khoản NDI SDK và giấy phép thương mại của Qt khi bán gói Thương mại | Pháp lý | **M5b đã làm theo hướng giảm rủi ro:** không commit/không liên kết tĩnh NDI SDK, nạp động runtime, tự tắt khi không có; **M6 đã thêm dòng "NDI®" vào Giới thiệu và rào chặn không kèm runtime vào bộ cài; vẫn cần bạn xác nhận điều khoản NDI (đăng ký với NDI) và đối chiếu ABI trước khi phát hành** (`SPEC.md` 5.1); giữ liên kết động LGPL cho Qt |
 | R8 | Phạm vi lớn so với một người làm | Chậm tiến độ | Làm theo mốc nhỏ, P0 trước; mỗi PR có thể phát hành độc lập |
 | R9 | Chưa có máy LED/bộ gửi tín hiệu thật để kiểm tra trong môi trường phát triển | Lỗi chỉ lộ ra ngoài hiện trường | M3c bắt buộc có buổi thử trên phần cứng thật |
 

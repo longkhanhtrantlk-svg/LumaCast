@@ -9,6 +9,7 @@
 #include <QApplication>
 #include <QDir>
 #include <QDirIterator>
+#include <QJsonObject>
 #include <QFile>
 #include <QSurfaceFormat>
 #include <QTemporaryDir>
@@ -115,6 +116,10 @@ int main(int argc, char** argv) {
 
             // dieu khien ngoai
             ControlApi api(p, engine);
+            pump(1200);                                                // stages() cap nhat moi giay
+            const QJsonObject eng = api.state()["engine"].toObject();
+            CHECK(eng["stages"].toObject()["output"].toObject().contains("p99") && eng["stages"].toObject().contains("upload") && eng["stages"].toObject().contains("scene"),
+                  "HTTP state: engine.stages co upload/scene/transition/monitor/output (p50, p99)");
             ControlService svc(api);
             ControlSettings cs;
             cs.httpEnabled = true; cs.httpPort = 18877; cs.oscEnabled = true; cs.oscPort = 19877;

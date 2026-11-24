@@ -71,7 +71,7 @@ Nguyên tắc: **mọi thứ nặng ở GPU**, UI chỉ gửi lệnh, không bao
 ### 3.3 Threading & đồng bộ
 - **Render thread** duy nhất sở hữu GL context chính; các Output window dùng context *chia sẻ* (shared) để dùng chung texture. Khuyến nghị: một thread render tất cả Output tuần tự trong cùng nhịp (tránh lệch khung giữa các màn LED ghép).
 - Mỗi cửa sổ `swapInterval=0`; engine tự điều nhịp theo **master clock** (vd 60 Hz, hoặc theo tần số quét thực của màn). Với nhiều màn khác tần số quét, cho phép *clock domain* riêng mỗi nhóm Output.
-- Decode: mỗi Source một thread decode; ring buffer frame; upload qua **PBO bất đồng bộ**, hoặc zero-copy hw-interop (D3D11VA/NVDEC/VAAPI) khi có.
+- Decode: mỗi Source một thread decode; ring buffer frame; upload qua **PBO bất đồng bộ** (đã làm ở M6, mục 3.5), hoặc zero-copy hw-interop (D3D11VA/NVDEC/VAAPI) khi có (**chưa làm**: M6 chép NV12/P010 từ VRAM về RAM rồi đẩy lên GPU, xem mục 4).
 - Audio (nếu cần): luồng riêng, đồng bộ A/V theo PTS; có thể bỏ ở MVP vì LED thường chỉ hình.
 - Lệnh từ UI/API đi qua queue lock-free, áp dụng ở đầu khung hình kế tiếp (thay đổi nguyên tử, không xé hình).
 
@@ -82,6 +82,19 @@ Nguyên tắc: **mọi thứ nặng ở GPU**, UI chỉ gửi lệnh, không bao
 - Plug-in lỗi không được làm sập chương trình (xem mục 5.4).
 - Tự khôi phục project + tự mở lại output sau mất điện (autostart).
 
+### 3.5 Hiệu năng (M6)
+**Upload nguồn lên GPU** (`GlHelpers`: `GlTexture`, `YuvTexture`, `HapTexture`, `PboRing`) — mọi nguồn video/live đi qua đây, luôn trên render thread:
+- `PboRing`: 2 PBO (`GL_PIXEL_UNPACK_BUFFER`), mỗi lần *orphan* (`glBufferData(NULL)`) rồi `glMapBufferRange(WRITE|INVALIDATE)`, `memcpy`, unmap, `glTex(Sub)Image2D(offset 0)`. DMA của khung trước đọc buffer cũ nên không chờ; map không trả được thì rơi về con trỏ CPU. Tắt: `LUMACAST_NO_PBO=1` hoặc `UploadConfig::setUsePbo(false)`.
+- `YuvTexture`: texture `R8/RG8` (hoặc `R16/RG16` cho 10 bit) cho Y, U, V (hoặc Y + UV) → **một pass** vẽ quad vào FBO RGBA8 (`gl_VertexID`, không VBO) → trả texture RGBA cho Compositor như nguồn thường (`Compositor` không biết YUV). Shader: bù/hệ số khoảng (giới hạn/đầy đủ theo số bit), ma trận theo (Kr, Kb) của BT.601/709/2020, chroma lấy mẫu bilinear **lệch 1/4 điểm sắc** cho nội dung "chroma lệch trái" (MPEG-2/H.264; JPEG/MPEG-1 "giữa"). Hàng 0 của texture = hàng trên cùng của ảnh (cùng quy ước `GlTexture`). Chương trình shader dùng chung theo context (`gProgs`).
+  `FFmpegSource` chọn ma trận từ `AVFrame::colorspace` (không khai báo: ≥ 720 dòng → 709, ngược lại 601) và khoảng từ `color_range`/`yuvj*`; định dạng ngoài danh sách (RGB, gray, có alpha, 12/16 bit...) → `sws_scale` RGBA như cũ, **cũng đặt cùng ma trận/khoảng** (trước M6 mặc định 601 giới hạn).
+- `HapTexture`: texture S3TC (`COMPRESSED_RGB_S3TC_DXT1` / `RGBA_S3TC_DXT5`) upload thẳng khối DXT (`glCompressedTex(Sub)Image2D`); Hap Q (YCoCg) thêm một pass shader. `src/media/Hap.*` tách khung HAP (không phụ thuộc GL/FFmpeg) và giải nén Snappy tự viết; kiểm tra mọi kích thước, khung hỏng bị từ chối.
+- `Compositor::thumbnailAsync` + `AsyncReadback`: ảnh monitor đọc ngược qua `GL_PIXEL_PACK_BUFFER`, trả ảnh **của lần gọi trước** (trễ thêm một nhịp monitor ~67 ms) để CPU không chờ GPU xong khung hiện tại.
+- `Compositor::drawToCurrent`: Output không hiệu chỉnh (mặc định) bỏ qua phần contrast/gain/`pow` trong shader cuối (`uIdentity`).
+
+**Đo** (`RenderEngine::stages()`, `Compositor::timing()`, `GlProfile`): mỗi khung ghi thời gian CPU của upload (cộng dồn theo thread trong `GlProfile::uploadNs()`), Scene (trừ upload), Transition, monitor, Output; `FrameStats` p50/p99 trên 300 khung cho UI/HTTP (`engine.stages`); `startRecording()/takeRecording()` ghi từng khung cho benchmark (`Benchmark.*`, `lumacast --benchmark`). Mặc định chỉ là thời gian CPU phát lệnh (GPU chạy bất đồng bộ); `setProfileSync(true)` thêm `glFinish` cuối mỗi giai đoạn để ra thời gian GPU thật.
+
+**Có cần render theo nhóm Output / nhiều thread render?** Chưa có số liệu để kết luận. Trên llvmpipe, giai đoạn *output* của 4 Output 4K là phần lớn thời gian khung nhưng đó là chi phí rasterizer phần mềm. Cần số liệu GPU thật (T-PERF, B3/B4, `sync=1`): nếu thời gian *output* + *scene* vượt hạn khung trong khi GPU còn trống, các hướng theo thứ tự rẻ → đắt: (1) Output cùng Channel/cùng crop/scale/hiệu chỉnh/kích thước dùng chung một lần vẽ rồi blit (nay mỗi Output vẽ lại) ; (2) bỏ `glFinish`/swap tuần tự bằng `swapBuffers` song song; (3) nhóm Output theo bộ chuyển đổi/tần số quét, mỗi nhóm một thread + context chia sẻ (đánh đổi: nguy cơ lệch khung giữa các nhóm ghép, rủi ro R2). **Không làm trước khi có số đo** (R2/R3).
+
 ---
 
 ## 4. Media Engine
@@ -89,7 +102,9 @@ Nguyên tắc: **mọi thứ nặng ở GPU**, UI chỉ gửi lệnh, không bao
 - **FFmpeg** (libavformat/libavcodec) decode video; HW decode khi có; hỗ trợ MP4/MOV/MKV, ProRes/H.264/H.265, **HAP** (nên có – rất nhẹ CPU cho LED), image sequence, PNG/JPG/SVG, GIF.
 - Loại nguồn: File, Playlist, Image, Text/CG (QML/QPainter→texture), Màu, Camera/Capture (V4L2/DirectShow/Media Foundation), **NDI in** (tuỳ chọn), Web (QtWebEngine), Screen capture.
 - Loop, in/out point, tốc độ, seek chính xác, preload nguồn của Scene Preview để chuyển không giật.
-- Chuyển đổi màu YUV→RGB bằng shader (BT.601/709/2020, full/limited range).
+- Chuyển đổi màu YUV→RGB bằng shader (BT.601/709/2020, full/limited range) — **đã làm ở M6** (mục 3.5).
+- **Giải mã phần cứng (M6, `VideoDecodeOptions`)**: Windows mặc định `auto` = **D3D11VA** qua `hw_device_ctx` của FFmpeg (`get_format` chọn đúng định dạng phần cứng); khung ở VRAM được `av_hwframe_transfer_data` về RAM (NV12/P010) **ngay trong thread giải mã** (trả khung cho bộ giải mã, hàng chờ phát lại không giữ khung VRAM) rồi đi đường shader. Đây **chưa phải zero-copy** (không `WGL_NV_DX_interop`/`EGL_ANGLE` — sẽ làm khi số đo cho thấy đường RAM là nút cổ chai ở 4K). Hệ điều hành khác: tắt mặc định; chọn thiết bị khác bằng `--hwdec vaapi|cuda|...` hoặc `LUMACAST_HWDEC`. Dự phòng: không có thiết bị/codec, `avcodec_open2` lỗi, `receive_frame` báo lỗi, `transfer_data` lỗi, hoặc 60 gói tin liên tiếp không ra khung → mở lại decoder phần mềm và phát lại từ đầu (một lần, có log); `decodeInfo()` hiện chế độ đang dùng.
+- **HAP (M6)**: luồng `AV_CODEC_ID_HAP` kích thước chia hết 4 và GPU có S3TC (`HapSupport`, đặt bởi `Compositor::init`) → thread giải mã bỏ qua `libavcodec`, tách khung bằng `hapParseFrame` và đưa khối DXT thẳng lên GPU; HAP là intra-only nên khung không hỗ trợ (Hap Alpha-only, Hap M) đi qua bộ giải mã `hap` của FFmpeg xen kẽ. `LUMACAST_HAP=0` tắt.
 
 ---
 
@@ -349,3 +364,15 @@ về 0 = huỷ, CUT giữa chừng hoàn tất ngay. AUTO là công tắc giao d
 **Camera Media Foundation (`CameraMF.cpp`, chỉ Windows).** `IMFSourceReader` **bất đồng bộ** (callback) với `MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING` → RGB32 → BGRX→RGBA (tôn trọng stride âm = ảnh ngược); `capture()` chờ condvar có hạn nên ReadSample treo không chặn `LiveSource`; lỗi/`ENDOFSTREAM` (rút thiết bị) → `Lost`. Trạng thái giữa callback và `MfInput` chia sẻ qua `shared_ptr<Shared>` (callback có thể đến muộn sau khi `MfInput` bị huỷ). Liệt kê thiết bị theo `MFEnumDeviceSources` (id = symbolic link, lưu kèm tên để nhận lại khi id đổi), chế độ liệt kê riêng khi chọn thiết bị (mở reader). **Mới kiểm tra cú pháp bằng mingw, chưa chạy trên Windows.**
 
 **Project.** Nguồn `ndi` (`ndiName`, `ndiUrl`, `label`) và `camera` (`device`, `deviceName`, `width`, `height`, `fps`), Output `type: "ndi"` (`ndiName`, `ndiAudio`) — tuỳ chọn, `version` vẫn 1 (`PROJECT-FORMAT.md`). Tạo nguồn trực tiếp **không bao giờ thất bại** vì thiếu NDI/camera.
+
+---
+
+## 17. Phát hành Windows và giấy phép (M6)
+
+- **Cấu hình cài đặt** nằm trong `CMakeLists.txt` (phần cuối): `install()` đặt `lumacast`, plug-in mẫu (`<exe>/plugins`), tài liệu, `THIRD-PARTY-NOTICES.txt`, `license.example.json`, `licenses/`. Windows: cài thẳng vào thư mục gốc (exe + DLL cạnh nhau, đúng chỗ `PluginManager::defaultDirs()` tìm). **Qt**: `qt_generate_deploy_app_script` (windeployqt; dự phòng `FILENAME_VARIABLE` cho Qt 6.3–6.4). **FFmpeg**: glob `avcodec/avformat/avutil/swscale/swresample*.dll` từ `LUMACAST_FFMPEG_BIN_DIR` hoặc `../bin` của `FFMPEG_LIBRARY_DIRS`/vcpkg, rồi `file(GET_RUNTIME_DEPENDENCIES)` kéo theo DLL phụ thuộc (zlib...). Giấy phép `copyright` của vcpkg (ffmpeg, qtbase) được chép vào `licenses/` nếu thấy.
+- **CPack**: NSIS (mặc định) + ZIP mang theo; `-DLUMACAST_INSTALLER=WIX` chuyển sang WiX (chưa thử; GUID nâng cấp cố định trong CMake). Trang đầu của trình cài là `THIRD-PARTY-NOTICES.txt` (chưa có EULA riêng). Lệnh: `cmake --build build --config Release && cpack --config build/CPackConfig.cmake -C Release`.
+- **Rào chặn NDI** (`cmake/CheckNoNdi.cmake`): bước `install(CODE)` cuối cùng; thấy `Processing.NDI*`, `libndi*`, `ndi*.dll/.so` trong thư mục đóng gói thì cài đặt dừng với lỗi. Có test (`ctest -R package`).
+- **Giấy phép thư viện**: `libraryInfo()` (`src/app/AboutInfo.*`) đọc `avutil_license()`/`avutil_configuration()` và nhận ra Qt tĩnh (`QT_STATIC`); hiện trong Giới thiệu kèm cảnh báo; ctest `license` ép FFmpeg LGPL khi `LUMACAST_REQUIRE_LGPL=1` (CI Windows/phát hành). Dòng "NDI® is a registered trademark of Vizrt NDI AB." nằm ở `ndiTrademarkNotice()`.
+- **Cờ tính năng theo gói** (`src/core/Features.*`): `Entitlements` (edition, licensee, maxOutputs, 5 cờ) đọc từ `license.json` (`$LUMACAST_LICENSE`, `<exe>/license.json`, `%AppData%\LumaCast\license.json`); không có file = không khoá. Mọi chỗ thi hành chỉ hỏi `Entitlements::current()` (`createSource` NDI/camera, `PluginManager::rescan`, `ControlService::apply`, `RenderEngine::startEngine/addNdiOutput`, `MainWindow` timeline + các hộp thoại thêm nguồn). Output vượt gói/NDI bị chặn được thay bằng `DisabledSink` giữ chỗ để `syncOutputsToProject()` không lệch chỉ số. Đây là cờ cấu hình, **không** phải DRM.
+- **CI**: `.github/workflows/ci.yml` (Linux đầy đủ; Windows: Qt qua `install-qt-action`, FFmpeg qua `vcpkg.json`, kiểm tra LGPL + gói là bắt buộc, `ctest` đầy đủ không chặn vì runner không có GPU) và `release.yml` (dựng bộ cài, tải LGPL-2.1/3.0 vào `licenses/`, tải artifact lên, không tự phát hành). **Chưa chạy trên GitHub.**
+

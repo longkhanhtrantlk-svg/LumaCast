@@ -51,9 +51,9 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | SCN-02 | Layer: vị trí, kích thước, độ mờ (alpha), kiểu fit (Stretch/Fit/Fill), ẩn/hiện | P0 | ✅ | Test tự động |
 | SCN-03 | Đổi thứ tự Layer (kéo-thả hoặc nút), thêm/xoá, hoàn tác/làm lại | P0 | ✅ | Test tự động |
 | SCN-04 | Xoay Layer (độ, quanh tâm layer, đúng trên Scene không vuông) và crop Layer (tính theo hình đã xoay, đúng cả với video điện thoại xoay 90/180/270; kết hợp Fit/Fill) | P1 | ✅ | Test tự động (điểm ảnh; 4 nguồn xoay × crop) |
-| SCN-05 | Blend mode: Normal, Add, Multiply, Screen (kể cả opacity) | P1 | 🟡 | Test tự động so với giá trị tính tay. Chưa có Overlay, Soft light… |
+| SCN-05 | Blend mode: Normal, Add, Multiply, Screen (kể cả opacity) | P1 | 🟡 | Test tự động so với giá trị tính tay; thử tay T-LYR: Đạt (24/11/2026). Chưa có Overlay, Soft light… |
 | SCN-06 | Chuỗi Effect trên **Layer** (blur, glow, chỉnh màu, RGB split, pixelate, noise): thêm/gỡ/đổi thứ tự/bật-tắt, tham số tự sinh, hoàn tác, lưu trong project | P0 | ✅ | Test tự động (từng Effect, hướng ảnh, chuỗi, UI). **Chưa có Effect cấp Scene** (xem PLAN) |
-| SCN-07 | Timeline và keyframe cho thuộc tính Layer (vị trí X/Y, rộng, cao, alpha, xoay): đồng hồ Scene (phát/tạm dừng/về 0/tua, lặp, thời lượng, tự phát lại khi lên Program), 5 kiểu nội suy, thêm/dời/xoá keyframe bằng chuột hoặc nút ◆, tự đặt keyframe khi sửa giá trị, hoàn tác | P1 | ✅ | Test tự động (nội suy, đồng hồ, điểm ảnh ở từng thời điểm, chuột thật trên timeline, hoàn tác). Chưa: zoom/cuộn timeline, chọn nhiều key, sao chép key, keyframe cho crop/tham số Effect, đường cong Bézier |
+| SCN-07 | Timeline và keyframe cho thuộc tính Layer (vị trí X/Y, rộng, cao, alpha, xoay): đồng hồ Scene (phát/tạm dừng/về 0/tua, lặp, thời lượng, tự phát lại khi lên Program), 5 kiểu nội suy, thêm/dời/xoá keyframe bằng chuột hoặc nút ◆, tự đặt keyframe khi sửa giá trị, hoàn tác | P1 | ✅ | Test tự động (nội suy, đồng hồ, điểm ảnh ở từng thời điểm, chuột thật trên timeline, hoàn tác); thử tay T-ANI/T-AIR: Đạt (24/11/2026). Chưa: zoom/cuộn timeline, chọn nhiều key, sao chép key, keyframe cho crop/tham số Effect, đường cong Bézier |
 | SCN-08 | Mask, chroma key, nhóm Layer | P2 | ⬜ | — |
 
 ### 3.3 Channel và chuyển cảnh (CHN)
@@ -66,7 +66,7 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | CHN-05 | AUTO: bật thì bấm Scene = chuyển thẳng lên Program; tắt thì chỉ vào Preview | P1 | ✅ | Test tự động |
 | CHN-06 | FTB: làm mờ dần Program về đen, bấm lại để trở lại | P0 | ✅ | Test tự động |
 | CHN-07 | Preview **không bao giờ** tự đổi Program | P0 | ✅ | Test tự động |
-| CHN-08 | Transition bổ sung: Push, Slide, Zoom, Luma wipe (5 mẫu), **Stinger** (video alpha, điểm cắt, tự phát lại từ đầu); easing chọn được (4 kiểu) | P1 | ✅ | Test tự động. T-bar kéo tay không hỗ trợ Stinger (rơi về Fade); thử tay Stinger với video alpha thật chưa làm (T-STG) |
+| CHN-08 | Transition bổ sung: Push, Slide, Zoom, Luma wipe (5 mẫu), **Stinger** (video alpha, điểm cắt, tự phát lại từ đầu); easing chọn được (4 kiểu) | P1 | ✅ | Test tự động. T-bar kéo tay không hỗ trợ Stinger (rơi về Fade); đã thử tay Stinger với video alpha thật: Đạt (T-STG, 24/11/2026) |
 | CHN-09 | Transition do plug-in cung cấp (kèm tham số) | P1 | ✅ | Test tự động |
 
 ### 3.4 Output và mapping (OUT)
@@ -79,11 +79,11 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | OUT-05 | Hiệu chỉnh màu mỗi Output: sáng, tương phản, gamma, gain R/G/B | P0 | ✅ | Test tự động; thử tay với test chart T-CAL |
 | OUT-06 | LUT 3D, giới hạn độ sáng | P2 | ⬜ | — |
 | OUT-07 | **Đen** theo từng Output và BLACK ALL; Đen luôn thắng Dừng hình | P0 | ✅ | Test tự động |
-| OUT-08 | **Dừng hình** theo từng Output (giữ khung cuối), Output khác vẫn chạy | P0 | 🟡 | Test tự động trên Linux; **chưa xác nhận trên Windows** (T-FRZ) |
-| OUT-09 | Toàn màn hình đúng màn hình đã chọn, không xé hình; **không bao giờ hiện lên màn khác** (nhận diện màn theo tên, chỉ số vượt quá số màn = không hiển thị) | P0 | 🟡 | Test tự động logic + ẩn cửa sổ; **chưa thử trên màn LED thật** (T-FS) |
+| OUT-08 | **Dừng hình** theo từng Output (giữ khung cuối), Output khác vẫn chạy | P0 | ✅ | Test tự động trên Linux; **đã thử tay trên Windows: Đạt** (T-FRZ, 24/11/2026) |
+| OUT-09 | Toàn màn hình đúng màn hình đã chọn, không xé hình; **không bao giờ hiện lên màn khác** (nhận diện màn theo tên, chỉ số vượt quá số màn = không hiển thị) | P0 | ✅ | Test tự động logic + ẩn cửa sổ; **đã thử tay: Đạt** (T-FS, 24/11/2026) |
 | OUT-10 | Trạng thái từng Output: hiển thị/không hiển thị, FPS thật, Đen/Dừng | P0 | ✅ | Test tự động |
-| OUT-11 | Test pattern riêng theo Output (lưới, thanh màu, thước điểm ảnh, toạ độ 4 góc, tên màn), bật từng Output hoặc tất cả | P1 | ✅ | Test tự động (nội dung cửa sổ thật); thử tay T-PAT |
-| OUT-12 | Phát hiện mất màn/sai màn/cửa sổ không hiển thị, báo đúng Output (giao diện + log), ẩn cửa sổ khi mất màn, tự hiện lại đúng màn khi màn quay lại | P0 | 🟡 | Test tự động (logic, ẩn cửa sổ); **chưa thử rút màn thật** (T-LOSS) |
+| OUT-11 | Test pattern riêng theo Output (lưới, thanh màu, thước điểm ảnh, toạ độ 4 góc, tên màn), bật từng Output hoặc tất cả | P1 | ✅ | Test tự động (nội dung cửa sổ thật); thử tay T-PAT: Đạt (24/11/2026) |
+| OUT-12 | Phát hiện mất màn/sai màn/cửa sổ không hiển thị, báo đúng Output (giao diện + log), ẩn cửa sổ khi mất màn, tự hiện lại đúng màn khi màn quay lại | P0 | ✅ | Test tự động (logic, ẩn cửa sổ); **đã thử rút màn thật: Đạt** (T-LOSS, 24/11/2026) |
 | OUT-13 | Output dạng khác: NDI ra, ghi file, DMX/Art-Net | P1 | ⬜ | Qua `OutputSink` |
 
 ### 3.5 Project (PRJ)
@@ -114,7 +114,7 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 ### 3.7 Plug-in (PLG)
 | ID | Yêu cầu | Ưu tiên | TT | Nghiệm thu |
 |---|---|---|---|---|
-| PLG-01 | Shader plug-in (GLSL + `plugin.json`) cho Effect và Transition; tham số tự sinh giao diện; nạp lại nóng; 4 plug-in mẫu + `PLUGIN-SDK.md` | P0 | ✅ | Test tự động (quét, kiểm tra manifest, hot reload, bật/tắt, ghi đè) + thử tay T-PLG |
+| PLG-01 | Shader plug-in (GLSL + `plugin.json`) cho Effect và Transition; tham số tự sinh giao diện; nạp lại nóng; 4 plug-in mẫu + `PLUGIN-SDK.md` | P0 | ✅ | Test tự động (quét, kiểm tra manifest, hot reload, bật/tắt, ghi đè) + thử tay T-PLG: Đạt (24/11/2026) |
 | PLG-02 | Plug-in native (DLL, C ABI có phiên bản) cho Source/Effect/Output filter | P1 | ⬜ | Hoãn sang sau M5 (xem PLAN) |
 | PLG-03 | Plug-in lỗi hoặc chạy quá hạn bị vô hiệu hoá, không làm sập ứng dụng | P0 | 🟡 | Lỗi manifest/biên dịch: ✅ có test, không crash, giữ dữ liệu project. **Shader chạy vô hạn/quá nặng: chưa bảo vệ được** (có thể treo GPU; watchdog chỉ báo) |
 | PLG-04 | Plugin Manager (danh sách, bật/tắt, phiên bản, tác giả, lý do lỗi, quét lại, mở thư mục) | P1 | 🟡 | Test tự động. Chưa có: cài từ file, cập nhật/gỡ cài đặt, kiểm tra tương thích GPU |

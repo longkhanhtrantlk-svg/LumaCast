@@ -45,7 +45,7 @@ Trạng thái: **Đạt** · **Lỗi** · **Chưa thử**. Cập nhật cột n�
 | T-TBAR | Kéo T-bar bằng chuột: giữa chừng, về 0, hết hành trình | Hình pha theo tay; về 0 = huỷ; hết = hoàn tất, T-bar tự về 0 | Chưa thử |
 | T-UNDO | Chỉnh alpha/vị trí/màu Output vài lần, Ctrl+Z, Ctrl+Y | Quay lại từng bước đúng; kéo liên tục = một bước | Chưa thử |
 | T-LAYER | Kéo-thả đổi thứ tự Layer bằng chuột; tick ẩn/hiện | Thứ tự và hiển thị đổi ngay ở Program | Chưa thử |
-| T-FRZ | Bấm **Dừng** ở Output 1 khi video đang chạy | Hình Output 1 đứng yên; Output 2 vẫn chạy; Đen vẫn thắng Dừng | **Chưa thử — rủi ro R1** |
+| T-FRZ | Bấm **Dừng** ở Output 1 khi video đang chạy | Hình Output 1 đứng yên; Output 2 vẫn chạy; Đen vẫn thắng Dừng | Đạt (người dùng xác nhận 24/11/2026, chưa ghi chi tiết máy/GPU) |
 | T-BLK | BLACK ALL, Đen từng Output, phím B | Đen đúng phạm vi; bấm lại trả hình | Chưa thử |
 | T-FTB | FTB bật/tắt | Program mờ dần về đen và trở lại | Chưa thử |
 | T-SAVE | Lưu, đóng, mở lại bằng `--project` | Mọi Scene/Layer/Output/màu khôi phục | Chưa thử |
@@ -53,21 +53,21 @@ Trạng thái: **Đạt** · **Lỗi** · **Chưa thử**. Cập nhật cột n�
 | T-IMP | Nhập media bằng nút và nhấp đúp trong Media Pool | Có Scene mới, ảnh thu nhỏ đúng, video có ảnh | Chưa thử |
 | T-KEY | Space, Enter, B, 1–9, Ctrl+S/O/Z | Đúng chức năng, không xung đột khi gõ vào ô số | Chưa thử |
 | T-QUIT | Đóng cửa sổ chính | Hỏi xác nhận; chọn Có thì mọi cửa sổ Output đóng | Chưa thử |
-| T-FS | `-o 1920x1080@1 --fullscreen` với màn LED/bộ gửi tín hiệu | Hình ra đúng màn, không viền, không xé; Esc thoát | **Chưa thử — OUT-09** |
+| T-FS | `-o 1920x1080@1 --fullscreen` với màn LED/bộ gửi tín hiệu | Hình ra đúng màn, không viền, không xé; Esc thoát | Đạt (người dùng xác nhận 24/11/2026, chưa ghi chi tiết máy/GPU) |
 | T-WALL | `--wall 4x1 --cell 1920x1080` trên 4 màn | Hình liền mạch qua các màn | Chưa thử |
 | T-CAL | Dùng test chart; chỉnh sáng/gamma/gain từng Output | Màu khớp giữa các màn sau chỉnh | Chưa thử |
 | T-4K | 2 Output 4K + 2 Output 1080p, video 4K | Xem mục 4 | **Chưa thử — NFR-02** |
 | T-SOAK | Chạy liên tục ≥ 1 giờ có chuyển cảnh định kỳ | Không crash, khung rơi < 0,1 %, bộ nhớ ổn định | Chưa thử |
-| T-LOSS | Rút cáp/tắt một màn LED khi đang chạy (2 màn trở lên) | Output đó báo "MẤT MÀN HÌNH", **cửa sổ không nhảy sang màn khác**; Output còn lại không ảnh hưởng; cắm lại thì hình tự về đúng màn; có dòng trong log | **Chưa thử** (đã có test tự động cho logic) |
-| T-PAT | Bấm "Mẫu" ở một Output, rồi "Mẫu thử tất cả Output" | Hiện lưới/thanh màu/thước điểm ảnh/toạ độ 4 góc đúng độ phân giải thật; viền đỏ sát mép màn LED; tắt thì về Program | Chưa thử |
-| T-FX | Thêm Effect (làm mờ, chỉnh màu, glow…) vào một Layer đang chạy video; chỉnh tham số bằng chuột | Hình trên Program và trên màn Output đổi theo, mượt (FPS không tụt rõ); tắt/gỡ thì trở lại | Chưa thử |
-| T-TRX | Thử TAKE với Push (4 hướng), Slide, Zoom, Luma wipe (5 mẫu), plug-in Quét xoay; đổi easing và thời lượng | Hiệu ứng đúng hướng/kiểu, chạy hết rồi Program/Preview hoán đổi | Chưa thử |
-| T-STG | Nhập một video có kênh alpha (ví dụ .mov ProRes 4444 hoặc WebM VP9 alpha), chọn Stinger, TAKE | Video chạy đè từ đầu, đổi cảnh ở điểm cắt, tự kết thúc; lần TAKE sau lại phát từ đầu | **Chưa thử** (mới có test với nguồn tổng hợp) |
-| T-PLG | Chép plug-in mẫu vào `%AppData%\LumaCast\plugins`, sửa file `.frag` khi đang chạy; thử plug-in cố tình sai | Tự nạp lại sau ~0,3 s; sai thì Effect bị bỏ qua, có lỗi trong dock Plug-in/tab Effect/log, ứng dụng không sập | Chưa thử |
-| T-ANI | Đặt keyframe X/alpha/xoay cho một Layer (nhấp đúp trên làn, nút ◆, hoặc sửa ô giá trị khi đã có key); bấm Phát; kéo playhead trên thước khi đang chạy video | Chuyển động mượt đúng thời điểm, đúng kiểu nội suy; tua không làm giật hình ra Output; lặp đúng; kéo key bằng chuột đúng chỗ | Chưa thử |
-| T-AIR | Đưa Scene có keyframe lên Program bằng CUT, TAKE và T-bar | Chạy lại từ 0 mỗi lần lên sóng; tắt "Phát lại khi lên Program" thì giữ nguyên; timeline hiện cảnh báo "đang ở PROGRAM" khi chọn đúng Scene đó | Chưa thử |
-| T-LYR | Xoay, crop (kể cả với video dọc quay bằng điện thoại), đổi blend (Add/Multiply/Screen) cho Layer; hoàn tác | Hình đúng trên Output; crop theo hình đã xoay | Chưa thử |
-| T-LOG | Mở `%AppData%\LumaCast\logs\lumacast.log` sau một phiên chạy | Có dòng khởi động, GPU, sự kiện Output; thanh trạng thái hiện p50/p99 | Chưa thử |
+| T-LOSS | Rút cáp/tắt một màn LED khi đang chạy (2 màn trở lên) | Output đó báo "MẤT MÀN HÌNH", **cửa sổ không nhảy sang màn khác**; Output còn lại không ảnh hưởng; cắm lại thì hình tự về đúng màn; có dòng trong log | Đạt (người dùng xác nhận 24/11/2026, chưa ghi chi tiết máy/GPU) |
+| T-PAT | Bấm "Mẫu" ở một Output, rồi "Mẫu thử tất cả Output" | Hiện lưới/thanh màu/thước điểm ảnh/toạ độ 4 góc đúng độ phân giải thật; viền đỏ sát mép màn LED; tắt thì về Program | Đạt (người dùng xác nhận 24/11/2026, chưa ghi chi tiết máy/GPU) |
+| T-FX | Thêm Effect (làm mờ, chỉnh màu, glow…) vào một Layer đang chạy video; chỉnh tham số bằng chuột | Hình trên Program và trên màn Output đổi theo, mượt (FPS không tụt rõ); tắt/gỡ thì trở lại | Đạt (người dùng xác nhận 24/11/2026, chưa ghi chi tiết máy/GPU) |
+| T-TRX | Thử TAKE với Push (4 hướng), Slide, Zoom, Luma wipe (5 mẫu), plug-in Quét xoay; đổi easing và thời lượng | Hiệu ứng đúng hướng/kiểu, chạy hết rồi Program/Preview hoán đổi | Đạt (người dùng xác nhận 24/11/2026, chưa ghi chi tiết máy/GPU) |
+| T-STG | Nhập một video có kênh alpha (ví dụ .mov ProRes 4444 hoặc WebM VP9 alpha), chọn Stinger, TAKE | Video chạy đè từ đầu, đổi cảnh ở điểm cắt, tự kết thúc; lần TAKE sau lại phát từ đầu | Đạt (người dùng xác nhận 24/11/2026, chưa ghi chi tiết máy/GPU) |
+| T-PLG | Chép plug-in mẫu vào `%AppData%\LumaCast\plugins`, sửa file `.frag` khi đang chạy; thử plug-in cố tình sai | Tự nạp lại sau ~0,3 s; sai thì Effect bị bỏ qua, có lỗi trong dock Plug-in/tab Effect/log, ứng dụng không sập | Đạt (người dùng xác nhận 24/11/2026, chưa ghi chi tiết máy/GPU) |
+| T-ANI | Đặt keyframe X/alpha/xoay cho một Layer (nhấp đúp trên làn, nút ◆, hoặc sửa ô giá trị khi đã có key); bấm Phát; kéo playhead trên thước khi đang chạy video | Chuyển động mượt đúng thời điểm, đúng kiểu nội suy; tua không làm giật hình ra Output; lặp đúng; kéo key bằng chuột đúng chỗ | Đạt (người dùng xác nhận 24/11/2026, chưa ghi chi tiết máy/GPU) |
+| T-AIR | Đưa Scene có keyframe lên Program bằng CUT, TAKE và T-bar | Chạy lại từ 0 mỗi lần lên sóng; tắt "Phát lại khi lên Program" thì giữ nguyên; timeline hiện cảnh báo "đang ở PROGRAM" khi chọn đúng Scene đó | Đạt (người dùng xác nhận 24/11/2026, chưa ghi chi tiết máy/GPU) |
+| T-LYR | Xoay, crop (kể cả với video dọc quay bằng điện thoại), đổi blend (Add/Multiply/Screen) cho Layer; hoàn tác | Hình đúng trên Output; crop theo hình đã xoay | Đạt (người dùng xác nhận 24/11/2026, chưa ghi chi tiết máy/GPU) |
+| T-LOG | Mở `%AppData%\LumaCast\logs\lumacast.log` sau một phiên chạy | Có dòng khởi động, GPU, sự kiện Output; thanh trạng thái hiện p50/p99 | Đạt (người dùng xác nhận 24/11/2026, chưa ghi chi tiết máy/GPU) |
 
 ## 4. Benchmark hiệu năng
 Mỗi cấu hình đo 5 phút và ghi: FPS trung bình, số khung rơi, thời gian khung p50/p99, GPU %, VRAM, CPU %.

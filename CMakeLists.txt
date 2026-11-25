@@ -221,17 +221,24 @@ install(DIRECTORY docs/ DESTINATION ${LC_INSTALL_DOC}/docs)
 install(DIRECTORY licenses/ DESTINATION ${LC_INSTALL_DOC}/licenses)
 
 if(WIN32)
-  # --- Qt: windeployqt qua script trien khai cua Qt (>= 6.3) ---
+  # --- Qt: chay windeployqt tren thu muc cai dat ---
+  # KHONG dung qt_generate_deploy_app_script: no goi windeployqt voi --libdir bin (DLL Qt vao <goi>/bin/) trong khi exe nam o goc goi ->
+  # "Qt6Widgets.dll was not found" luc chay. O day DLL Qt + plug-in Qt nam CANH exe (plugins/ cho plug-in Qt: platforms, styles...).
   option(LUMACAST_DEPLOY_QT "Dong goi Qt bang windeployqt luc cai dat (tat khi chi muon thu cau hinh goi)" ON)
-  if(LUMACAST_DEPLOY_QT AND COMMAND qt_generate_deploy_app_script)
-    if(Qt6_VERSION VERSION_GREATER_EQUAL 6.5)
-      qt_generate_deploy_app_script(TARGET lumacast OUTPUT_SCRIPT LC_QT_DEPLOY_SCRIPT NO_UNSUPPORTED_PLATFORM_ERROR)
+  if(LUMACAST_DEPLOY_QT)
+    if(TARGET Qt6::windeployqt)
+      install(CODE "
+        execute_process(COMMAND [[$<TARGET_FILE:Qt6::windeployqt>]] [[$<TARGET_FILE:lumacast>]]
+                        --dir \"\${CMAKE_INSTALL_PREFIX}\" --plugindir \"\${CMAKE_INSTALL_PREFIX}/plugins\" --no-translations --no-opengl-sw
+                        RESULT_VARIABLE _lc_wdq_rc OUTPUT_VARIABLE _lc_wdq_out ERROR_VARIABLE _lc_wdq_err)
+        message(STATUS \"windeployqt: \${_lc_wdq_out}\")
+        if(_lc_wdq_rc)
+          message(FATAL_ERROR \"windeployqt that bai (\${_lc_wdq_rc}): \${_lc_wdq_err}\")
+        endif()
+      ")
     else()
-      qt_generate_deploy_app_script(TARGET lumacast FILENAME_VARIABLE LC_QT_DEPLOY_SCRIPT NO_UNSUPPORTED_PLATFORM_ERROR)    # Qt 6.3-6.4
+      message(WARNING "Khong co target Qt6::windeployqt - chay windeployqt tay truoc khi dong goi")
     endif()
-    install(SCRIPT ${LC_QT_DEPLOY_SCRIPT})
-  elseif(LUMACAST_DEPLOY_QT)
-    message(WARNING "Qt < 6.3: khong co qt_generate_deploy_app_script - chay windeployqt tay truoc khi dong goi")
   endif()
   # --- FFmpeg: DLL + cac DLL phu thuoc (zlib...) canh exe; tim trong thu muc bin cua vcpkg/FFmpeg ---
   set(LUMACAST_FFMPEG_BIN_DIR "" CACHE PATH "Thu muc chua avcodec-*.dll, avformat-*.dll... (mac dinh: ../bin cua FFMPEG_LIBRARY_DIRS / vcpkg)")

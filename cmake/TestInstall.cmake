@@ -20,6 +20,15 @@ set(_need
   "${_bin}/lumacast${_exe}"
   "${_bin}/plugins/mirror/plugin.json" "${_bin}/plugins/ripple/plugin.json" "${_bin}/plugins/spin-wipe/plugin.json" "${_bin}/plugins/vignette/plugin.json"
   "${_doc}/THIRD-PARTY-NOTICES.txt" "${_doc}/README.md" "${_doc}/license.example.json" "${_doc}/docs/SPEC.md")
+if(WIN32)
+  # Windows: Qt + FFmpeg phai nam CANH exe (loi that: Qt6Widgets.dll nam trong bin/ -> app khong chay)
+  list(APPEND _need "${_bin}/Qt6Core.dll" "${_bin}/Qt6Gui.dll" "${_bin}/Qt6Widgets.dll" "${_bin}/plugins/platforms/qwindows.dll")
+  file(GLOB _ff "${_bin}/avcodec*.dll" "${_bin}/avformat*.dll" "${_bin}/avutil*.dll" "${_bin}/swscale*.dll")
+  list(LENGTH _ff _nff)
+  if(_nff LESS 4)
+    message(FATAL_ERROR "Goi cai dat thieu DLL FFmpeg canh exe (thay ${_nff}/4): ${_ff}")
+  endif()
+endif()
 foreach(_f ${_need})
   if(NOT EXISTS "${_f}")
     message(FATAL_ERROR "Goi cai dat thieu: ${_f}")

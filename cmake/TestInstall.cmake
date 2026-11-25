@@ -6,15 +6,18 @@ execute_process(COMMAND "${CMAKE_COMMAND}" --install "${BUILD_DIR}" --prefix "${
 if(_rc)
   message(FATAL_ERROR "cmake --install that bai (${_rc}):\n${_out}\n${_err}")
 endif()
+# CMAKE_EXECUTABLE_SUFFIX khong duoc dat o che do script (-P) -> tu chon hau to theo nen tang
 if(WIN32)
+  set(_exe ".exe")
   set(_bin "${_prefix}")
   set(_doc "${_prefix}")
 else()
+  set(_exe "")
   set(_bin "${_prefix}/bin")
   set(_doc "${_prefix}/share/doc/lumacast")
 endif()
 set(_need
-  "${_bin}/lumacast${CMAKE_EXECUTABLE_SUFFIX}"
+  "${_bin}/lumacast${_exe}"
   "${_bin}/plugins/mirror/plugin.json" "${_bin}/plugins/ripple/plugin.json" "${_bin}/plugins/spin-wipe/plugin.json" "${_bin}/plugins/vignette/plugin.json"
   "${_doc}/THIRD-PARTY-NOTICES.txt" "${_doc}/README.md" "${_doc}/license.example.json" "${_doc}/docs/SPEC.md")
 foreach(_f ${_need})

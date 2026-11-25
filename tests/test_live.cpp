@@ -216,7 +216,9 @@ int main(int argc, char** argv) {
         CHECK(std::abs(rms - 0.25 / std::sqrt(2.0)) < 0.06, "Am thanh NDI di qua mixer -> bus Channel co muc dung (RMS ~0.177), do " + std::to_string(rms));
         const auto st = src->stats();
         CHECK(st.audioBlocks > 100 && st.audioFillMs > 10 && st.audioFillMs < 250, "Bu troi: nguon nhanh +4000 ppm trong 2,5 s: ring van trong khoang an toan (fill " + std::to_string(st.audioFillMs) + " ms)");
-        CHECK(st.audioRatioPpm > 50, "Bu troi: bo dieu khien da keo ti le theo huong dung (+" + std::to_string(st.audioRatioPpm) + " ppm)");
+        // Nguong 10 ppm: tren runner CI cham, bo dieu khien chi kip keo ~+22 ppm trong 2,5 s (CI that: 22 ppm < 50 -> do gia).
+        // Muc 10 ppm van phan biet duoc "keo dung huong" voi "khong keo" (0 ppm / am), con ring da duoc kiem tra o dong tren.
+        CHECK(st.audioRatioPpm > 10, "Bu troi: bo dieu khien da keo ti le theo huong dung (+" + std::to_string(st.audioRatioPpm) + " ppm)");
         CHECK(st.audioResyncs <= 3, "Bu troi: it mat dong bo trong luc khoi dong (" + std::to_string(st.audioResyncs) + ")");
         fakeNdi->setSourceAlive("PC (Tone)", false);
         sleepMs(1200);

@@ -33,11 +33,18 @@
 #include <QScrollBar>
 #include <QWheelEvent>
 #include <QComboBox>
+#include <QDialog>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QMimeData>
+#include <QStatusBar>
+#include <QUrl>
 #include "LockButton.h"
 #include <QFile>
 #include <QDir>
 #include "core/AppSettings.h"
 #include "core/Startup.h"
+#include <functional>
 #include <iostream>
 
 using namespace lc;
@@ -972,6 +979,125 @@ int main(int argc, char** argv) {
         us->undo();
         pump(100);
         tl->zoomFit();
+    }
+
+    // ================= Keo tha file tu Explorer =================
+    {
+        QImage img(32, 18, QImage::Format_RGB32);
+        img.fill(Qt::magenta);
+        const QString png1 = dir.filePath("keo 1 ảnh.png"), png2 = dir.filePath("keo2.PNG");
+        img.save(png1);
+        img.save(png2, "PNG");
+        auto writeFile = [&](const QString& name) {
+            const QString path = dir.filePath(name);
+            QFile f(path);
+            if (f.open(QIODevice::WriteOnly)) f.write("khong phai media");
+            return path;
+        };
+        const QString txt = writeFile("ghi_chu.txt"), badPng = writeFile("hong.png"), mp4 = writeFile("clip.MP4");
+        const QString folder = dir.filePath("thu_muc.png");
+        QDir().mkpath(folder);
+
+        auto* mediaL = w.findChild<QListWidget*>("mediaList");
+        auto* mediaDock = w.findChild<QDockWidget*>("dockMedia");
+        auto* us = w.undoStack();
+
+        // Gui DragEnter + Drop nhu Qt chuyen tu he dieu hanh (giu Shift = Explorer de nghi "di chuyen"). true = duoc nhan va la SAO CHEP.
+        auto sendDrag = [](QWidget* target, const QMimeData& mime, auto beforeDrop) {
+            const Qt::DropActions acts = Qt::CopyAction | Qt::MoveAction;
+            QDragEnterEvent enter(QPoint(3, 3), acts, &mime, Qt::LeftButton, Qt::ShiftModifier);
+            QApplication::sendEvent(target, &enter);
+            if (!enter.isAccepted()) return false;
+            beforeDrop();
+            QDropEvent ev(QPointF(3, 3), acts, &mime, Qt::LeftButton, Qt::ShiftModifier);
+            QApplication::sendEvent(target, &ev);
+            return ev.isAccepted() && ev.dropAction() == Qt::CopyAction;
+        };
+        auto drop = [&](QWidget* target, const QStringList& files, std::function<void()> beforeDrop = [] {}) {
+            QMimeData mime;
+            QList<QUrl> urls;
+            for (const QString& f : files) urls << QUrl::fromLocalFile(f);
+            mime.setUrls(urls);
+            return sendDrag(target, mime, beforeDrop);
+        };
+        auto message = [&] { return w.statusBar()->currentMessage(); };
+
+        const int s0 = int(p.scenes.size()), src0 = int(p.sources.size());
+        const int pg0 = ch->program, pv0 = ch->preview;
+        us->clear();
+
+        CHECK(drop(mediaL->viewport(), {png1, txt, png2}), "keo tha vao Media Pool: duoc nhan, luon la sao chep (khong di chuyen file goc)");
+        CHECK(waitFor([&] { return int(p.scenes.size()) == s0 + 2; }) && int(p.sources.size()) == src0 + 2 && mediaL->count() == src0 + 2,
+              "tha 2 anh + 1 file khong ho tro: nhap dung 2 anh");
+        CHECK(message().contains("ghi_chu.txt") && message().contains("bỏ qua 1"), "file khong ho tro: bo qua va bao ten tren thanh trang thai");
+        CHECK(ch->program == pg0 && ch->preview == pv0, "tha file: Program/Preview khong doi");
+        CHECK(us->count() == 2 && us->undoText().contains("Nhập media"), "tha file: moi file mot buoc Hoan tac nhu lenh Nhap media");
+        us->undo();
+        us->undo();
+        CHECK(waitFor([&] { return int(p.scenes.size()) == s0; }) && int(p.sources.size()) == src0, "Hoan tac go het file vua tha");
+        us->redo();
+        us->redo();
+        CHECK(waitFor([&] { return int(p.scenes.size()) == s0 + 2; }), "Lam lai: file tha vao tro lai");
+        us->undo();
+        us->undo();
+        waitFor([&] { return int(p.scenes.size()) == s0; });
+        us->clear();
+
+        CHECK(drop(w.centralWidget(), {mp4}) && waitFor([&] { return int(p.scenes.size()) == s0 + 1; }) && p.sources.back().type == "video",
+              "tha video (.MP4) vao vung lam viec: nhap thanh nguon video");
+        CHECK(message().contains("Đã nhập 1 file") && ch->program == pg0 && ch->preview == pv0, "thong bao da nhap; Program/Preview khong doi");
+        us->undo();
+        waitFor([&] { return int(p.scenes.size()) == s0; });
+        us->clear();
+
+        // o nhap so trong Inspector: mac dinh Qt se nuot URL nhu van ban
+        auto* spinEdit = w.inspector()->findChild<QDoubleSpinBox*>("layerAlpha")->findChild<QLineEdit*>();
+        const QString spinText = spinEdit->text();
+        CHECK(drop(spinEdit, {png1}) && waitFor([&] { return int(p.scenes.size()) == s0 + 1; }) && spinEdit->text() == spinText,
+              "tha len o nhap so: van nhap media, noi dung o khong doi");
+        us->undo();
+        waitFor([&] { return int(p.scenes.size()) == s0; });
+        us->clear();
+
+        mediaDock->setFloating(true);
+        pump(150);
+        CHECK(drop(mediaL->viewport(), {png1}) && waitFor([&] { return int(p.scenes.size()) == s0 + 1; }), "Media Pool tach roi thanh cua so rieng: van nhan tha");
+        mediaDock->setFloating(false);
+        pump(150);
+        us->undo();
+        waitFor([&] { return int(p.scenes.size()) == s0; });
+        us->clear();
+
+        drop(mediaL->viewport(), {txt, badPng, folder, dir.filePath("khong_co.mp4")});
+        pump(200);
+        CHECK(int(p.scenes.size()) == s0 && int(p.sources.size()) == src0 && us->count() == 0, "chi file khong ho tro / anh hong / thu muc / file khong ton tai: khong nhap gi");
+        CHECK(message().contains("Đã nhập 0 file") && message().contains("bỏ qua 4"), "bao so file bi bo qua");
+
+        QMimeData textOnly;
+        textOnly.setText("chi la van ban");
+        CHECK(!sendDrag(w.centralWidget(), textOnly, [] {}), "keo thu khong phai file: khong nhan");
+
+        {
+            QDialog modal(&w);
+            modal.setModal(true);
+            modal.show();
+            pump(100);
+            CHECK(!drop(w.centralWidget(), {png1}) && int(p.scenes.size()) == s0, "dang mo hop thoai: khong nhan tha vao cua so chinh");
+        }
+        pump(100);
+
+        w.setLocked(true);
+        CHECK(!drop(mediaL->viewport(), {png1}) && message().contains("khoá"), "khoa van hanh: tu choi keo vao Media Pool, co thong bao");
+        w.statusBar()->clearMessage();
+        CHECK(!drop(w.centralWidget(), {png1}) && message().contains("khoá"), "khoa van hanh: tu choi keo vao vung lam viec");
+        pump(200);
+        CHECK(int(p.scenes.size()) == s0 && us->count() == 0, "khoa van hanh: khong nhap gi, khong co buoc Hoan tac");
+        w.setLocked(false);
+        w.statusBar()->clearMessage();
+        CHECK(!drop(mediaL->viewport(), {png1}, [&] { w.setLocked(true); }) && message().contains("khoá"), "khoa bat giua luc dang keo: tha ra van bi tu choi");
+        pump(200);
+        CHECK(int(p.scenes.size()) == s0 && us->count() == 0 && ch->program == pg0 && ch->preview == pv0, "khoa giua chung: project va Program/Preview khong doi");
+        w.setLocked(false);
     }
 
     engine.stopEngine();

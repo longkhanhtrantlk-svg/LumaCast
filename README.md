@@ -31,6 +31,13 @@ Windows (muc tieu): Qt 6 + FFmpeg qua vcpkg (`vcpkg install ffmpeg:x64-windows` 
 `-o WxH[@man_hinh][/kenh]` (lap lai cho nhieu output), `--scale fit|fill|stretch|pixel`, `--fps 60`.
 Phim tat (kenh 1): `1..9` chon Preview, `Space` = AUTO, `Enter` = CUT.
 
+## Nhập media bằng kéo thả
+- Kéo một hoặc nhiều file ảnh/video từ Windows Explorer vào **Media Pool** hoặc bất kỳ chỗ nào trong cửa sổ chính (kể cả dock đã tách rời). Giống *File > Nhập media...*: mỗi file thêm một nguồn + một Scene và là một bước Hoàn tác (Ctrl+Z).
+- Thả không đưa gì lên Program: Preview/Program giữ nguyên.
+- Nhận các đuôi: `mp4 mov mkv avi webm png jpg jpeg bmp gif webp`. File khác, thư mục, ảnh không đọc được bị bỏ qua và báo ở thanh trạng thái (định dạng video khác vẫn thử nhập được qua hộp thoại *Nhập media*, lọc "Tất cả").
+- Đang **Khoá vận hành** hoặc đang mở hộp thoại: không thả được (khi khoá có thông báo).
+- File gốc không bị di chuyển hay xoá: project chỉ tham chiếu tới đường dẫn của nó.
+
 ## M6 them (hieu nang va phat hanh Windows)
 - **NDI tat trong ban phat hanh:** CMake `-DLUMACAST_ENABLE_NDI=OFF` (CI/release dat san) -> khong co ma NDI trong file thuc thi, giao dien an muc NDI (vi EULA NDI SDK buoc EULA rieng; xem `docs/SPEC.md` muc 5.1). **Mac dinh OFF va bi khoa**: bat NDI can `-DLUMACAST_ENABLE_NDI=ON -DLUMACAST_NDI_EULA_ACCEPTED=I_ACCEPT_NDI_SDK_EULA` sau khi tu doc/chap nhan EULA cua NDI SDK (ctest `live`, `live_ui` chi chay khi ON). Ma NDI van nam trong repo de nguoi co chuyen mon xem; can ban co NDI thi lien he tac gia.
 - **Doi mau YUV->RGB bang shader tren GPU** (mac dinh): plane Y/UV (8/10 bit, NV12/P010, 4:2:0/4:2:2/4:4:4, BT.601/709/2020, gioi han/day du) len GPU thay vi `sws_scale` RGBA tren CPU. `--no-gpu-yuv` / `LUMACAST_GPU_YUV=0` ve duong CPU.

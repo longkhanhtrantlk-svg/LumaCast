@@ -11,7 +11,7 @@ Liên quan: `SPEC.md` (tiêu chí nghiệm thu), `PLAN.md` (Definition of Done),
 | Tự động — Effect/Transition/plug-in | `lumacast_effects_tests` | Linux (xvfb), Windows | 65 |
 | Tự động — hoạt hoạ/Layer | `lumacast_anim_tests` | Linux (xvfb), Windows | 67 |
 | Tự động — điều khiển ngoài (HTTP/SSE/OSC, bảo mật) | `lumacast_control_tests` | Linux (xvfb), Windows | 186 |
-| Tự động — vận hành (cài đặt, tự khởi động, mở lại project, khoá, hoàn tác nhập media, timeline) | `lumacast_m5c_tests` | Linux (xvfb), Windows | 197 |
+| Tự động — vận hành (cài đặt, tự khởi động, mở lại project, khoá, hoàn tác nhập media, timeline, kéo thả file) | `lumacast_m5c_tests` | Linux (xvfb), Windows | 217 |
 | Tự động — âm thanh: ring, mixer, trọng số crossfade, kế hoạch trộn, lưu/mở, backend Null + thread, FFmpeg, hình theo đồng hồ âm thanh | `lumacast_audio_tests` | Linux, Windows (không cần GPU) | 80 |
 | Tự động — âm thanh qua engine thật: mute/âm lượng/crossfade/T-bar/FTB qua meter, HTTP + OSC, panel Âm thanh, Inspector, khoá vận hành | `lumacast_audio_ui_tests` | Linux (xvfb), Windows | 44 |
 | Tự động — nguồn trực tiếp: bù trôi đồng hồ (mô phỏng 10 phút), NDI giả (nhận, mất nguồn, giữ khung cuối, nối lại, Unavailable), âm thanh NDI qua mixer, camera giả (cắm/rút/bận/đổi id), lưu/mở project (kể cả dữ liệu xấu), Output NDI (GPU → đọc ngược → người gửi: chiều ảnh, Đen/Mẫu/Dừng, âm thanh, vòng NDI ra → NDI vào), nạp động runtime bằng **thư viện NDI giả** (chuyển đổi BGRA/RGBX/planar, gửi) | `lumacast_live_tests` | Linux (xvfb), Windows | 88 |
@@ -49,6 +49,8 @@ video FFmpeg (khung hình, lặp, xoay 90/180/270 so với FFmpeg tự xoay).
 **`lumacast_ui_tests`** (điều khiển widget như người dùng): engine + cửa sổ chính, monitor, CUT/TAKE/AUTO/T-bar, BLACK ALL, Dừng hình,
 FTB, Inspector (Layer, Output), Hoàn tác/Làm lại (kể cả gộp bước), kéo-thả/ẩn-hiện Layer, nhập media, lưu và tự lưu.
 
+**Kéo thả file** (trong `lumacast_m5c_tests`, sự kiện kéo/thả mô phỏng trong Qt): thả vào Media Pool, vùng làm việc, ô nhập số, dock tách rời; nhiều file, Hoàn tác/Làm lại, file không hỗ trợ, luôn là sao chép, Program/Preview không đổi, từ chối khi khoá hoặc đang mở hộp thoại. **Kéo thật từ Explorer chỉ kiểm chứng được bằng thử tay (T-DROP).**
+
 **Giới hạn đã biết:**
 - **NDI và camera trên Linux chỉ đi qua backend GIẢ** (và một thư viện NDI giả để kiểm chứng đường nạp động): **NDI Runtime thật, Media Foundation thật, độ trễ trên mạng thật, NDI ra mở bằng phần mềm khác chỉ kiểm chứng được bằng thử tay (T-NDI-*, T-CAM*)**. Độ trễ "< 3 khung" ở test tự động chỉ đo đoạn *trong tiến trình* (khung đến `LiveSource` → lên GPU), không gồm mạng/bộ gửi.
 - Âm thanh trên Linux chỉ đi qua backend **Null** (không có tiếng ra loa): mixer, đồng hồ, crossfade, mute, meter, đồng bộ được kiểm tra; **WASAPI thật, nghe bằng tai, độ trễ thật của thiết bị, rút/đổi thiết bị, đo lệch 30 phút chỉ kiểm chứng được bằng thử tay (T-AUD-*)**.
@@ -77,6 +79,7 @@ Trạng thái: **Đạt** · **Lỗi** · **Chưa thử**. Cập nhật cột n�
 | T-SAVE | Lưu, đóng, mở lại bằng `--project` | Mọi Scene/Layer/Output/màu khôi phục | Chưa thử |
 | T-REC | Chỉnh project, đợi > 60 s, tắt tiến trình đột ngột, mở lại | Hỏi khôi phục bản tự lưu; khôi phục đúng | Chưa thử |
 | T-IMP | Nhập media bằng nút và nhấp đúp trong Media Pool | Có Scene mới, ảnh thu nhỏ đúng, video có ảnh | Chưa thử |
+| T-DROP | Từ Windows Explorer, kéo thả một rồi nhiều file ảnh/video vào Media Pool, vào monitor và vào dock đã tách rời; giữ Shift khi thả; kéo kèm một file `.txt` và một thư mục; Ctrl+Z; bật Khoá vận hành rồi kéo lại | Con trỏ báo "sao chép"; mỗi file thêm một Scene, Program/Preview không đổi; file gốc còn nguyên trong thư mục; file không hỗ trợ được báo tên; Ctrl+Z gỡ từng file; đang khoá thì con trỏ "cấm thả" + thông báo. Lưu ý: nếu chạy LumaCast bằng quyền Administrator, Windows chặn kéo thả từ Explorer | **Chưa thử** |
 | T-KEY | Space, Enter, B, 1–9, Ctrl+S/O/Z | Đúng chức năng, không xung đột khi gõ vào ô số | Chưa thử |
 | T-QUIT | Đóng cửa sổ chính | Hỏi xác nhận; chọn Có thì mọi cửa sổ Output đóng | Chưa thử |
 | T-FS | `-o 1920x1080@1 --fullscreen` với màn LED/bộ gửi tín hiệu | Hình ra đúng màn, không viền, không xé; Esc thoát | **Chưa thử — OUT-09** |

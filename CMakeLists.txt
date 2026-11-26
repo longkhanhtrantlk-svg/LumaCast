@@ -263,7 +263,7 @@ if(WIN32)
       set(_lc_libs [[${LC_FFMPEG_DLLS}]])
       file(GET_RUNTIME_DEPENDENCIES LIBRARIES \${_lc_libs} DIRECTORIES [[${LC_FFMPEG_BIN}]]
            RESOLVED_DEPENDENCIES_VAR _lc_res UNRESOLVED_DEPENDENCIES_VAR _lc_unres
-           PRE_EXCLUDE_REGEXES [[api-ms-.*]] [[ext-ms-.*]] POST_EXCLUDE_REGEXES [[.*[/\\][Ww]indows[/\\][Ss]ystem32.*]])
+           PRE_EXCLUDE_REGEXES [[api-ms-.*]] [[ext-ms-.*]] POST_EXCLUDE_REGEXES [[.*[Ww][Ii][Nn][Dd][Oo][Ww][Ss][/\\][Ss][Yy][Ss][Tt][Ee][Mm]32.*]])
       foreach(_f IN LISTS _lc_res)
         file(INSTALL \"\${_f}\" DESTINATION \"\${CMAKE_INSTALL_PREFIX}\")
       endforeach()

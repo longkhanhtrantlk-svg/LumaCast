@@ -1,5 +1,4 @@
 #include "LockButton.h"
-#include <QKeyEvent>
 #include <QMouseEvent>
 
 namespace lc {
@@ -36,17 +35,7 @@ void LockButton::mouseMoveEvent(QMouseEvent* e) {
     if (locked_ && !rect().contains(e->position().toPoint())) cancelHold();       // keo chuot ra khoi nut = huy
     else if (!locked_) QPushButton::mouseMoveEvent(e);
 }
-void LockButton::keyPressEvent(QKeyEvent* e) {
-    if (locked_ && (e->key() == Qt::Key_Space || e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter)) {
-        if (!e->isAutoRepeat()) startHold();
-        return;
-    }
-    QPushButton::keyPressEvent(e);
-}
-void LockButton::keyReleaseEvent(QKeyEvent* e) {
-    if (locked_ && !e->isAutoRepeat()) { cancelHold(); return; }
-    QPushButton::keyReleaseEvent(e);
-}
+// Co y KHONG mo khoa bang ban phim: Space/Enter luon la TAKE/CUT (phim tat cua MainWindow), ke ca khi nut nay dang giu focus.
 void LockButton::focusOutEvent(QFocusEvent* e) { cancelHold(); QPushButton::focusOutEvent(e); }
 
 } // namespace lc

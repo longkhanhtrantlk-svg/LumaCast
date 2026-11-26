@@ -472,21 +472,17 @@ int main(int argc, char** argv) {
             pump(100);
             CHECK(!w.isLocked() && lockLabel->text().contains("Mở khoá"), "nha nut sau khi mo khoa: van mo, nhan 'Mo khoa'");
         }
-        // phim Space giu
+        // ban phim KHONG mo khoa: Space la TAKE (phim tat cua so), ke ca khi nut khoa dang giu focus
         w.setLocked(true);
-        {
-            QKeyEvent kp(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier);
-            QApplication::sendEvent(lockBtn, &kp);
-            pump(300);
-            QKeyEvent kr(QEvent::KeyRelease, Qt::Key_Space, Qt::NoModifier);
-            QApplication::sendEvent(lockBtn, &kr);
-            pump(1200);
-            CHECK(w.isLocked(), "phim Space: giu ngan roi nha = van khoa");
+        for (int key : {int(Qt::Key_Space), int(Qt::Key_Return), int(Qt::Key_Enter)}) {
+            QKeyEvent kp(QEvent::KeyPress, key, Qt::NoModifier);
             QApplication::sendEvent(lockBtn, &kp);
             pump(1250);
+            QKeyEvent kr(QEvent::KeyRelease, key, Qt::NoModifier);
             QApplication::sendEvent(lockBtn, &kr);
-            CHECK(!w.isLocked(), "phim Space giu 1 giay: mo khoa");
+            CHECK(w.isLocked() && !lockBtn->holding(), "giu Space/Enter 1,25 s: van khoa, khong dem mo khoa");
         }
+        w.setLocked(false);
         // sau khi mo khoa moi thu tro lai
         CHECK(insp->isEnabled() && importB->isEnabled() && impA->isEnabled() && openA->isEnabled() && setA->isEnabled() && tlDur->isEnabled() && plugDock->widget()->isEnabled(),
               "mo khoa: moi dieu khien sua bat lai");

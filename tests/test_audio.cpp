@@ -333,7 +333,8 @@ int main(int argc, char** argv) {
         const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
         CHECK(root["version"].toInt() == 1, "Khong tang version project");
         ch->volume = 1.0f; ch->mute = false; sc->layers[0].volume = 1.0f; p.audioDevice.clear();
-        saveProject(p, path, &err);
+        f.close();      // Windows: QSaveFile khong ghi de duoc file dang mo
+        CHECK(saveProject(p, path, &err), "Luu de project: " + err.toStdString());
         QFile f2(path);
         f2.open(QIODevice::ReadOnly);
         const QByteArray js = f2.readAll();

@@ -25,6 +25,12 @@ static void pump(int ms) {
     QElapsedTimer t; t.start();
     while (t.elapsed() < ms) { QApplication::processEvents(); QThread::msleep(5); }
 }
+// Cho den khi dieu kien dung (toi da ms). Dung thay cho pump(co dinh) voi moi thu phu thuoc toc do khoi tao GPU / toc do khung cua may.
+template <class F> static bool waitFor(F cond, int ms) {
+    QElapsedTimer t; t.start();
+    while (t.elapsed() < ms) { pump(10); if (cond()) return true; }
+    return cond();
+}
 
 static void buildProject(Project& p, std::vector<OutputConfig> outs) {
     SourceDef a; a.type = "color"; a.color = Qt::red; a.label = "do";
@@ -131,7 +137,9 @@ int main(int argc, char** argv) {
         engine.setStallThresholdMs(300);
         engine.startEngine();
         OutputSupervisor sup(engine);
-        pump(1500);
+        // Engine chi cong bo p50/p99 sau 1 giay ve khung, TINH TU KHI khoi tao GPU xong (lan dau trong tien trinh mat ~0,6-0,75 s),
+        // nen phai cho so lieu xuat hien thay vi cho mot khoang co dinh. Loi khoi tao -> khong cho vo ich.
+        waitFor([&] { return engine.frameP50() > 0 || !engine.error().isEmpty(); }, 10000);
         sup.check();
 
         CHECK(engine.error().isEmpty() && engine.frameP50() > 0 && engine.frameP99() >= engine.frameP50(),
@@ -147,17 +155,16 @@ int main(int argc, char** argv) {
 
         // watchdog: chan render thread 800 ms
         engine.post([](double) { QThread::msleep(800); });
-        pump(500);
-        CHECK(engine.stalled(), "Watchdog: render thread bi chan -> stalled()");
-        pump(900);
-        CHECK(!engine.stalled(), "Watchdog: render thread chay lai -> het stalled");
+        CHECK(waitFor([&] { return engine.stalled(); }, 3000), "Watchdog: render thread bi chan -> stalled()");
+        CHECK(waitFor([&] { return !engine.stalled(); }, 3000), "Watchdog: render thread chay lai -> het stalled");
 
         // mau thu tren cua so that
         OutputSink* s0 = engine.output(0);
         const uint64_t before = s0->presented;
         s0->testPattern = true;
-        pump(500);
-        CHECK(s0->presented > before + 5, "Mau thu: Output van ve lien tuc");
+        // Kiem tra Output VAN ve, khong kiem tra toc do: bo tri nay (cua so thuong + Output toan man hinh) co the chi dat ~20 fps (TEST-PLAN).
+        CHECK(waitFor([&] { return s0->presented > before + 5; }, 3000), "Mau thu: Output van ve lien tuc");
+        pump(200);                                                 // de khung mau thu len man hinh truoc khi chup
         auto* w0 = dynamic_cast<OutputWindow*>(s0);
         const QImage grab = w0->screen()->grabWindow(w0->winId()).toImage();
         if (grab.isNull() || grab.width() < 100) {

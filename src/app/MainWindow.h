@@ -77,6 +77,7 @@ public:
 
 protected:
     void closeEvent(QCloseEvent* e) override;
+    bool eventFilter(QObject* obj, QEvent* ev) override;   // keo tha file anh/video vao cua so
 
 private:
     struct OutRow { QLabel* dot; QLabel* info; QToolButton* black; QToolButton* freeze; QToolButton* pattern; uint64_t lastPresented = 0; };
@@ -160,6 +161,7 @@ private:
     void updateUndoActions();
     void pushImport(std::shared_ptr<ImportEntry> e, const QString& text);
     void doUndo();
+    void importDroppedFiles(const QStringList& files);
     void updateControlStatus();
 };
 

@@ -17,6 +17,7 @@
 #include "render/OutputWindow.h"
 #include "Theme.h"
 #include <QAction>
+#include <QApplication>
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QCoreApplication>
@@ -26,6 +27,8 @@
 #include <QDialog>
 #include <QDockWidget>
 #include <QDoubleSpinBox>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -33,6 +36,7 @@
 #include <QListWidget>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QMimeData>
 #include <QProcess>
 #include <QPushButton>
 #include <QSettings>
@@ -48,7 +52,18 @@
 namespace lc {
 
 static const QStringList kImageExt = {"png", "jpg", "jpeg", "bmp", "gif", "webp"};
-static const char* kMediaFilter = "Media (*.mp4 *.mov *.mkv *.avi *.webm *.png *.jpg *.jpeg *.bmp *.gif *.webp);;Tất cả (*.*)";
+static const QStringList kVideoExt = {"mp4", "mov", "mkv", "avi", "webm"};
+// Bo loc hop thoai "Nhap media..."; keo tha chi nhan cung cac phan mo rong nay.
+static const QString kMediaFilter = "Media (*." + (kVideoExt + kImageExt).join(" *.") + ");;Tất cả (*.*)";
+
+// File tren may (hoac o mang) trong mot lan keo; rong neu khong phai keo file (vd. keo doi thu tu Layer).
+static QStringList draggedFiles(const QMimeData* mime) {
+    QStringList files;
+    if (mime)
+        for (const QUrl& u : mime->urls())
+            if (u.isLocalFile()) files << u.toLocalFile();
+    return files;
+}
 
 namespace {
 // Hoan tac/Lam lai cho nhap media va tao Scene tu Media Pool (PRJ-07). Khong gop buoc.
@@ -87,6 +102,11 @@ MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList plugi
     statusBar()->addPermanentWidget(lockLabel_);
     connect(ctl_, &ControlService::statusChanged, this, [this] { updateControlStatus(); });
     buildMenus();
+    // Keo tha file tu Explorer. Loc o muc ung dung de moi widget trong cua so (ke ca o nhap so, von tu nhan tha) xu ly nhu nhau;
+    // dock tach roi la cua so rieng nen cung phai bat nhan tha.
+    setAcceptDrops(true);
+    for (QDockWidget* d : findChildren<QDockWidget*>()) d->setAcceptDrops(true);
+    qApp->installEventFilter(this);
     defaultState_ = saveState();
     QSettings st = appSettings();
     if (st.contains("geometry")) restoreGeometry(st.value("geometry").toByteArray());
@@ -820,6 +840,51 @@ bool MainWindow::addMediaFile(const QString& path) {
     e->scene->layers.push_back({src, {0, 0, 1, 1}, 1.0f, LayerFit::Fit, true});
     pushImport(e, "Nhập media: " + src->name());
     return true;
+}
+
+// Keo tha file = lenh "Nhap media" cho tung file (cung duong addMediaFile: cung khoa van hanh, hoan tac duoc, khong dung Program/Preview).
+bool MainWindow::eventFilter(QObject* obj, QEvent* ev) {
+    const QEvent::Type t = ev->type();
+    if (t != QEvent::DragEnter && t != QEvent::DragMove && t != QEvent::Drop) return QMainWindow::eventFilter(obj, ev);
+    // chi cua so chinh va dock tach roi cua no (khong gom hop thoai)
+    auto* w = qobject_cast<QWidget*>(obj);
+    QWidget* top = w ? w->window() : nullptr;
+    if (!top || !(top == this || (qobject_cast<QDockWidget*>(top) && top->parentWidget() == this)))
+        return QMainWindow::eventFilter(obj, ev);
+    auto* de = static_cast<QDropEvent*>(ev);
+    const QStringList files = draggedFiles(de->mimeData());
+    if (files.isEmpty()) return QMainWindow::eventFilter(obj, ev);
+    // Chi nhan SAO CHEP: neu bao "di chuyen", Explorer co the xoa file goc.
+    if (QApplication::activeModalWidget() || !(de->possibleActions() & Qt::CopyAction)) {
+        de->ignore();
+    } else if (locked_) {
+        showMessage("Đang khoá vận hành: không nhập media được");
+        de->ignore();
+    } else {
+        de->setDropAction(Qt::CopyAction);
+        de->accept();
+        if (t == QEvent::Drop) importDroppedFiles(files);
+    }
+    return true;
+}
+
+void MainWindow::importDroppedFiles(const QStringList& files) {
+    int added = 0;
+    QStringList skipped;
+    for (const QString& f : files) {
+        const QFileInfo fi(f);
+        const QString ext = fi.suffix().toLower();
+        if (fi.isFile() && (kImageExt.contains(ext) || kVideoExt.contains(ext)) && addMediaFile(f)) ++added;
+        else skipped << (fi.fileName().isEmpty() ? f : fi.fileName());
+    }
+    if (skipped.isEmpty()) {
+        showMessage(QString("Đã nhập %1 file bằng kéo thả").arg(added));
+        return;
+    }
+    qWarning().noquote() << "Kéo thả: bỏ qua file không hỗ trợ hoặc không đọc được:" << skipped.join(", ");
+    QString names = skipped.mid(0, 3).join(", ");
+    if (skipped.size() > 3) names += ", …";
+    showMessage(QString("Đã nhập %1 file; bỏ qua %2 file không hỗ trợ hoặc không đọc được: %3").arg(added).arg(skipped.size()).arg(names));
 }
 
 static std::shared_ptr<MainWindow::ImportEntry> liveImportEntry(const SourceDef& d, std::shared_ptr<Source> src, QSize canvas) {

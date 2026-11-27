@@ -76,12 +76,30 @@ QImage makeOutputTestPattern(int w, int h, const QString& label) {
         p.drawLine(w / 2 - 8, y, w / 2 + 8, y);
         p.drawText(w / 2 + 12, y + f.pixelSize() / 3, QString::number(y));
     }
+    // o kiem tra 1:1: soc rong dung 1 diem anh. Bo xu ly LED co giam / phong hinh thi soc bi nhoe hoac thanh van (moire).
+    if (w >= 320 && h >= 180) {
+        const int side = std::min(96, h / 6), y = h * 62 / 100;
+        const QRect vertical(w / 2 - side - 12, y, side, side), horizontal(w / 2 + 12, y, side, side);
+        p.setRenderHint(QPainter::Antialiasing, false);
+        p.fillRect(vertical, Qt::black);
+        p.fillRect(horizontal, Qt::black);
+        for (int i = 0; i < side; i += 2) {
+            p.fillRect(vertical.x() + i, vertical.y(), 1, side, Qt::white);
+            p.fillRect(horizontal.x(), horizontal.y() + i, side, 1, Qt::white);
+        }
+        p.drawText(QRect(0, y + side + 2, w, f.pixelSize() + 6), Qt::AlignHCenter, "1:1: sọc phải đều, không nhoè");
+    }
     // toa do diem anh o 4 goc
     p.drawText(8, f.pixelSize() + 4, "(0,0)");
     const QString tr = QString("(%1,0)").arg(w - 1), bl = QString("(0,%1)").arg(h - 1), br = QString("(%1,%2)").arg(w - 1).arg(h - 1);
     p.drawText(w - 8 - QFontMetrics(f).horizontalAdvance(tr), f.pixelSize() + 4, tr);
     p.drawText(8, h - 8, bl);
     p.drawText(w - 8 - QFontMetrics(f).horizontalAdvance(br), h - 8, br);
+    // ve lai vien sau cung: chu dai (man nho) khong duoc che mep
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setPen(QPen(Qt::red, 4));
+    p.setBrush(Qt::NoBrush);
+    p.drawRect(2, 2, w - 4, h - 4);
     p.end();
     return img;
 }

@@ -76,7 +76,7 @@ void NdiOutputSink::present(QOpenGLContext&, Compositor& comp, RenderTarget* src
         gl.glClear(GL_COLOR_BUFFER_BIT);
     } else if (testPattern) {
         if (!testTex_.id() || testSize_ != QSize(W, H)) {
-            const QImage img = makeOutputTestPattern(W, H, cfg_.name).convertToFormat(QImage::Format_RGBA8888);
+            const QImage img = makeOutputTestPattern(W, H, cfg_.name).convertToFormat(QImage::Format_RGBA8888).mirrored(false, true);   // GL: hang dau = day
             testTex_.upload(gl, img.constBits(), W, H);
             testSize_ = QSize(W, H);
             gl.glBindFramebuffer(GL_FRAMEBUFFER, fbo_);

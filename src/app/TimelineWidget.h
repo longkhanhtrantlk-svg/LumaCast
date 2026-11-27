@@ -66,7 +66,9 @@ public:
     // Khoa van hanh: chan sua keyframe/thoi luong/lap va keo thuoc tua; Phat/Tam dung/Ve 0 van dung duoc.
     void setLocked(bool on) { locked_ = on; refresh(); }
     bool locked() const { return locked_; }
-    void sceneRemoved(int sceneIdx);             // UI thread: bo cache cua Scene da go (hoan tac nhap media)
+    void sceneRemoved(int sceneIdx);             // UI thread: bo cache cua Scene da go (xoa, hoan tac nhap media)
+    void sceneInserted(int sceneIdx);            // UI thread: Scene duoc chen lai vao giua danh sach (hoan tac xoa)
+    void setSceneLoop(int sceneIdx, bool on);    // o "Lap" tren danh sach Scenes: cung thuoc tinh va Hoan tac voi o cua Timeline
     struct SceneProps { double duration = 10; bool loop = true; bool restart = true; };
     void applySceneProps(int sceneIdx, std::shared_ptr<Scene> scene, const SceneProps& p);   // dung cho Hoan tac/Lam lai
     double duration() const;

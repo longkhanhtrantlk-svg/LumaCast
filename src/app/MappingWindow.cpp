@@ -67,6 +67,7 @@ QRect drag(const QRect& start, int edges, int dx, int dy, QSize canvas, const st
 
 QSize outputPixels(const OutputConfig& c) {
     if (c.kind == OutputKind::Ndi) return c.size;
+    if (!c.area.isEmpty()) return c.area.size();                   // chi dung mot vung LED trong tin hieu
     const QList<QScreen*> screens = QGuiApplication::screens();
     if (c.fullscreen) {
         QScreen* sc = nullptr;

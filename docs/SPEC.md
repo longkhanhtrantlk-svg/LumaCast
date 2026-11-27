@@ -77,6 +77,7 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | OUT-02 | Scale Fit/Fill/Stretch/1:1, xoay 0/90/180/270, crop vùng của Channel | P0 | ✅ | Test tự động. Chỉnh được bằng ô số ở tab Output hoặc kéo thả ở cửa sổ **Mapping trực quan** (Ctrl+M); chưa thử trên màn LED thật (T-MAP) |
 | OUT-03 | Video wall: chia một canvas rộng cho N Output (`--wall CxR`) | P0 | ✅ | Test tự động + ảnh chụp thử |
 | OUT-04 | Bù khe (bezel/pixel gap) giữa các màn: khe ngang/dọc theo điểm ảnh (`--gap`, tab Output); canvas mở rộng thêm phần khe, Output giữ 1:1 | P1 | 🟡 | Test tự động (`wall`: so từng điểm ảnh, lưu/mở, Hoàn tác, khoá, dòng lệnh); **chưa thử trên màn ghép thật** (T-GAP) |
+| OUT-14 | Đặt hình vào một vùng của tín hiệu (toạ độ điểm ảnh trong Output), ngoài vùng đen — cho LED nhỏ hơn tín hiệu HDMI | P0 | 🟡 | Test tự động đọc điểm ảnh cửa sổ thật; mẫu thử vẽ đúng trong vùng. **Chưa thử với bộ xử lý LED thật** (T-SCR) |
 | OUT-05 | Hiệu chỉnh màu mỗi Output: sáng, tương phản, gamma, gain R/G/B | P0 | ✅ | Test tự động; thử tay với test chart T-CAL |
 | OUT-06 | LUT 3D, giới hạn độ sáng | P2 | ⬜ | — |
 | OUT-07 | **Đen** theo từng Output và BLACK ALL; Đen luôn thắng Dừng hình | P0 | ✅ | Test tự động |
@@ -96,20 +97,20 @@ Source · Layer · Scene · Channel · Output · Mapping · Transition · Effect
 | PRJ-04 | Nhập media vào project khi đang chạy (tạo Scene) | P0 | ✅ | Test tự động |
 | PRJ-05 | Mở project khác khi đang chạy | P1 | 🟡 | Hiện khởi động lại tiến trình với project mới |
 | PRJ-06 | Hoàn tác/làm lại cho Layer và Output | P0 | ✅ | Test tự động |
-| PRJ-07 | Hoàn tác cho nhập media, đổi tên, thêm/xoá Scene và Output | P1 | 🟡 | **Đã làm (M5c):** nhập media, tạo Scene từ Media Pool, thuộc tính Scene (thời lượng/lặp/tự phát lại) — test tự động, có xử lý Scene đang On Air. **Chưa làm:** đổi tên, xoá Scene, thêm/xoá Output (hiện chưa có giao diện cho các thao tác này) |
+| PRJ-07 | Hoàn tác cho nhập media, đổi tên, thêm/xoá Scene và Output | P1 | ✅ | Nhập media/thêm nguồn, đổi tên Scene, xoá Scene (kèm nguồn không còn dùng và mục playlist), thuộc tính Scene (thời lượng/lặp/tự phát lại), thiết lập màn hình (thêm/xoá/đổi Output, khung hình) — test tự động, có xử lý Scene đang On Air |
 | PRJ-08 | Gói project (gom media), nâng cấp phiên bản định dạng | P1 | ⬜ | Xem `PROJECT-FORMAT.md` mục 5 |
 
 ### 3.6 Giao diện vận hành (UI)
 | ID | Yêu cầu | Ưu tiên | TT | Nghiệm thu |
 |---|---|---|---|---|
 | UI-01 | Monitor Preview (viền xanh lá) và Program (viền đỏ, nhãn ON AIR), cập nhật ~15 Hz | P0 | ✅ | Test tự động |
-| UI-02 | Danh sách Scene (đánh dấu PGM/PVW), Media Pool có ảnh thu nhỏ, Outputs, Inspector | P0 | ✅ | Test tự động |
+| UI-02 | Một **danh sách Scenes** dạng ô ảnh thu nhỏ đánh số dưới hai màn hình (đánh dấu PGM/PVW; bấm = Preview, nhấp đúp = CUT, 1–9); nhập media/NDI/camera/kéo thả tại đó, **mỗi file đúng một Scene**; trên mỗi ô: phát/tạm dừng/về đầu/tua/lặp/thời gian còn lại, tắt tiếng + âm lượng riêng, đổi tên, xoá (có Hoàn tác, từ chối Scene đang On Air); Outputs, Inspector | P0 | ✅ | Test tự động (`lumacast_scenes_tests`); **chưa thử tay** (T-SCN) |
 | UI-03 | Phím tắt: Space = TAKE, Enter = CUT, B = BLACK ALL, 1–9 chọn Preview, Ctrl+S/O/Z (mặc định; tuỳ chỉnh được theo UI-07) | P0 | ✅ | Test tự động (`lumacast_input_tests`) + thử tay T-KEY |
 | UI-04 | Giao diện tối; bố cục dock lưu/khôi phục; hỏi xác nhận khi thoát | P0 | ✅ | Thử tay |
 | UI-05 | Thanh trạng thái: GPU, FPS, p50/p99 thời gian khung, khung rơi, số Output hiển thị, cảnh báo treo | P0 | ✅ | Test tự động |
 | UI-06 | Multiview nhiều Channel dạng lưới; chế độ Operator tối giản | P1 | 🟡 | **Multiview đã làm** (*View > Multiview…*): cửa sổ lưới Preview/Program mọi kênh + một ô mỗi Scene của kênh đang chọn; đỏ = On Air, xanh lá = Preview; bấm chỉ đổi Preview/kênh đang chọn (không bao giờ lên Program); phím tắt cửa sổ chính vẫn chạy; F11 toàn màn hình, từ chối trên màn có Output toàn màn hình; ảnh Scene vẽ xoay vòng (≤ 1 Scene/khung, sau khi đã đưa hình ra Output, đọc bất đồng bộ qua PBO), chỉ khi cửa sổ đang mở — test tự động `lumacast_multiview_tests`, **chưa thử tay** (T-MV). **Chưa làm:** chế độ Operator tối giản; ô cho từng nguồn |
 | UI-07 | Phím tắt tuỳ chỉnh; khoá thao tác khi On Air (operator lock) | P1 | 🟡 | **Khoá vận hành đã làm (M5c):** vô hiệu Inspector/sửa timeline/nhập media/Plugin/Hoàn tác/mở project/cài đặt/đóng cửa sổ, giữ điều khiển live (kể cả hiện/ẩn overlay và đồng hồ đếm ngược; sửa overlay bị khoá); mở khoá bằng giữ nút 1 s; theo phiên, hiện trên thanh trạng thái — test tự động, **chưa thử tay** (T-LOCK). **Phím tắt tuỳ chỉnh đã làm:** hộp thoại *Phím tắt và MIDI* gán phím cho CUT/TAKE/FTB/BLACK ALL/Preview 1–9/Đen-Dừng-Mẫu từng Output/khoá; Space và Enter cố định (TAKE/CUT được thêm phím phụ); phát hiện phím trùng và phím giữ chỗ; lưu theo máy (`QSettings`), không vào project; phím khoá chỉ khoá, mở khoá vẫn phải giữ chuột. Test tự động Windows (`lumacast_input_tests`), **chưa thử tay** (T-KEY2) |
-| UI-08 | Quản lý Output/canvas bằng giao diện (kéo-thả màn hình, wizard tạo project) | P1 | ⬜ | Hiện chỉnh qua Inspector và dòng lệnh |
+| UI-08 | Quản lý Output/canvas bằng giao diện (thiết lập màn hình, project mới) | P1 | 🟡 | **Đã làm:** thêm/xoá/đổi tên Output lúc đang chạy, chọn màn hình, toàn màn hình/cửa sổ, kích thước, vùng LED trong tín hiệu (x, y, rộng, cao; tính từ mét × pitch; cấu hình lưu theo máy), khung hình từng Channel, tạo video wall kèm khe, project mới; cảnh báo co giãn/cắt/thu phóng; Hoàn tác, khoá vận hành, lưu trong project, không đổi Preview/Program — test tự động `lumacast_screens_tests`, **chưa thử trên màn LED và bộ xử lý thật** (T-SCR). Chưa làm: kéo-thả bố trí màn hình bằng chuột, thêm/xoá Channel |
 | UI-09 | Ngôn ngữ: tiếng Việt; thêm tiếng Anh | P2 | 🟡 | Hiện chỉ tiếng Việt |
 
 ### 3.7 Plug-in (PLG)

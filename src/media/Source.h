@@ -25,6 +25,15 @@ public:
     // Nguon vua len Program: phat lai tu dau, hien NGAY khung dau (khong chop den, khong lo doan dang chay). Mac dinh khong lam gi.
     // Khac restart(): restart() bo khung dang hien va cho khung moi. Render thread.
     virtual void rewind() {}
+    // Dieu khien phat (danh sach Scenes). Chi nguon co thoi luong (video) co; anh, mau, nguon truc tiep bo qua. Goi tu thread bat ky.
+    // restart()/rewind() (Stinger, playlist, len Program) luon bo tam dung.
+    virtual bool hasTransport() const { return false; }
+    virtual void setPaused(bool paused) { Q_UNUSED(paused); }
+    virtual bool paused() const { return false; }
+    virtual bool ended() const { return false; }              // khong lap va da het file (giu khung cuoi)
+    virtual void seekTo(double seconds) { Q_UNUSED(seconds); }  // tua; giu nguyen trang thai phat/tam dung
+    virtual double positionSeconds() const { return 0; }
+    virtual void setLooping(bool loop) { Q_UNUSED(loop); }
     // Luong am thanh cua nguon (float32 stereo 48 kHz); nullptr = im lang (anh, mau, video khong co tieng). Mixer rut tu day.
     virtual AudioStream* audio() { return nullptr; }
     virtual double durationSeconds() const { return 0; }     // do dai (giay) neu biet, 0 neu khong (dung cho Stinger, playlist)

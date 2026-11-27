@@ -271,14 +271,40 @@ void InspectorPanel::sceneRemoved(int si) {
     while (layerCache_.size() > project_.scenes.size()) layerCache_.pop_back();        // phong ho: khong de ban sao thua tham chieu treo
 }
 
+void InspectorPanel::rebuildOutputs() {
+    outCache_.clear();
+    for (int i = 0; i < engine_.outputCount(); ++i) outCache_.push_back(engine_.output(i)->config());
+    const int tab = currentIndex();
+    QWidget* old = widget(2);
+    removeTab(2);
+    old->deleteLater();
+    outW_.clear();
+    wallW_.clear();
+    canvasCache_.clear();
+    insertTab(2, buildOutputTab(), "Output");
+    setCurrentIndex(tab);
+    emit layerDataChanged();
+}
+
+void InspectorPanel::sceneInserted(int si) {
+    if (si >= 0 && si <= int(layerCache_.size()) && si < int(project_.scenes.size()))
+        layerCache_.insert(layerCache_.begin() + si, project_.scenes[size_t(si)]->layers);
+}
+
 void InspectorPanel::refreshFromProject() {
     while (layerCache_.size() < project_.scenes.size()) layerCache_.push_back(project_.scenes[layerCache_.size()]->layers);
-    const int keep = sceneCombo_->currentIndex();
+    int keep = sceneCombo_->currentIndex();
+    if (keep >= 0 && keep < int(comboScenes_.size()))                      // theo Scene, khong theo vi tri (xoa/chen lam lech)
+        for (size_t i = 0; i < project_.scenes.size(); ++i)
+            if (project_.scenes[i].get() == comboScenes_[size_t(keep)]) { keep = int(i); break; }
     {
         QSignalBlocker b(sceneCombo_);
         sceneCombo_->clear();
-        for (const auto& s : project_.scenes)
+        comboScenes_.clear();
+        for (const auto& s : project_.scenes) {
             sceneCombo_->addItem(QString("%1  (%2x%3)").arg(s->name).arg(s->size.width()).arg(s->size.height()));
+            comboScenes_.push_back(s.get());
+        }
         sceneCombo_->setCurrentIndex(keep >= 0 && keep < sceneCombo_->count() ? keep : (sceneCombo_->count() ? 0 : -1));
     }
     addSrcCombo_->clear();

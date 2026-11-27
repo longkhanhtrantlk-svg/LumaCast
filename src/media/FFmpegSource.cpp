@@ -188,8 +188,13 @@ void FFmpegSource::restart() {
         latest_.reset();
     }
     waitFirst_ = true;
-    restartReq_ = true;
+    seekReq_ = -1.0;
+    paused_ = false;
+    ended_ = false;
+    position_ = 0;
+    audio_->setPaused(false);
     audio_->holdUntilFlush();                  // im lang ngay (khong phat not am thanh cu) cho den khi thread giai ma seek + flush
+    restartReq_ = true;
 }
 
 void FFmpegSource::rewind() {
@@ -198,13 +203,34 @@ void FFmpegSource::rewind() {
         if (first_) latest_ = first_;          // chua co (video vua nhap): giu khung dang hien
         rewindPending_ = true;
     }
+    seekReq_ = -1.0;
+    paused_ = false;
+    ended_ = false;
+    position_ = 0;
+    audio_->setPaused(false);
     audio_->holdUntilFlush();                  // khong phat tiep tieng cua doan cu
     rewindReq_ = true;
 }
 
-void FFmpegSource::publish(std::shared_ptr<Frame> out) {
+void FFmpegSource::setPaused(bool on) {
+    if (!on && ended_) seekTo(0);              // het file (khong lap): "phat" la phat lai tu dau
+    paused_ = on;
+    audio_->setPaused(on);
+}
+
+void FFmpegSource::seekTo(double seconds) {
+    if (!std::isfinite(seconds)) return;
+    const double d = duration_;
+    seconds = std::clamp(seconds, 0.0, d > 0 ? d : 0.0);
+    ended_ = false;
+    position_ = seconds;
+    audio_->holdUntilFlush();
+    seekReq_ = seconds;
+}
+
+void FFmpegSource::publish(std::shared_ptr<Frame> out, bool nearStart) {
     std::lock_guard lk(m_);
-    if (!first_) first_ = out;
+    if (!first_ && nearStart) first_ = out;    // khung dau file (cho rewind); khong lay nham khung sau khi tua
     if (!rewindPending_) latest_ = std::move(out);
 }
 
@@ -418,6 +444,12 @@ void FFmpegSource::run() {
     const double frameDur = fps > 1 ? 1.0 / fps : 1.0 / 25.0;
     const double vtb = av_q2d(st->time_base);
     const double atb = ast ? av_q2d(ast->time_base) : 0;
+    const double startSec = st->start_time != AV_NOPTS_VALUE ? double(st->start_time) * vtb : 0.0;     // PTS cua khung dau
+
+    // ----- tua -----
+    constexpr double kNoSkip = -1e18;
+    double skipUntil = kNoSkip;          // PTS: sau khi tua toi giua file, bo moi khung truoc moc nay (av_seek chi toi duoc keyframe)
+    bool needFrame = false;              // vua tua: dua ra ngay mot khung, ke ca khi dang tam dung
 
     // ----- trang thai dong ho -----
     // "Dong thoi gian lien tuc" (cont): am thanh ghi mau theo aCont(); hinh co cont = pts + vOffset, vOffset dat o khung am thanh dau
@@ -498,6 +530,7 @@ void FFmpegSource::run() {
         while (!stop_ && avcodec_receive_frame(ac, afr) == 0) {
             double pts = afr->pts == AV_NOPTS_VALUE ? lastApts : double(afr->pts) * atb;
             lastApts = pts + double(afr->nb_samples) / std::max(1, afr->sample_rate);
+            if (lastApts <= skipUntil) { av_frame_unref(afr); continue; }          // doan truoc diem tua
             if (awaitAudio) resolveOffset(aCont() - pts);       // mau dau cua doan nay nam o aCont() (truoc khi cong khung nay)
             convertAudio(afr);
             av_frame_unref(afr);
@@ -521,6 +554,7 @@ void FFmpegSource::run() {
             hwNoFrame = 0;
             const double pts = fr->best_effort_timestamp == AV_NOPTS_VALUE ? lastVpts + frameDur : double(fr->best_effort_timestamp) * vtb;
             lastVpts = pts;
+            if (pts < skipUntil - frameDur * 0.5) { av_frame_unref(fr); continue; }      // chi giai ma, khong chep/khong dua ra
             Pend p;
             if (hwActive && fr->format == int(hwPixFmt)) {      // khung o VRAM: chep xuong RAM (NV12/P010) ngay de tra khung cho bo giai ma
                 AVFrame* sw = av_frame_alloc();
@@ -565,6 +599,8 @@ void FFmpegSource::run() {
         }
         if (!last.f && !last.hap) return;
         lastCont = last.cont;
+        const bool nearStart = last.pts - startSec < 0.5;
+        if (seekReq_ < 0 && !restartReq_ && !rewindReq_) position_ = std::max(0.0, last.pts - startSec);   // khong ghi de diem vua yeu cau
         if (last.hap) {                                       // HAP truc tiep: khong doi mau tren CPU
             auto out = std::make_shared<Frame>();
             out->w = last.hap->w; out->h = last.hap->h;
@@ -580,7 +616,7 @@ void FFmpegSource::run() {
                 }
                 qInfo().noquote() << QString("Video '%1': %2").arg(name_, decodeInfo());
             }
-            publish(std::move(out));
+            publish(std::move(out), nearStart);
             presentedCont_ = last.cont;
             lateMs_ = (clk - last.cont) * 1000.0;
             return;
@@ -634,7 +670,7 @@ void FFmpegSource::run() {
         }
         if (ok) {
             out->seq = ++seq;
-            publish(std::move(out));
+            publish(std::move(out), nearStart);
         }
         presentedCont_ = last.cont;
         lateMs_ = (clk - last.cont) * 1000.0;
@@ -644,18 +680,24 @@ void FFmpegSource::run() {
     while (!stop_) {
         const bool restarted = restartReq_.exchange(false);
         const bool rewound = rewindReq_.exchange(false);
-        if (restarted || rewound) {                        // phat lai tu dau (Stinger, playlist, len Program)
+        const double seek = seekReq_.exchange(-1.0);
+        if (restarted || rewound || seek >= 0) {           // phat lai tu dau (Stinger, playlist, len Program) hoac tua
             {
                 std::lock_guard lk(m_);
                 if (restarted && waitFirst_) latest_.reset();   // bo khung cu co the vua dua len sau restart()
                 rewindPending_ = false;
             }
-            av_seek_frame(fmt, vs, 0, AVSEEK_FLAG_BACKWARD);
+            // sat cuoi file khong con khung nao de hien: lui lai mot chut (seekTo sau restart/rewind thang)
+            const double target = seek > 0 ? std::min(seek, std::max(0.0, double(duration_) - std::max(0.1, 2 * frameDur))) : 0.0;
+            av_seek_frame(fmt, vs, target > 0 ? int64_t((startSec + target) / vtb) : 0, AVSEEK_FLAG_BACKWARD);
             avcodec_flush_buffers(cc);
             clearPending();
             resetAudioState();
             clockPos = 0; lastCont = 0;
             newSegment();
+            skipUntil = target > 0 ? startSec + target : kNoSkip;
+            needFrame = true;
+            ended_ = false;
             continue;
         }
 
@@ -663,14 +705,19 @@ void FFmpegSource::run() {
         const auto tNow = Clock::now();
         const double dt = std::chrono::duration<double>(tNow - lastIter).count();
         lastIter = tNow;
+        const bool paused = paused_;
         bool useAudio = false;
-        if (haveAudio && audio_->consumerActive()) {
-            const double hp = audio_->heardPosition();
-            if (hp != lastHp) { lastHp = hp; lastHpAdvance = tNow; }
-            useAudio = tNow - lastHpAdvance < std::chrono::milliseconds(250);      // am thanh dung (underrun) -> dong ho tuong
-            if (useAudio) clockPos = hp;
+        if (paused) {
+            lastHpAdvance = tNow;                          // dong ho dung han
+        } else {
+            if (haveAudio && audio_->consumerActive()) {
+                const double hp = audio_->heardPosition();
+                if (hp != lastHp) { lastHp = hp; lastHpAdvance = tNow; }
+                useAudio = tNow - lastHpAdvance < std::chrono::milliseconds(250);      // am thanh dung (underrun) -> dong ho tuong
+                if (useAudio) clockPos = hp;
+            }
+            if (!useAudio) clockPos += dt;
         }
-        if (!useAudio) clockPos += dt;
         followAudio_ = useAudio;
 
         // 2) doc goi tin tiep theo khi con cho (hang cho hinh chua day, am thanh khong ket)
@@ -692,7 +739,7 @@ void FFmpegSource::run() {
                         p.hap = std::make_shared<HapFrame>(std::move(hf));
                         p.pts = pkt->pts == AV_NOPTS_VALUE ? lastVpts + frameDur : double(pkt->pts) * vtb;
                         lastVpts = p.pts;
-                        enqueue(p);
+                        if (p.pts >= skipUntil - frameDur * 0.5) enqueue(p);
                     } else {                                  // khung khong ho tro: dung bo giai ma FFmpeg (co the lan voi khung truc tiep, HAP la intra-only)
                         if (!hapWarned) { hapWarned = true; qInfo().noquote() << QString("HAP '%1': %2 → bo giai ma FFmpeg").arg(name_, herr); }
                         avcodec_send_packet(cc, pkt);
@@ -728,7 +775,13 @@ void FFmpegSource::run() {
             swr_free(&swr);                                 // am thanh lap: KHONG flush ring (noi lien), chi dat lai bo doi
             lastApts = 0;
             newSegment();
+            skipUntil = kNoSkip;
+            ended_ = false;
             didWork = true;
+        }
+        if (eof && drainedAtEof && !loop_ && pend.empty() && backlogFrames() == 0 && seekReq_ < 0 && !ended_) {
+            ended_ = true;                                  // khong lap: giu khung cuoi
+            position_ = double(duration_);
         }
         // khung am thanh dau cua doan khong den (stream thua / khong co): dung moc rut ra tu hinh
         if (awaitAudio && !pend.empty() && Clock::now() - segStart > std::chrono::milliseconds(400))
@@ -736,12 +789,15 @@ void FFmpegSource::run() {
 
         // 3) dua khung den han len man hinh
         const size_t before = pend.size();
+        // tua khi dang tam dung: dong ho dung nen phai day khung dau tien sau diem tua ra ngay
+        if (needFrame && paused && !pend.empty() && pend.front().hasCont) clockPos = pend.front().cont;
         present(clockPos);
-        if (pend.size() != before) didWork = true;
+        if (pend.size() != before) { didWork = true; needFrame = false; }
 
         if (!didWork) {
             double waitMs = 2.0;
-            if (!pend.empty() && pend.front().hasCont) waitMs = std::min(4.0, std::max(0.5, (pend.front().cont - clockPos) * 1000.0));
+            if (paused) waitMs = needFrame ? 2.0 : 8.0;
+            else if (!pend.empty() && pend.front().hasCont) waitMs = std::min(4.0, std::max(0.5, (pend.front().cont - clockPos) * 1000.0));
             std::this_thread::sleep_for(std::chrono::microseconds(int(waitMs * 1000)));
         }
     }

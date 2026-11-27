@@ -140,7 +140,7 @@ int main(int argc, char** argv) {
             w.show();
             pump(300);
             // tach cac tab ra canh nhau roi luu kieu cu (khong co so phien ban)
-            auto* media = w.findChild<QDockWidget*>("dockMedia");
+            auto* media = w.findChild<QDockWidget*>("dockScenes");
             for (const char* n : {"dockTimeline", "dockPlaylist"}) {
                 auto* d = w.findChild<QDockWidget*>(n);
                 w.removeDockWidget(d);
@@ -156,7 +156,7 @@ int main(int argc, char** argv) {
         w.setAskOnClose(false);
         w.show();
         pump(500);
-        CHECK(w.tabifiedDockWidgets(w.findChild<QDockWidget*>("dockMedia")).size() == 2, "bo cuc cu bi bo qua: Media Pool / Timeline / Playlist van la tab");
+        CHECK(w.tabifiedDockWidgets(w.findChild<QDockWidget*>("dockScenes")).size() == 2, "bo cuc cu bi bo qua: Scenes / Timeline / Playlist van la tab");
         CHECK(w.tabifiedDockWidgets(w.findChild<QDockWidget*>("dockOutputs")).size() == 1, "Outputs / Am thanh van la tab");
         CHECK(w.tabifiedDockWidgets(w.findChild<QDockWidget*>("dockInspector")).size() == 2, "Inspector / Plug-in / Overlay van la tab");
         checkLayout(w, {1536, 780}, "sau-bo-cuc-cu");

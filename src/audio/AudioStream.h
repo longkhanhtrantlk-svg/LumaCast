@@ -51,6 +51,8 @@ public:
     }
     // Yeu cau tu thread bat ky (render thread khi Source::restart()): im lang ngay cho den khi thread giai ma flush().
     void holdUntilFlush() { hold_.store(true, std::memory_order_release); }
+    // Tam dung nguon (thread bat ky): mixer nhan im lang va KHONG tieu du lieu, nen phat tiep dung cho cu, khong mat tieng.
+    void setPaused(bool on) { paused_.store(on, std::memory_order_release); }
 
     // ---- phia doc (mixer) ----
     // Lay `frames` khung; thieu thi dien 0 (underrun). Tra ve so khung THAT. Thread mixer duy nhat goi.
@@ -59,6 +61,10 @@ public:
         syncEpoch();
         if (hold_.load(std::memory_order_acquire)) {                  // dang cho restart: bo du lieu cu, im lang
             r_.store(w_.load(std::memory_order_acquire), std::memory_order_release);
+            std::fill(dst, dst + frames * kAudioChannels, 0.0f);
+            return 0;
+        }
+        if (paused_.load(std::memory_order_acquire)) {
             std::fill(dst, dst + frames * kAudioChannels, 0.0f);
             return 0;
         }
@@ -108,6 +114,7 @@ private:
     uint64_t seenEpoch_ = 0;                         // chi mixer dung
     std::atomic<double> base_{0}, latency_{0};
     std::atomic<bool> hold_{false};
+    std::atomic<bool> paused_{false};
     std::atomic<int64_t> lastPullNs_{0};
     std::atomic<uint64_t> underruns_{0};
 };

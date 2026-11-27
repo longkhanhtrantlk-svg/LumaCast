@@ -43,7 +43,8 @@ public:
     void setEffectContext(EffectRegistry* reg, TargetPool* pool) { registry_ = reg; pool_ = pool; }
     void setTime(double seconds) { time_ = seconds; }
     // Ve texture Channel vao framebuffer DANG BUOC (cua so hoac FBO) kich thuoc winW x winH.
-    void drawToCurrent(GLuint tex, int texW, int texH, const OutputConfig& cfg, int winW, int winH);
+    // `area` (diem anh cua framebuffer, goc tren-trai): chi ve vao vung do, phan con lai den. Rong = ca khung.
+    void drawToCurrent(GLuint tex, int texW, int texH, const OutputConfig& cfg, int winW, int winH, const QRect& area = QRect());
     // Thu nho texture (toi da maxW rong) va doc ve CPU cho monitor UI. Chay tren render thread.
     QImage thumbnail(TargetPool& pool, const RenderTarget& src, int maxW);
     // Nhu thumbnail() nhung doc bat dong bo qua PBO: tra anh CUA LAN GOI TRUOC cung `slot` (rong o lan dau/doi kich thuoc) -> khong chan CPU cho GPU xong khung nay.

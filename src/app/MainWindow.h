@@ -1,5 +1,6 @@
 #pragma once
 #include "Shortcuts.h"
+#include "core/ScreenSetup.h"
 #include "control/ControlService.h"
 #include "control/Midi.h"
 #include "render/Engine.h"
@@ -11,6 +12,7 @@
 #include <QMap>
 #include <QTimer>
 #include <QUndoStack>
+#include <functional>
 
 class QAction;
 class QComboBox;
@@ -36,17 +38,52 @@ class TimelineWidget;
 class MonitorWidget;
 class OverlayPanel;
 class MultiviewWindow;
+class ScenePanel;
+class ScreenDialog;
 
-// Cua so chinh kieu "live production": Preview/Program, thanh chuyen, Scene list, Media Pool,
+// Cua so chinh kieu "live production": Preview/Program, thanh chuyen, danh sach Scenes (ScenePanel),
 // Outputs (Black/Freeze/trang thai), Inspector. Moi thao tac di qua RenderEngine::post().
 class MainWindow : public QMainWindow {
 public:
     // Mot lan nhap: them nguon (tuy chon) + Scene vao project va moi Channel. Dung chung cho Hoan tac/Lam lai (PRJ-07).
     struct ImportEntry {
         SourceDef def;
-        bool addsSource = true;               // false: chi tao Scene tu nguon da co (Media Pool)
+        bool addsSource = true;               // false: chi tao Scene tu nguon da co (Scene cu cua no da bi xoa)
         std::shared_ptr<Scene> scene;
     };
+    // Mot lan xoa Scene: du de dat lai dung cho (project, moi Channel, nguon khong con ai dung, muc playlist).
+    struct SceneRemoval {
+        std::shared_ptr<Scene> scene;
+        int projectIndex = -1;
+        std::vector<int> channelIndex;                                      // theo Channel; -1 = kenh khong co Scene nay
+        std::vector<std::pair<int, SourceDef>> sources;                     // nguon bi go kem (vi tri cu)
+        std::vector<bool> pausedBefore;                                     // theo `sources`
+        std::vector<std::vector<std::pair<int, PlaylistItem>>> items;       // theo Channel: muc playlist bi go (vi tri cu)
+    };
+    bool applyRemoval(const std::shared_ptr<SceneRemoval>& r);   // false: Scene dang On Air, khong go
+    void undoRemoval(const std::shared_ptr<SceneRemoval>& r);
+    void removalRefused(const QUndoCommand* cmd);
+    bool sceneOnAir(const Scene* s) const;
+    void applySceneName(const std::shared_ptr<Scene>& s, const QString& name);
+    // Sua danh sach Scenes (co Hoan tac, bi Khoa van hanh chan). Xoa bi tu choi khi Scene dang o Program/dang chuyen vao.
+    bool deleteScene(const std::shared_ptr<Scene>& s);
+    bool renameScene(const std::shared_ptr<Scene>& s, const QString& name);
+    ScenePanel* scenePanel() const { return scenes_; }
+    // ---- Thiet lap man hinh (UI-08) ----
+    struct ScreenState {                                                    // du de ap dung / hoan tac mot lan
+        std::vector<OutputConfig> outputs;
+        std::vector<QSize> canvases;
+        std::vector<std::pair<std::shared_ptr<Scene>, QSize>> scenes;
+    };
+    ScreenSetup screenSetup() const;                                        // trang thai dang chay
+    // Doi Output / khung hinh (mot buoc Hoan tac, bi Khoa van hanh chan, khong doi Preview/Program). allScenes[kenh] = dat MOI
+    // Scene cua kenh theo khung hinh moi (khong thi chi Scene dang bang khung hinh cu).
+    bool applyScreenSetup(const ScreenSetup& after, const std::vector<char>& allScenes = {}, const QString& text = "Thiết lập màn hình");
+    void setScreenState(const ScreenState& state);                          // goi boi Hoan tac/Lam lai
+    ScreenDialog* createScreenDialog();                                     // hop thoai da noi voi cua so (nguoi goi huy)
+    void showScreenSetup();
+    void showNewProject();
+    bool createProject(const QString& path, const Project& project);       // ghi file project moi; false neu loi
     // Goi boi lenh Hoan tac/Lam lai; ca hai chay tren render thread qua post(), co ban sao UI cap nhat sau.
     void applyImport(const std::shared_ptr<ImportEntry>& e);
     void unapplyImport(const std::shared_ptr<ImportEntry>& e, const QUndoCommand* cmd);
@@ -59,7 +96,7 @@ public:
     void setAskOnClose(bool ask) { askOnClose_ = ask; }
     void saveProject(bool saveAs);
     void autosaveNow();
-    bool addMediaFile(const QString& path);        // them nguon + Scene tu file; false neu loi
+    bool addMediaFile(const QString& path);        // them nguon + Scene tu file (file da co Scene: khong tao them); false neu loi
     // M5b: nguon truc tiep (them nguon + Scene giong nhap media, hoan tac duoc) va Output NDI. Nguon luon them duoc ke ca khi chua co NDI/camera
     // (trang thai "khong kha dung"). Tra false khi bi khoa van hanh / du lieu sai.
     bool addNdiSource(const QString& name, const QString& url = {}, const QString& label = {});
@@ -97,7 +134,9 @@ protected:
 
 private:
     struct OutRow { QLabel* dot; QLabel* info; QToolButton* black; QToolButton* freeze; QToolButton* pattern; uint64_t lastPresented = 0;
-                    QToolButton* reopen = nullptr; };       // hien khi cua so Output bi dong
+                    QToolButton* reopen = nullptr;          // hien khi cua so Output bi dong
+                    QToolButton* warn = nullptr;            // hien khi hinh bi co gian / cat / phong to
+                    QWidget* box = nullptr; };
 
     void buildUi();
     void buildMenus();
@@ -110,9 +149,9 @@ private:
     void refreshSlow();
     void onProjectChanged();
     void rebuildSceneList();
-    void rebuildMediaList();
     void addOutputRow(int i);
-    void updateLiveStatus();
+    void rebuildOutputRows();
+    std::shared_ptr<Source> stingerSource() const;
     int channelIdx() const;
     QString sceneName(int ch, int idx) const;
     void take();
@@ -153,14 +192,13 @@ private:
     QPushButton* autoBtn_ = nullptr;
     QSlider* tbar_ = nullptr;
     qint64 tbarMovedMs_ = 0;
-    QListWidget* sceneList_ = nullptr;
-    QListWidget* mediaList_ = nullptr;
+    ScenePanel* scenes_ = nullptr;
+    QListWidget* sceneList_ = nullptr;             // scenes_->list()
     QLabel* statusLabel_ = nullptr;
     QMenu* recentMenu_ = nullptr;
     std::vector<OutRow> outRows_;
     QVBoxLayout* outRowsLayout_ = nullptr;
     QAction *addNdiAct_ = nullptr, *addCamAct_ = nullptr, *addNdiOutAct_ = nullptr;
-    QPushButton *addNdiBtn_ = nullptr, *addCamBtn_ = nullptr;
     std::vector<std::vector<QString>> sceneNames_;     // theo kenh; snapshot de timer khong cham du lieu render thread
     QTimer fastTimer_, slowTimer_, autosaveTimer_;
     QByteArray defaultState_;
@@ -174,16 +212,23 @@ private:
     QLabel* ctlLabel_ = nullptr;
     PlaylistPanel* playlist_ = nullptr;
     QAction* settingsAct_ = nullptr;
+    QAction *screenAct_ = nullptr, *newAct_ = nullptr;
+    QToolButton* screenBtn_ = nullptr;
     QAction *importAct_ = nullptr, *openAct_ = nullptr, *undoAct_ = nullptr, *redoAct_ = nullptr;
-    QPushButton* importBtn_ = nullptr;
     QWidget* pluginPanel_ = nullptr;
     LockButton* lockBtn_ = nullptr;
     QLabel* lockLabel_ = nullptr;
     void updateUndoActions();
     void pushImport(std::shared_ptr<ImportEntry> e, const QString& text);
     void doUndo();
+    void doRedo();
+    void chooseMediaFiles();
     void importDroppedFiles(const QStringList& files, bool toPlaylist);
-    std::shared_ptr<Scene> importForPlaylist(const QString& path);
+    // Mot file = mot Scene: file da co Scene thi tra ve Scene do (created = false). nullptr = loi/bi khoa.
+    std::shared_ptr<Scene> importMedia(const QString& path, bool* created = nullptr);
+    std::shared_ptr<Scene> homeScene(const std::function<bool(const SourceDef&)>& same) const;
+    bool addLiveSource(const SourceDef& def, const QString& what);
+    void announceExisting(const std::shared_ptr<Scene>& s);
     void updateControlStatus();
     void setupInput(QMenu* settingsMenu);
     void runKeyAction(const LiveAction& a);

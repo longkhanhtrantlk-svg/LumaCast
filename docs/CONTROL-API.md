@@ -15,6 +15,8 @@ Bật/tắt, cổng, LAN và token chỉnh trong **Cài đặt → Cài đặt v
 
 - Mọi chỉ số đều **bắt đầu từ 1**, giống giao diện: Kênh 1, Output 1, Scene 01.
 - Scene là chung cho cả project (cùng danh sách Scene của mọi kênh).
+- Xoá một Scene trong danh sách Scenes làm chỉ số các Scene phía sau giảm đi 1 (Hoàn tác trả lại). Kiểm tra `GET /api/state` trước khi gán nút theo số.
+- `scenes/{n}/play|pause|stop|seek` điều khiển **đồng hồ keyframe** của Scene; video trong Scene được phát/tạm dừng/tua bằng nút trên ô Scene, chưa có endpoint.
 - Lệnh **không chờ** render thread: trả `200` nghĩa là *đã nhận lệnh hợp lệ và đã đưa vào hàng đợi `RenderEngine::post()`* (thực thi ở đầu khung hình kế tiếp, ≤ 1 khung). Muốn biết kết quả, đọc `GET /api/state` hoặc theo dõi luồng SSE.
 - Không có header CORS: trang web ở nguồn khác không gọi được API (cố ý, xem mục 5).
 
@@ -94,7 +96,7 @@ Thân yêu cầu (POST) là một **đối tượng JSON** hoặc rỗng (rỗng
 | Phương thức | Đường dẫn | Mô tả |
 |---|---|---|
 | GET | `/api/sources` | Danh sách + trạng thái nguồn NDI/camera (như `state.sources`) |
-| POST | `/api/sources/{n}/reconnect` | Đóng và mở lại kết nối của nguồn thứ `n` (chỉ số 1-based theo Media Pool). **Lệnh sửa** → `423` khi Khoá vận hành. `404 source_not_found` nếu không có, `400 not_live` nếu nguồn không phải NDI/camera |
+| POST | `/api/sources/{n}/reconnect` | Đóng và mở lại kết nối của nguồn thứ `n` (chỉ số 1-based theo thứ tự `sources[]` của project). **Lệnh sửa** → `423` khi Khoá vận hành. `404 source_not_found` nếu không có, `400 not_live` nếu nguồn không phải NDI/camera |
 Đen/Dừng/Mẫu của Output NDI dùng chung `POST /api/outputs/{i}/black|freeze|pattern`. Chưa có OSC cho nguồn trực tiếp.
 
 ### SSE (`GET /api/events`)

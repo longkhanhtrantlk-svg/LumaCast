@@ -28,7 +28,7 @@ Windows (muc tieu): Qt 6 + FFmpeg qua vcpkg (`vcpkg install ffmpeg:x64-windows` 
 ## Chay
     lumacast -o 1920x1080@0 -o 3840x2160@1 -o 1920x1080@2/2 --fullscreen -m clip.mp4 -m logo.png --scale fit
 
-`-o WxH[@man_hinh][/kenh]` (lap lai cho nhieu output), `--scale fit|fill|stretch|pixel`, `--fps 60`.
+`-o WxH[@man_hinh][/kenh]` (lap lai cho nhieu output; mac dinh mot output 1920x1080), `--scale fit|fill|stretch|pixel`, `--fps 60`.
 Phim tat (kenh dang chon): `1..9` chon Preview, `Space` = TAKE, `Enter` = CUT (xem muc *Phím tắt và MIDI*).
 
 ## Phím tắt và MIDI
@@ -57,8 +57,35 @@ Mở *Cài đặt > Phím tắt và MIDI…* (bị khoá khi đang Khoá vận h
 - **Đóng cửa sổ Output** (nút X, Alt+F4) chỉ ẩn nó; bảng *Outputs* hiện nút **Mở lại**.
 - Mở project **thiếu hoặc hỏng file ảnh/video**: project vẫn mở, chỗ đó hiện hình *THIẾU FILE*, có thông báo liệt kê. Lưu không làm mất tham chiếu; chép file về rồi mở lại.
 
+## Danh sách Scenes
+Khung **Scenes** nằm dưới hai màn hình (tab cạnh *Timeline* và *Playlist*): mỗi Scene một ô ảnh thu nhỏ đánh số. Thay cho *Media Pool* và cột Scene bên trái trước đây.
+
+- **Bấm** ảnh hoặc tên = đưa vào Preview; **nhấp đúp** = CUT; phím **1–9** chọn Preview. Nút **AUTO** giữ nguyên hành vi. Viền đỏ/nhãn PGM = đang ở Program, viền xanh/PVW = Preview. Bấm vào hàng nút của ô không bao giờ chọn hay CUT Scene.
+- Ba nút trên đầu khung: nhập media, thêm nguồn NDI, thêm camera (rê chuột để xem tên). Kéo thả file cũng được.
+- **Mỗi file là đúng một Scene:** nhập lại file đã có thì không thêm gì, danh sách cuộn tới ô đó. Muốn ghép nhiều hình trong một Scene thì *Thêm layer* ở Inspector.
+- **Phát** (Scene có video hoặc keyframe): về đầu, phát/tạm dừng, kéo thanh để tua, thời gian còn lại, bật/tắt lặp. Khi video đưa từ Preview lên Program nó vẫn **phát lại từ đầu**, kể cả đang tạm dừng (tắt bằng ô *Phát lại khi lên Program* ở Timeline). Không lặp thì hết video giữ khung cuối.
+- **Tiếng** (Scene có tiếng): nút loa và thanh âm lượng 0–150 % riêng từng Scene; mặc định bật. Chỉ Scene ở Program mới ra loa. Lưu trong project.
+- **Đổi tên** (nút bút chì: Enter xác nhận, Esc huỷ) và **xoá** (nút thùng rác); cũng có ở menu chuột phải. Cả hai Hoàn tác được (Ctrl+Z). Không xoá được Scene đang ở Program hoặc đang chuyển vào. Xoá một Scene cũng bỏ các mục playlist trỏ tới nó (Hoàn tác trả lại); file media trên đĩa không bị đụng tới. Xoá làm **số thứ tự các Scene phía sau dồn lên** (ảnh hưởng phím 1–9, MIDI, HTTP/OSC).
+- **Khoá vận hành:** không nhập, đổi tên, xoá, bật/tắt lặp; phát/tạm dừng/tua và tiếng vẫn dùng được.
+- Tạm dừng hoặc tua video **đang On Air** được coi là can thiệp tay: playlist đang chạy sẽ tạm dừng.
+- Giới hạn: hai Scene dùng chung một video (ghép layer) chỉ có một bộ giải mã nên phát/tạm dừng/tua/lặp tác động cả hai. Nút phát ở *Timeline* và lệnh HTTP/OSC `scenes/{n}/play…` vẫn chỉ điều khiển đồng hồ keyframe, không dừng video.
+
+## Màn hình và khung hình
+Mở bằng nút hình màn hình trên bảng *Outputs*, hoặc *Cài đặt > Màn hình và khung hình…*. Không cần dòng lệnh. Mặc định một Output 1920×1080.
+
+- **Output:** thêm, xoá, đổi tên; chọn màn hình; *Toàn màn hình* hay *Cửa sổ* (để thử); rộng × cao (cửa sổ); cách đặt hình (Fit/Fill/Stretch/1:1).
+- **Khung hình (canvas)** của kênh: rộng × cao; *Bằng chỗ hiện* đặt đúng bằng phần màn sẽ hiện. Scene đang dựng bằng khung cũ được đổi theo; tích *Đặt mọi Scene…* để đổi cả Scene có kích thước riêng.
+- **LED nhỏ hơn tín hiệu** (một dây HDMI vào bộ xử lý, bộ xử lý chỉ lấy một góc): tích *LED chỉ lấy một vùng của tín hiệu*, nhập rộng × cao và vị trí x, y (hoặc *Góc trên trái* / *Giữa khung*). Hình chỉ nằm trong vùng đó, ngoài vùng đen. *Khung hình = đúng vùng LED* giữ 1:1.
+- **Tính điểm ảnh:** nhập kích thước LED theo mét và pitch (mặc định P2.5: 4 m × 2 m = 1600 × 800) rồi *Dùng số này*.
+- **Cấu hình đã lưu:** *Lưu…* đặt tên vùng LED + khung hình (theo sự kiện / nhà cung cấp), lần sau *Dùng* rồi *Áp dụng*. Lưu theo máy.
+- **Video wall:** cột × hàng, cỡ ô, khe; *Tạo video wall* thay các Output màn hình của kênh.
+- **Cảnh báo:** hộp thoại và nút **⚠** trên bảng *Outputs* báo khi hình bị co giãn méo, cắt, chỉ hiện một phần, thu nhỏ hay phóng to (nguyên nhân nhoè trên LED), có viền đen, vùng LED vượt khung, Scene khác kích thước khung hình, hai Output cùng màn.
+- **Kiểm tra bộ xử lý:** bấm *Áp dụng* rồi *Mẫu thử*. Mẫu có viền đỏ sát mép vùng, toạ độ 4 góc và hai ô sọc 1 điểm ảnh: mất viền = bộ xử lý đang cắt; sọc nhoè hay gợn sóng = đang co giãn.
+- Chỉ đổi khi bấm **Áp dụng**; một bước Hoàn tác; Preview/Program không đổi; lưu trong project (Ctrl+S). Khoá vận hành chặn. Cửa sổ Output không đổi màn/chế độ được giữ nguyên (không chớp); đang BLACK ALL thì Output mới cũng đen. Áp dụng toàn màn hình lên chính màn đang chứa bảng điều khiển sẽ hỏi lại (thoát: bấm vào hình rồi **Esc**).
+- **Project mới:** *File > Project mới…*: chọn khung hình (hoặc video wall kèm khe), đặt tên file; project có sẵn Scene *Đen* (ở Program) và *Mẫu thử*.
+
 ## Nhập media bằng kéo thả
-- Kéo một hoặc nhiều file ảnh/video từ Windows Explorer vào **Media Pool** hoặc bất kỳ chỗ nào trong cửa sổ chính (kể cả dock đã tách rời). Giống *File > Nhập media...*: mỗi file thêm một nguồn + một Scene và là một bước Hoàn tác (Ctrl+Z).
+- Kéo một hoặc nhiều file ảnh/video từ Windows Explorer vào khung **Scenes** hoặc bất kỳ chỗ nào trong cửa sổ chính (kể cả dock đã tách rời). Giống *File > Nhập media...*: mỗi file mới thêm một nguồn + một Scene và là một bước Hoàn tác (Ctrl+Z); file đã có trong danh sách thì không thêm lần nữa.
 - Thả không đưa gì lên Program: Preview/Program giữ nguyên.
 - Nhận các đuôi: `mp4 mov mkv avi webm png jpg jpeg bmp gif webp`. File khác, thư mục, ảnh không đọc được bị bỏ qua và báo ở thanh trạng thái (định dạng video khác vẫn thử nhập được qua hộp thoại *Nhập media*, lọc "Tất cả").
 - Đang **Khoá vận hành** hoặc đang mở hộp thoại: không thả được (khi khoá có thông báo).
@@ -103,7 +130,7 @@ Mở *Cài đặt > Phím tắt và MIDI…* (bị khoá khi đang Khoá vận h
 - **Chua kiem chung:** D3D11VA that, hieu nang 4 Output 4K tren GPU that, PBO co loi that tren GPU that khong, trinh cai tren Windows sach, CI tren GitHub (T-HWDEC, T-HAP, T-PERF, T-INST, T-LIC).
 
 ## M5b them (NDI va camera)
-- **Nguon truc tiep** (NDI, camera): khong co dong ho file; chi giu khung moi nhat; **mat nguon -> giu khung cuoi + bao "Mat tin hieu" + tu noi lai** (khong bao gio treo render). Trang thai o Media Pool (● xanh/vang/do, ○ xam = khong kha dung) va `GET /api/sources`.
+- **Nguon truc tiep** (NDI, camera): khong co dong ho file; chi giu khung moi nhat; **mat nguon -> giu khung cuoi + bao "Mat tin hieu" + tu noi lai** (khong bao gio treo render). Trang thai o o Scene (● xanh/vang/do, ○ xam = khong kha dung) va `GET /api/sources`.
 - **NDI vao**: *File > Them nguon NDI...* (liet ke nguon tren mang, hinh + tieng; tieng di qua mixer voi **bu troi dong ho** bang resample thich ung). **NDI ra**: *File > Them Output NDI...* phat Program cua mot Channel (kem tieng) ra mang. Nap dong runtime NDI - **khong kem NDI SDK/runtime**; may chua cai se bao "Chua cai NDI Runtime" va moi thu khac chay binh thuong. Dieu khoan NDI (dang ky, ghi "NDI®", khong phan phoi runtime): `docs/SPEC.md` muc 5.1. **ABI chua doi chieu voi NDI that.**
 - **Camera/capture**: *File > Them camera...* (Windows: Media Foundation, chi Win32/COM; chon thiet bi + do phan giai/fps; rut cam tu noi lai). Linux/macOS: chua ho tro (bao ro). Chua co tieng tu camera.
 - Bien moi truong dev: `LUMACAST_NDI_BACKEND=fake` / `LUMACAST_CAMERA_BACKEND=fake` (nguon gia, khong can NDI/camera), `LUMACAST_NDI_DISABLE=1` (tat han NDI), `LUMACAST_NDI_LIB=<duong dan>` (chi dinh runtime).
@@ -124,7 +151,7 @@ Mở *Cài đặt > Phím tắt và MIDI…* (bị khoá khi đang Khoá vận h
 - MIDI va phim tat tu dat: xem muc *Phím tắt và MIDI* o tren. (NDI, camera: xem M5b.)
 
 ## Playlist / slide ảnh tự chuyển
-Dock **Playlist** (tab cạnh *Media Pool* và *Timeline*): một danh sách mục tự chạy lần lượt lên Program. **Mỗi kênh một playlist**, các kênh chạy độc lập.
+Dock **Playlist** (tab cạnh *Scenes* và *Timeline*): một danh sách mục tự chạy lần lượt lên Program. **Mỗi kênh một playlist**, các kênh chạy độc lập.
 
 - **Mục** là một Scene (ảnh/video nhập vào đều là một Scene). *Thêm Scene…* lấy Scene có sẵn; *Thêm file…* hoặc **kéo thả file vào khung Playlist** thì nhập media (thêm Scene như bình thường) rồi thêm vào cuối danh sách.
 - **Thời gian:** mục không phải video giữ đúng *Thời lượng ảnh* (mặc định 8 s, tính sau khi chuyển vào xong); mục video để *Tự động* thì **phát từ đầu và chuyển khi phát hết** (hiệu ứng bắt đầu sớm để kết thúc đúng lúc video hết). Mỗi mục đặt được thời lượng riêng. Tính theo đồng hồ thật.
@@ -133,11 +160,11 @@ Dock **Playlist** (tab cạnh *Media Pool* và *Timeline*): một danh sách m�
 - **Bạn can thiệp thì playlist tạm dừng:** CUT, TAKE, T-bar, bấm Scene khi AUTO bật, nhấp đúp Scene, hay lệnh CUT/TAKE từ HTTP/OSC. Hình của bạn được giữ; bấm *Chạy* thì mục đang dở quay lại Program rồi đi tiếp. Chỉ chọn Scene vào Preview thì playlist chạy tiếp. Đen, Dừng hình, FTB không ảnh hưởng playlist.
 - **Mục lỗi** (video không đọc được, không ra khung hình trong 3 s, Scene đã bị gỡ) được bỏ qua, có thông báo ở thanh trạng thái và log; mọi mục đều lỗi thì playlist dừng. Video chỉ được đưa lên khi đã có khung hình đầu.
 - Sửa danh sách hoàn tác được (Ctrl+Z) và bị khoá khi **Khoá vận hành**; điều khiển chạy vẫn dùng được. Điều khiển ngoài: `POST /api/channels/{n}/playlist/play|pause|stop|next|prev`, OSC `/lumacast/playlist/{n}/play…` (`docs/CONTROL-API.md`).
-- **Giới hạn:** *Tạm dừng* chỉ ngừng chuyển mục, video đang hiện vẫn lặp (nguồn video chưa tạm dừng được). Tắt *Lặp lại* thì hết danh sách playlist dừng và giữ mục cuối (nếu là video, video đó tiếp tục lặp). Video được tua về đầu khi playlist đưa lên, kể cả khi cùng file đó đang hiện ở kênh khác. File media bị thiếu **lúc mở project** vẫn làm mở project thất bại như trước. Chưa thử tay trên màn LED (T-PL).
+- **Giới hạn:** *Tạm dừng* chỉ ngừng chuyển mục, video đang hiện vẫn chạy (dừng video bằng nút trên ô Scene). Tắt *Lặp lại* thì hết danh sách playlist dừng và giữ mục cuối (nếu là video, video đó lặp hay giữ khung cuối theo nút lặp của Scene). Video được tua về đầu khi playlist đưa lên, kể cả khi cùng file đó đang hiện ở kênh khác. File media bị thiếu **lúc mở project** vẫn làm mở project thất bại như trước. Chưa thử tay trên màn LED (T-PL).
 
 ## M4b them (hoat hoa)
 - Layer: **xoay**, **cat (crop)** theo hinh da xoay, **blend** Add/Multiply/Screen. O co vien vang = dang co keyframe.
-- **Timeline** (tab canh Media Pool): Phat/Tam dung/Ve 0/Tua, lap, thoi luong; 6 lan keyframe (X, Y, Rong, Cao, Alpha, Xoay). Nhap doi them key, nut ◆ them/xoa tai playhead, keo key, Delete, chuot phai doi kieu noi suy (tuyen tinh/em/giu bac). Sua gia tri o nhap khi da co keyframe se tu dat key. Hoan tac duoc.
+- **Timeline** (tab canh Scenes): Phat/Tam dung/Ve 0/Tua, lap, thoi luong; 6 lan keyframe (X, Y, Rong, Cao, Alpha, Xoay). Nhap doi them key, nut ◆ them/xoa tai playhead, keo key, Delete, chuot phai doi kieu noi suy (tuyen tinh/em/giu bac). Sua gia tri o nhap khi da co keyframe se tu dat key. Hoan tac duoc.
 - Scene **tu phat lai tu dau khi len Program** (tat duoc). Timeline canh bao khi Scene dang chon dang o PROGRAM.
 
 ## M4a them (Effect, transition, plug-in)
@@ -157,7 +184,7 @@ Dock **Playlist** (tab cạnh *Media Pool* và *Timeline*): một danh sách m�
 - Chua co: timeline / keyframe (can he thong animation trong engine -> M4).
 
 ## M3a them (giao dien Live Control)
-- Cua so chinh toi: monitor Preview (vien xanh) / Program (vien do, ON AIR), Scene list, Media Pool (anh thu nho, nhap doi de tao Scene),
+- Cua so chinh toi: monitor Preview (vien xanh) / Program (vien do, ON AIR), danh sach Scenes (anh thu nho; xem muc *Danh sách Scenes*),
   Outputs (den trang thai, FPS tung output, Den / Dung hinh), Inspector (Layer, Output), thanh trang thai (GPU, FPS, roi khung).
 - Thanh chuyen: CUT, TAKE (Fade/Dip/Wipe + thoi luong), BLACK ALL, FTB (Fade-To-Black cho kenh dang chon).
 - Phim tat: Space = TAKE, Enter = CUT, B = BLACK ALL, 1..9 = chon Preview, Ctrl+S = Luu, Ctrl+O = Mo.

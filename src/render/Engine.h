@@ -35,6 +35,11 @@ public:
     // Them Output NDI luc dang chay (M5b). Chi ho tro OutputKind::Ndi (cua so man hinh phai co luc khoi dong). Goi tu UI thread; cho render thread
     // xong roi moi tra ve, nen outputCount()/output(i) thay ngay Output moi. Tra chi so Output moi, hoac -1 neu loi.
     int addNdiOutput(const OutputConfig& cfg);
+    // Doi ca danh sach Output luc dang chay (thiet lap man hinh). Goi tu UI thread. Cua so cu cung che do + cung man hinh duoc giu,
+    // khong chop; con lai tao moi / an di. Den/Dung/Mau giu theo vi tri (dang BLACK ALL thi cua so moi cung den). `sameFrame`
+    // (tuy chon) chay tren render thread trong CUNG khung hinh voi viec doi (kich thuoc canvas/Scene). false = render thread khong
+    // phan hoi kip (thay doi van se ap dung sau).
+    bool applyOutputs(const std::vector<OutputConfig>& cfgs, std::function<void()> sameFrame = {});
     QString error() const;
     QString gpuName() const;
     uint64_t droppedFrames() const { return dropped_; }
@@ -60,9 +65,13 @@ public:
     MonitorFrame monitor(int channel) const;
     // Anh thu nho tung Scene cua MOT Channel cho Multiview (UI-06). -1 = tat (mac dinh): render thread khong lam them gi.
     // Moi khung ve toi da mot Scene, SAU khi da dua hinh ra Output; anh theo thu tu Channel::scenes, rong = chua ve xong.
-    struct SceneThumbFrame { int channel = -1; std::vector<QImage> images; };
+    struct SceneThumbFrame { int channel = -1; std::vector<QImage> images; std::vector<const Scene*> scenes; };
     void setSceneThumbChannel(int channel) { sceneThumbChannel_ = channel; }
-    SceneThumbFrame sceneThumbs() const;
+    SceneThumbFrame sceneThumbs() const;              // cho Multiview; rong khi Multiview khong mo
+    // Anh thu nho cho danh sach Scenes cua cua so chinh: cung mot bo ve voi Multiview (Multiview mo thi theo kenh va nhip cua no),
+    // rieng danh sach thi cap nhat thua hon (SceneThumbRing::kListHz).
+    void setListThumbChannel(int channel) { listThumbChannel_ = channel; }
+    SceneThumbFrame listThumbs() const;
     // Render thread (goi trong post): chep cau hinh Output hien tai ve Project de luu file.
     void syncOutputsToProject();
     // Mixer am thanh (M5a). Engine dung ke hoach tron moi khung (render thread); thiet bi do ben ngoai mo bang audio().start(id).
@@ -75,9 +84,16 @@ protected:
 
 private:
     void rewindVideoGoingOnAir();                   // render thread, dau moi khung: video VUA len Program phat lai tu dau
+    void syncVideoLoop(const std::vector<const Scene*>& live);       // render thread: o "Lap" cua Scene -> bo giai ma video
     std::vector<const Source*> onAir_;              // nguon dang o Program o khung truoc
     Project& project_;
-    std::vector<std::unique_ptr<OutputSink>> sinks_;      // chi them (khong xoa) khi dang chay; sinksMu_ bao ve vector (con tro Output ben vung cho den stopEngine)
+    // Sink khong bao gio bi huy khi dang chay (con tro Output ben vung cho den stopEngine): sink bi go chuyen sang graveyard_.
+    std::vector<std::unique_ptr<OutputSink>> sinks_;      // sinksMu_ bao ve vector
+    std::vector<std::unique_ptr<OutputSink>> retiring_;   // render thread: cho giai phong tai nguyen GL
+    std::vector<std::unique_ptr<OutputSink>> graveyard_;  // da giai phong; huy luc stopEngine
+    std::unique_ptr<OutputSink> makeSink(const OutputConfig& cfg, int index);
+    int winX_ = 0, winY_ = 0, winRowH_ = 0;                // vi tri xep cua so thu nghiem (UI thread)
+    void placeWindow(class OutputWindow& w, const OutputConfig& cfg);
     mutable std::mutex sinksMu_;
     std::unique_ptr<QOffscreenSurface> surface_;
     AudioMixer audio_;
@@ -102,6 +118,7 @@ private:
     std::vector<MonitorFrame> monitors_;
     SceneThumbFrame sceneThumbs_;                      // monitorMutex_
     std::atomic<int> sceneThumbChannel_{-1};
+    std::atomic<int> listThumbChannel_{-1};
     qint64 t0_ = 0;
 };
 

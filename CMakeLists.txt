@@ -62,6 +62,7 @@ add_library(lumacast_core STATIC
   src/render/OverlayRaster.h src/render/OverlayRaster.cpp
   src/render/OverlayCache.h src/render/OverlayCache.cpp
   src/core/Project.cpp
+  src/core/ScreenSetup.h src/core/ScreenSetup.cpp
   src/core/Animation.cpp
   src/core/Scene.cpp
   src/core/Log.cpp
@@ -135,6 +136,9 @@ add_library(lumacast_ui STATIC
   src/app/LiveDialogs.h src/app/LiveDialogs.cpp
   src/app/SettingsDialog.h src/app/SettingsDialog.cpp
   src/app/PlaylistPanel.h src/app/PlaylistPanel.cpp
+  src/app/Icons.h src/app/Icons.cpp
+  src/app/ScenePanel.h src/app/ScenePanel.cpp
+  src/app/ScreenDialog.h src/app/ScreenDialog.cpp
   src/app/MainWindow.h src/app/MainWindow.cpp
   src/app/MainWindowInput.cpp
   src/app/Shortcuts.h src/app/Shortcuts.cpp
@@ -222,6 +226,16 @@ add_test(NAME safety COMMAND lumacast_safety_tests)
 add_executable(lumacast_layout_tests tests/test_layout.cpp)
 target_link_libraries(lumacast_layout_tests PRIVATE lumacast_ui)
 add_test(NAME layout COMMAND lumacast_layout_tests)
+
+# Danh sach Scenes (UI-02): phat/tua video, tieng rieng, doi ten/xoa, mot file mot Scene
+add_executable(lumacast_scenes_tests tests/test_scenes.cpp)
+target_link_libraries(lumacast_scenes_tests PRIVATE lumacast_ui)
+add_test(NAME scenes COMMAND lumacast_scenes_tests)
+
+# Thiet lap man hinh (UI-08): vung LED, them/bot Output, khung hinh, video wall, project moi
+add_executable(lumacast_screens_tests tests/test_screens.cpp)
+target_link_libraries(lumacast_screens_tests PRIVATE lumacast_ui)
+add_test(NAME screens COMMAND lumacast_screens_tests)
 
 # Mapping truc quan
 add_executable(lumacast_mapping_tests tests/test_mapping.cpp)

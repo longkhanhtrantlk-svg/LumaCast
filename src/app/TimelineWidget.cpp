@@ -518,6 +518,29 @@ void TimelineWidget::sceneRemoved(int si) {
     lastScene_ = lastLayer_ = -2;
 }
 
+void TimelineWidget::sceneInserted(int si) {
+    if (si >= 0 && si < int(cache_.size()) && si < int(project_.scenes.size())) {
+        const auto& s = project_.scenes[size_t(si)];
+        cache_.insert(cache_.begin() + si, {s->duration, s->loop, s->restartOnAir});
+    }
+    lastScene_ = lastLayer_ = -2;
+}
+
+void TimelineWidget::setSceneLoop(int si, bool on) {
+    if (locked_ || si < 0 || si >= int(project_.scenes.size())) return;
+    while (cache_.size() <= size_t(si)) {
+        const auto& s = project_.scenes[cache_.size()];
+        cache_.push_back({s->duration, s->loop, s->restartOnAir});
+    }
+    if (cache_[size_t(si)].loop == on) return;
+    auto sc = project_.scenes[size_t(si)];
+    const SceneProps before = cache_[size_t(si)];
+    SceneProps after = before;
+    after.loop = on;
+    applySceneProps(si, sc, after);
+    insp_.undoStack()->push(new ScenePropsCmd(this, si, sc, before, after, on ? "Bật lặp Scene" : "Tắt lặp Scene", 5000000 + (si % 10000) * 10 + 1));
+}
+
 // Ap dung thuoc tinh Scene (tu Hoan tac/Lam lai): cap nhat cache UI + gui render thread.
 void TimelineWidget::applySceneProps(int si, std::shared_ptr<Scene> sc, const SceneProps& p) {
     if (si >= 0 && si < int(cache_.size()) && si < int(project_.scenes.size()) && project_.scenes[si] == sc) cache_[si] = p;

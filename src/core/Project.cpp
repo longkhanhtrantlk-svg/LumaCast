@@ -229,6 +229,8 @@ bool saveProject(const Project& p, const QString& path, QString* err) {
         o["duration"] = s->duration;
         o["loop"] = s->loop;
         o["restartOnAir"] = s->restartOnAir;
+        if (std::abs(s->audio.volume.load() - 1.0f) > 1e-4f) o["volume"] = double(s->audio.volume.load());     // tuy chon, khong tang version
+        if (s->audio.mute.load()) o["mute"] = true;
         QJsonArray layers;
         for (const Layer& l : s->layers) {
             const SourceDef* d = p.findSource(l.source.get());
@@ -314,6 +316,7 @@ bool saveProject(const Project& p, const QString& path, QString* err) {
         o["scale"] = scaleStr(c.scale);
         o["rotation"] = c.rotation;
         o["crop"] = QJsonArray{c.crop.x(), c.crop.y(), c.crop.width(), c.crop.height()};
+        if (!c.area.isEmpty()) o["area"] = QJsonArray{c.area.x(), c.area.y(), c.area.width(), c.area.height()};   // tuy chon, khong tang version
         QJsonObject cal;
         cal["brightness"] = double(c.cal.brightness);
         cal["contrast"] = double(c.cal.contrast);
@@ -392,6 +395,9 @@ bool loadProject(Project& out, const QString& path, QString* err) {
             s->duration = std::isfinite(dur) && dur >= 0.1 ? dur : 10.0;
             s->loop = o["loop"].toBool(true);
             s->restartOnAir = o["restartOnAir"].toBool(true);
+            const double vol = o["volume"].toDouble(1.0);
+            s->audio.volume = std::isfinite(vol) ? float(std::clamp(vol, 0.0, 2.0)) : 1.0f;
+            s->audio.mute = o["mute"].toBool(false);
         }
         for (const QJsonValue& lv : o["layers"].toArray()) {
             const QJsonObject lo = lv.toObject();
@@ -498,6 +504,10 @@ bool loadProject(Project& out, const QString& path, QString* err) {
         const QJsonArray cr = o["crop"].toArray();
         if (cr.size() == 4) c.crop = QRectF(cr[0].toDouble(), cr[1].toDouble(), cr[2].toDouble(), cr[3].toDouble());
         if (c.crop.width() <= 0 || c.crop.height() <= 0) return fail("Output '" + c.name + "': crop khong hop le");
+        if (const QJsonArray ar = o["area"].toArray(); ar.size() == 4) {
+            const QRect r(ar[0].toInt(), ar[1].toInt(), ar[2].toInt(), ar[3].toInt());
+            if (r.x() >= 0 && r.y() >= 0 && r.width() > 0 && r.height() > 0 && r.width() <= 16384 && r.height() <= 16384) c.area = r;
+        }
         const QJsonObject cal = o["calibration"].toObject();
         c.cal.brightness = float(cal["brightness"].toDouble(1));
         c.cal.contrast = float(cal["contrast"].toDouble(1));

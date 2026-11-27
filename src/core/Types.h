@@ -60,6 +60,9 @@ struct OutputConfig {
     ScaleMode scale = ScaleMode::Fit;
     int rotation = 0;           // 0 / 90 / 180 / 270 (theo chieu kim dong ho)
     QRectF crop{0, 0, 1, 1};    // vung cua Channel, toa do chuan hoa, goc tren-trai (Mapping)
+    // Vung LED trong tin hieu: hinh chi dat o day (diem anh, goc tren-trai), ngoai vung de den. Rong = ca khung. Dung khi bo xu ly
+    // LED chi lay mot goc cua tin hieu HDMI (vd. LED 1600x800 tren tin hieu 1920x1080).
+    QRect area;
     Calibration cal;
 };
 

@@ -53,7 +53,7 @@ Mã nguồn tham chiếu: `src/core/Project.cpp` (`saveProject`, `loadProject`).
 | `device` | chuỗi | `camera`: id thiết bị (Windows: symbolic link của Media Foundation) |
 | `deviceName` | chuỗi | `camera`: tên hiển thị; dùng nhận lại thiết bị khi `device` đổi (cổng USB khác). Cần ít nhất một trong `device`/`deviceName` |
 | `fps` | số | `camera`: fps yêu cầu (0 = để thiết bị chọn; giá trị không hợp lệ → 0) |
-| `label` | chuỗi | cũng dùng cho `ndi`/`camera` (tên hiển thị trong Media Pool) |
+| `label` | chuỗi | cũng dùng cho `ndi`/`camera` (tên hiển thị của nguồn / tên Scene tạo ra) |
 
 ### 2.2 `scenes[]`
 | Trường | Kiểu | Mặc định | Ghi chú |
@@ -64,6 +64,8 @@ Mã nguồn tham chiếu: `src/core/Project.cpp` (`saveProject`, `loadProject`).
 | `duration` | số ≥ 0,1 | 10 | giây; thời lượng đồng hồ Scene dùng cho keyframe (giá trị không hợp lệ → 10) |
 | `loop` | bool | true | lặp lại khi hết thời lượng |
 | `restartOnAir` | bool | true | chạy lại đồng hồ từ 0 mỗi khi Scene lên Program / bắt đầu chuyển vào |
+| `volume` | số | 1 | âm lượng riêng của Scene (0–2, 1 = nguyên gốc), nhân thêm vào âm lượng từng Layer; chỉ ghi khi khác 1 (tuỳ chọn, vẫn `version` 1) |
+| `mute` | bool | false | tắt tiếng riêng của Scene; chỉ ghi khi `true` |
 | `layers[]` | mảng | — | **thứ tự vẽ từ dưới lên**: phần tử cuối nằm trên cùng |
 
 `layers[]`:
@@ -148,6 +150,7 @@ Thứ tự mảng = thứ tự vẽ (phần tử cuối nằm trên cùng). Tố
 | `scale` | chuỗi | `fit` | `fit` · `fill` · `stretch` · `pixel` |
 | `rotation` | số | 0 | được đưa về bội số của 90 (0/90/180/270), chiều kim đồng hồ |
 | `crop` | `[x, y, w, h]` | `[0,0,1,1]` | vùng của Channel, chuẩn hoá, gốc trên-trái; `w`,`h` phải > 0 |
+| `area` | `[x, y, w, h]` | (không có) | vùng LED trong tín hiệu, **điểm ảnh**, gốc trên-trái: hình chỉ đặt trong vùng này, ngoài vùng đen. Toàn màn hình: điểm ảnh của màn; cửa sổ: theo `width`×`height`. Giá trị âm / rỗng / > 16384 bị bỏ qua. Tuỳ chọn, `version` vẫn 1; bản LumaCast cũ mở được nhưng hiện cả khung |
 | `calibration` | đối tượng | mặc định = không đổi | xem dưới |
 
 **Bù khe video wall** (OUT-04) không có trường riêng (`version` vẫn 1, bản LumaCast cũ mở được và hiện đúng): `width`/`height` của Channel và Scene bằng `cột × ô + (cột − 1) × khe` (tương tự theo chiều cao), và `crop` của ô cột `c` là `[c·(ô+khe)/canvas, …, ô/canvas, …]`. Khi mở, giao diện suy lại khe từ các giá trị này.

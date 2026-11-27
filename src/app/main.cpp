@@ -75,7 +75,7 @@ int main(int argc, char** argv) {
     cli.addHelpOption();
     cli.addOption({{"p", "project"}, "Mo file project (.json). Bo qua cac tuy chon -o/-m/--wall.", "file"});
     cli.addOption({"save", "Luu project ra file roi chay tiep.", "file"});
-    cli.addOption({{"o", "output"}, "Output: WxH[@man_hinh][/kenh]. Lap lai de them output. Mac dinh 1280x720.", "spec"});
+    cli.addOption({{"o", "output"}, "Output: WxH[@man_hinh][/kenh]. Lap lai de them output. Mac dinh 1920x1080.", "spec"});
     cli.addOption({{"m", "media"}, "File video/anh de tao Scene. Lap lai duoc.", "file"});
     cli.addOption({"wall", "Video wall CxR: chia 1 kenh rong cho C*R output (dung cung --cell).", "CxR"});
     cli.addOption({"cell", "Kich thuoc moi o cua --wall, mac dinh 1920x1080.", "WxH", "1920x1080"});
@@ -164,7 +164,7 @@ int main(int argc, char** argv) {
             }
         } else {
             QStringList specs = cli.values("output");
-            if (specs.isEmpty()) specs << "1280x720";
+            if (specs.isEmpty()) specs << "1920x1080";
             for (int i = 0; i < specs.size(); ++i) {
                 OutputConfig o;
                 if (!parseOutput(specs[i], i, cli.isSet("fullscreen"), scale, o)) {

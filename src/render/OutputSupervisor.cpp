@@ -2,6 +2,7 @@
 #include "render/OutputWindow.h"
 #include <QGuiApplication>
 #include <QScreen>
+#include <algorithm>
 
 namespace lc {
 
@@ -25,6 +26,7 @@ int OutputSupervisor::badCount() const {
 }
 
 void OutputSupervisor::check() {
+    last_.resize(size_t(std::max(0, engine_.outputCount())), OutputHealth::Ok);        // Output co the them/bot luc dang chay
     for (int i = 0; i < engine_.outputCount(); ++i) {
         auto* w = dynamic_cast<OutputWindow*>(engine_.output(i));
         if (!w) continue;

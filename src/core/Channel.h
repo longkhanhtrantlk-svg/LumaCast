@@ -39,6 +39,7 @@ public:
     bool showing(const Scene* s) const { return s && (!active_ || autoTransition()) && programScene() == s; }
     // Dem so lan NGUOI VAN HANH tac dong Program (CUT, TAKE, T-bar, ke ca qua dieu khien ngoai) - playlist dung de tu tam dung.
     uint32_t operatorOps() const { return ops_; }
+    void noteOperatorOp() { ++ops_; }                // vd. tam dung/tua video dang o Program tu danh sach Scenes
     // Dau moi khung (render() tu goi): ket thuc transition tu dong va chay playlist. Khong can GL.
     void advance(double now);
 

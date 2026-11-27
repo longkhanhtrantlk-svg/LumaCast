@@ -16,14 +16,20 @@ public:
     static constexpr int kRenderSize = 640;     // canh dai nhat khi ve Scene
     static constexpr int kThumbSize = 320;      // canh dai nhat cua anh doc ve
     static constexpr double kMaxHz = 7.5;       // moi Scene cap nhat nhieu nhat chung nay lan/giay
+    static constexpr double kListHz = 2.0;      // chi danh sach Scenes xem (Multiview dong)
     static constexpr int kMaxSkip = 30;         // khung bi het ngan sach lien tiep toi da truoc khi van ve 1 Scene
 
     // busyFrame: khung nay da lam anh monitor -> nhuong. overBudget: khung nay da dung qua nua thoi gian -> nhuong (tru khi cho qua lau).
     // Tra true neu images() thay doi (ke ca vua xoa sach).
     bool tick(Compositor& comp, TargetPool& pool, int channel, const std::vector<std::shared_ptr<Scene>>* scenes,
-              double fps, bool busyFrame, bool overBudget);
+              double fps, bool busyFrame, bool overBudget, double maxHz = kMaxHz);
     int channel() const { return channel_; }
     const std::vector<QImage>& images() const { return images_; }     // cung thu tu voi Channel::scenes; rong = chua ve xong
+    std::vector<const Scene*> scenes() const {                        // Scene cua tung anh (de khong gan nham khi danh sach vua doi)
+        std::vector<const Scene*> v;
+        for (const Slot& s : slots_) v.push_back(s.scene.lock().get());
+        return v;
+    }
     void release(GL& gl);                                             // goi truoc khi huy context
 
 private:

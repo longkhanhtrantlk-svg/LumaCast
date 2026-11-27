@@ -20,7 +20,7 @@ void SceneThumbRing::release(GL& gl) {
 }
 
 bool SceneThumbRing::tick(Compositor& comp, TargetPool& pool, int channel, const std::vector<std::shared_ptr<Scene>>* scenes,
-                          double fps, bool busyFrame, bool overBudget) {
+                          double fps, bool busyFrame, bool overBudget, double maxHz) {
     bool changed = false;
     if (channel < 0 || !scenes) {
         changed = channel_ >= 0;
@@ -44,7 +44,7 @@ bool SceneThumbRing::tick(Compositor& comp, TargetPool& pool, int channel, const
     if (wait_ > 0 || busyFrame) return changed;
     if (overBudget && skipped_ < kMaxSkip) { ++skipped_; return changed; }
     skipped_ = 0;
-    wait_ = std::max(1, int(std::lround(fps / (kMaxHz * double(slots_.size())))));
+    wait_ = std::max(1, int(std::lround(fps / (maxHz * double(slots_.size())))));
 
     const size_t i = next_ % slots_.size();
     next_ = i + 1;

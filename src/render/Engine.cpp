@@ -65,6 +65,12 @@ RenderEngine::MonitorFrame RenderEngine::monitor(int ch) const {
 }
 
 RenderEngine::SceneThumbFrame RenderEngine::sceneThumbs() const {
+    if (sceneThumbChannel_ < 0) return {};
+    std::lock_guard lk(monitorMutex_);
+    return sceneThumbs_;
+}
+
+RenderEngine::SceneThumbFrame RenderEngine::listThumbs() const {
     std::lock_guard lk(monitorMutex_);
     return sceneThumbs_;
 }
@@ -144,54 +150,148 @@ bool RenderEngine::postAndWait(std::function<void(double)> fn, int timeoutMs) {
     return sync->cv.wait_for(lk, std::chrono::milliseconds(timeoutMs), [&] { return sync->done; });
 }
 
+// UI thread. Chua hien cua so (nguoi goi hien sau khi sink da nam trong danh sach).
+std::unique_ptr<OutputSink> RenderEngine::makeSink(const OutputConfig& cfg, int index) {
+    const int maxOut = Entitlements::current().maxOutputs;            // 0 = khong gioi han (mac dinh)
+    // Output vuot gioi han goi / NDI khong co trong goi: giu mot sink RONG (khong hien/khong gui) de chi so Output va project luu lai van khop
+    if (maxOut > 0 && index >= maxOut) {
+        qWarning().noquote() << QString("Output '%1' bị tắt: gói giấy phép hiện tại tối đa %2 Output").arg(cfg.name).arg(maxOut);
+        return std::make_unique<DisabledSink>(cfg);
+    }
+    if (cfg.kind == OutputKind::Ndi) {
+        if (!Entitlements::current().ndi) {
+            qWarning().noquote() << QString("Output NDI '%1' bị tắt: NDI không có trong gói giấy phép").arg(cfg.name);
+            return std::make_unique<DisabledSink>(cfg);
+        }
+        return std::make_unique<NdiOutputSink>(cfg, project_.fps, &audio_);
+    }
+    return std::make_unique<OutputWindow>(cfg);
+}
+
+// Che do cua so (phat trien/thu): xep cac output thanh hang ngang duoi bang dieu khien, xuong dong khi het cho.
+void RenderEngine::placeWindow(OutputWindow& w, const OutputConfig& cfg) {
+    if (cfg.fullscreen) {
+        if (w.canShow()) w.showFullScreen();
+        else qWarning().noquote() << QString("Output '%1': man hinh '%2' (so %3) khong ton tai - KHONG hien hinh de tranh len nham man hinh khac")
+                                          .arg(cfg.name, cfg.screenName).arg(cfg.screenIndex);
+        return;
+    }
+    // thu nho neu lon hon man hinh (giu ti le), luon nam trong man hinh
+    const QRect avail = QGuiApplication::primaryScreen()->availableGeometry();
+    QSize sz = cfg.size;
+    const QSize maxSz(int(avail.width() * 0.6), int(avail.height() * 0.5));
+    if (sz.width() > maxSz.width() || sz.height() > maxSz.height()) sz = sz.scaled(maxSz, Qt::KeepAspectRatio);
+    w.resize(sz);
+    if (winX_ + sz.width() > avail.right() && winX_ > avail.left() + 20) { winX_ = avail.left() + 20; winY_ += winRowH_ + 30; winRowH_ = 0; }
+    const int py = std::min(winY_, std::max(avail.top(), avail.bottom() - sz.height() - 40));
+    w.setPosition(std::min(winX_, std::max(avail.left(), avail.right() - sz.width())), py);
+    winX_ += sz.width() + 12;
+    winRowH_ = std::max(winRowH_, sz.height());
+    w.show();
+}
+
 void RenderEngine::startEngine() {
     now();                                                       // khoi tao moc thoi gian
     surface_ = std::make_unique<QOffscreenSurface>();            // phai tao tren thread chinh
     surface_->setFormat(QSurfaceFormat::defaultFormat());
     surface_->create();
-    // Che do cua so (phat trien): xep cac output thanh hang ngang duoi bang dieu khien, xuong dong khi het cho.
     const QRect avail = QGuiApplication::primaryScreen()->availableGeometry();
-    int x = avail.left() + 20, y = avail.top() + 420, rowH = 0;
-    const int maxOut = Entitlements::current().maxOutputs;            // 0 = khong gioi han (mac dinh)
-    int outIdx = 0;
+    winX_ = avail.left() + 20;
+    winY_ = avail.top() + 420;
+    winRowH_ = 0;
+    int index = 0;
     for (const OutputConfig& cfg : project_.outputs) {
-        // Output vuot gioi han goi / NDI khong co trong goi: giu mot sink RONG (khong hien/khong gui) de chi so Output va project luu lai van khop
-        if (maxOut > 0 && outIdx++ >= maxOut) {
-            qWarning().noquote() << QString("Output '%1' bị tắt: gói giấy phép hiện tại tối đa %2 Output").arg(cfg.name).arg(maxOut);
-            sinks_.push_back(std::make_unique<DisabledSink>(cfg));
-            continue;
-        }
-        if (cfg.kind == OutputKind::Ndi) {
-            if (!Entitlements::current().ndi) {
-                qWarning().noquote() << QString("Output NDI '%1' bị tắt: NDI không có trong gói giấy phép").arg(cfg.name);
-                sinks_.push_back(std::make_unique<DisabledSink>(cfg));
-                continue;
-            }
-            sinks_.push_back(std::make_unique<NdiOutputSink>(cfg, project_.fps, &audio_));
-            continue;
-        }
-        auto w = std::make_unique<OutputWindow>(cfg);
-        if (cfg.fullscreen) {
-            if (w->canShow()) w->showFullScreen();
-            else qWarning().noquote() << QString("Output '%1': man hinh '%2' (so %3) khong ton tai - KHONG hien hinh de tranh len nham man hinh khac")
-                                              .arg(cfg.name, cfg.screenName).arg(cfg.screenIndex);
-        } else {
-            // Cua so thu nghiem: thu nho neu lon hon man hinh (giu ti le), xep hang ngang, luon nam trong man hinh.
-            QSize sz = cfg.size;
-            const QSize maxSz(int(avail.width() * 0.6), int(avail.height() * 0.5));
-            if (sz.width() > maxSz.width() || sz.height() > maxSz.height()) sz = sz.scaled(maxSz, Qt::KeepAspectRatio);
-            w->resize(sz);
-            if (x + sz.width() > avail.right() && x > avail.left() + 20) { x = avail.left() + 20; y += rowH + 30; rowH = 0; }
-            const int py = std::min(y, std::max(avail.top(), avail.bottom() - sz.height() - 40));
-            w->setPosition(std::min(x, std::max(avail.left(), avail.right() - sz.width())), py);
-            x += sz.width() + 12;
-            rowH = std::max(rowH, sz.height());
-            w->show();
-        }
-        sinks_.push_back(std::move(w));
+        auto sink = makeSink(cfg, index++);
+        if (auto* w = dynamic_cast<OutputWindow*>(sink.get())) placeWindow(*w, cfg);
+        sinks_.push_back(std::move(sink));
     }
     stop_ = false;
     start();
+}
+
+bool RenderEngine::applyOutputs(const std::vector<OutputConfig>& cfgs, std::function<void()> sameFrame) {
+    std::vector<OutputSink*> old;
+    {
+        std::lock_guard lk(sinksMu_);
+        for (const auto& s : sinks_) old.push_back(s.get());
+    }
+    auto compatible = [](OutputSink* s, const OutputConfig& c) {
+        if (auto* w = dynamic_cast<OutputWindow*>(s)) return w->matches(c);
+        if (dynamic_cast<NdiOutputSink*>(s)) {
+            const OutputConfig& o = s->config();
+            return c.kind == OutputKind::Ndi && o.name == c.name && o.ndiName == c.ndiName && o.channel == c.channel && o.size == c.size
+                   && o.ndiAudio == c.ndiAudio;
+        }
+        return false;                                              // sink rong (goi giay phep): tao lai
+    };
+    // Chon sink cu cho tung muc moi: uu tien cung ten (xoa mot Output giua danh sach khong tao lai cac Output sau), roi cung vi
+    // tri (doi ten), roi bat ky.
+    std::vector<int> reuse(cfgs.size(), -1);
+    std::vector<char> used(old.size(), 0);
+    for (int pass = 0; pass < 3; ++pass)
+        for (size_t i = 0; i < cfgs.size(); ++i)
+            for (size_t j = 0; j < old.size() && reuse[i] < 0; ++j) {
+                if (used[j] || (pass == 0 && old[j]->config().name != cfgs[i].name) || (pass == 1 && j != i) || !compatible(old[j], cfgs[i])) continue;
+                reuse[i] = int(j);
+                used[j] = 1;
+            }
+    bool allBlack = !old.empty();
+    for (OutputSink* s : old) allBlack = allBlack && s->black;
+
+    auto fresh = std::make_shared<std::vector<std::unique_ptr<OutputSink>>>(cfgs.size());
+    std::vector<OutputWindow*> toShow;
+    std::vector<OutputConfig> toShowCfg;
+    for (size_t i = 0; i < cfgs.size(); ++i) {
+        if (reuse[i] >= 0) continue;
+        (*fresh)[i] = makeSink(cfgs[i], int(i));
+        OutputSink* s = (*fresh)[i].get();
+        if (i < old.size()) { s->black = old[i]->black.load(); s->freeze = false; s->testPattern = old[i]->testPattern.load(); }
+        if (allBlack) s->black = true;                              // dang BLACK ALL: man moi khong duoc loe hinh
+        if (auto* w = dynamic_cast<OutputWindow*>(s)) { toShow.push_back(w); toShowCfg.push_back(cfgs[i]); }
+    }
+
+    std::vector<OutputWindow*> toHide;
+    for (size_t j = 0; j < old.size(); ++j)
+        if (!used[j])
+            if (auto* w = dynamic_cast<OutputWindow*>(old[j])) toHide.push_back(w);
+    for (OutputWindow* w : toHide) w->hide();                      // an truoc khi hien cua so moi tren cung man hinh
+
+    const bool done = postAndWait([this, cfgs, reuse, fresh, sameFrame = std::move(sameFrame)](double) {
+        std::lock_guard lk(sinksMu_);
+        std::vector<std::unique_ptr<OutputSink>> next(cfgs.size());
+        for (size_t i = 0; i < cfgs.size(); ++i) {
+            if (reuse[i] >= 0) {
+                next[i] = std::move(sinks_[size_t(reuse[i])]);
+                const QString screen = next[i]->config().screenName;
+                next[i]->mutableConfig() = cfgs[i];
+                if (cfgs[i].fullscreen && cfgs[i].screenName.isEmpty()) next[i]->mutableConfig().screenName = screen;
+            } else {
+                next[i] = std::move((*fresh)[i]);
+            }
+        }
+        for (auto& s : sinks_)
+            if (s) retiring_.push_back(std::move(s));
+        sinks_ = std::move(next);
+        project_.outputs.clear();
+        for (const auto& s : sinks_) project_.outputs.push_back(s->config());
+        if (sameFrame) sameFrame();
+    });
+
+    for (size_t i = 0; i < toShow.size(); ++i) placeWindow(*toShow[i], toShowCfg[i]);
+    for (size_t i = 0; i < cfgs.size(); ++i) {                       // cua so giu lai: ten / kich thuoc co the doi
+        if (reuse[i] < 0) continue;
+        if (auto* w = dynamic_cast<OutputWindow*>(output(int(i)))) {
+            w->setTitle("LumaCast (LED Display Controller) - " + cfgs[i].name);
+            if (!cfgs[i].fullscreen && w->isVisible() && old[size_t(reuse[i])] == w) {
+                const QRect avail = QGuiApplication::primaryScreen()->availableGeometry();
+                QSize sz = cfgs[i].size;
+                const QSize maxSz(int(avail.width() * 0.6), int(avail.height() * 0.5));
+                if (sz.width() > maxSz.width() || sz.height() > maxSz.height()) sz = sz.scaled(maxSz, Qt::KeepAspectRatio);
+                if (sz != w->size()) w->resize(sz);
+            }
+        }
+    }
+    return done;
 }
 
 void RenderEngine::stopEngine() {
@@ -204,6 +304,8 @@ void RenderEngine::stopEngine() {
     lastPlan_.reset();
     std::lock_guard lk(sinksMu_);
     sinks_.clear();
+    retiring_.clear();
+    graveyard_.clear();
 }
 
 // Video chay ca o Preview; khi VUA len Program (CUT, bat dau transition/T-bar...) thi phat lai tu dau. Nguon dang o Program
@@ -229,6 +331,26 @@ void RenderEngine::rewindVideoGoingOnAir() {
             if (!has(continuous, s)) s->rewind();
     }
     onAir_ = std::move(now);
+    syncVideoLoop(live);
+}
+
+// Video lap lai tru khi Scene quyet dinh no bo chon "Lap": dang tren Program thi cac Scene dang len song quyet dinh, con lai
+// thi moi Scene dung no (video dung chung cho nhieu Scene chi co mot bo giai ma).
+void RenderEngine::syncVideoLoop(const std::vector<const Scene*>& live) {
+    struct Use { Source* src; bool onAir, offOnAir, offAny; };
+    std::vector<Use> uses;
+    for (const auto& s : project_.scenes) {
+        const bool isLive = std::find(live.begin(), live.end(), s.get()) != live.end();
+        for (const Layer& l : s->layers) {
+            if (!l.source || !l.source->hasTransport()) continue;
+            auto it = std::find_if(uses.begin(), uses.end(), [&](const Use& u) { return u.src == l.source.get(); });
+            if (it == uses.end()) it = uses.insert(uses.end(), {l.source.get(), false, false, false});
+            it->onAir = it->onAir || isLive;
+            it->offOnAir = it->offOnAir || (isLive && !s->loop);
+            it->offAny = it->offAny || !s->loop;
+        }
+    }
+    for (const Use& u : uses) u.src->setLooping(!(u.onAir ? u.offOnAir : u.offAny));
 }
 
 void RenderEngine::run() {
@@ -282,6 +404,14 @@ void RenderEngine::run() {
 
         // 2) render tat ca Channel vao FBO
         ctx.makeCurrent(surface_.get());
+        {
+            std::lock_guard lk(sinksMu_);                          // Output vua bi go: tra tai nguyen GL, giu doi tuong lai
+            for (auto& s : retiring_) {
+                s->shutdown(ctx, comp);
+                graveyard_.push_back(std::move(s));
+            }
+            retiring_.clear();
+        }
         GlProfile::uploadNs() = 0;
         comp.resetTiming();
         pool.beginFrame();
@@ -339,15 +469,17 @@ void RenderEngine::run() {
 
         // 3b) anh thu nho Scene cho Multiview: lam SAU khi da dua hinh ra Output, toi da 1 Scene/khung, tinh vao giai doan monitor
         {
-            const int tc = sceneThumbChannel_;
+            const int mv = sceneThumbChannel_, list = listThumbChannel_;
+            const int tc = mv >= 0 ? mv : list;
             if (tc >= 0 || sceneRing.channel() >= 0) {
                 const int64_t t3 = GlProfile::nowNs();
                 const bool valid = tc >= 0 && tc < int(project_.channels.size());
                 ctx.makeCurrent(surface_.get());
                 if (sceneRing.tick(comp, pool, valid ? tc : -1, valid ? &project_.channels[size_t(tc)]->scenes : nullptr,
-                                   project_.fps, monitorTick == 0, Clock::now() - frameStart > period / 2)) {
+                                   project_.fps, monitorTick == 0, Clock::now() - frameStart > period / 2,
+                                   mv >= 0 ? SceneThumbRing::kMaxHz : SceneThumbRing::kListHz)) {
                     std::lock_guard lk(monitorMutex_);
-                    sceneThumbs_ = {sceneRing.channel(), sceneRing.images()};
+                    sceneThumbs_ = {sceneRing.channel(), sceneRing.images(), sceneRing.scenes()};
                 }
                 if (GlProfile::sync()) comp.gl().glFinish();
                 monNs += GlProfile::nowNs() - t3;
@@ -398,6 +530,7 @@ void RenderEngine::run() {
     {
         std::lock_guard lk(sinksMu_);
         for (auto& s : sinks_) s->shutdown(ctx, comp);
+        for (auto& s : retiring_) s->shutdown(ctx, comp);
     }
     sceneRing.release(comp.gl());
     {

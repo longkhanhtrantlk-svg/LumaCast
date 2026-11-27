@@ -473,11 +473,16 @@ void Compositor::fadeToBlack(RenderTarget& dst, float amount) {
     gl_.glDisable(GL_BLEND);
 }
 
-void Compositor::drawToCurrent(GLuint tex, int texW, int texH, const OutputConfig& cfg, int winW, int winH) {
+void Compositor::drawToCurrent(GLuint tex, int texW, int texH, const OutputConfig& cfg, int winW, int winH, const QRect& area) {
     gl_.glViewport(0, 0, winW, winH);
     gl_.glClearColor(0, 0, 0, 1);
-    gl_.glClear(GL_COLOR_BUFFER_BIT);
+    gl_.glClear(GL_COLOR_BUFFER_BIT);                  // ca khung: ngoai vung LED luon den
     gl_.glDisable(GL_BLEND);
+    if (!area.isEmpty()) {                             // area goc tren-trai -> viewport goc duoi-trai
+        gl_.glViewport(area.x(), winH - area.y() - area.height(), area.width(), area.height());
+        winW = area.width();
+        winH = area.height();
+    }
 
     const QRectF crop = cfg.crop;
     const double cw = crop.width() * texW, ch = crop.height() * texH;

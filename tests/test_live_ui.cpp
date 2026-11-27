@@ -1,4 +1,4 @@
-// Test M5b (can GL/xvfb): giao dien + engine that voi backend NDI/camera gia — Media Pool (them nguon, trang thai, Hoan tac), hop thoai chon NDI/camera/Output NDI,
+// Test M5b (can GL/xvfb): giao dien + engine that voi backend NDI/camera gia — danh sach Scenes (them nguon, trang thai, Hoan tac), hop thoai chon NDI/camera/Output NDI,
 // them Output NDI luc dang chay (Program that qua GPU -> NDI), luu project, khoa van hanh, HTTP /api/sources.
 #include "InspectorPanel.h"
 #include "LiveDialogs.h"
@@ -21,6 +21,7 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QTemporaryDir>
+#include <QToolButton>
 #include <QThread>
 #include <QUndoStack>
 #include <iostream>
@@ -123,10 +124,10 @@ int main(int argc, char** argv) {
     w.setAskOnClose(false);
     w.show();
     pump(300);
-    auto* media = w.findChild<QListWidget*>("mediaList");
-    auto* addNdi = w.findChild<QPushButton*>("addNdiBtn");
-    auto* addCam = w.findChild<QPushButton*>("addCamBtn");
-    CHECK(media && addNdi && addCam && media->count() == 1, "Media Pool: co nut Them NDI/Them camera");
+    auto* media = w.findChild<QListWidget*>("sceneList");
+    auto* addNdi = w.findChild<QToolButton*>("addNdiBtn");
+    auto* addCam = w.findChild<QToolButton*>("addCamBtn");
+    CHECK(media && addNdi && addCam && media->count() == 1, "Danh sach Scenes: co nut Them NDI/Them camera");
 
     // ---------- them nguon NDI ----------
     CHECK(w.addNdiSource("STUDIO (Cam 1)", {}, "Cam sân khấu"), "Them nguon NDI");
@@ -134,10 +135,10 @@ int main(int argc, char** argv) {
     CHECK(media->count() == 2 && p.sources.size() == 2 && p.sources[1].type == "ndi" && p.scenes.size() == 2 && p.scenes[1]->name == "Cam sân khấu", "NDI: them nguon + tao Scene nhu nhap media");
     auto* lsrc = dynamic_cast<LiveSource*>(p.sources[1].source.get());
     CHECK(lsrc != nullptr && waitFor([&] { return lsrc->state() == LiveState::Live; }, 3000), "NDI trong project: ket noi Live");
-    CHECK(waitFor([&] { return media->item(1)->text().contains("Cam sân khấu") && media->item(1)->text().startsWith("●"); }, 2500), "Media Pool: hien trang thai ● cho nguon dang Live");
-    CHECK(media->item(1)->toolTip().contains("NDI") && media->item(1)->toolTip().contains("160x90"), "Media Pool: tooltip ghi trang thai + do phan giai");
+    CHECK(waitFor([&] { return media->item(1)->text().contains("Cam sân khấu") && media->item(1)->toolTip().startsWith("NDI"); }, 2500), "Danh sach Scenes: hien trang thai cua nguon dang Live");
+    CHECK(media->item(1)->toolTip().contains("NDI") && media->item(1)->toolTip().contains("160x90"), "danh sach Scenes: tooltip ghi trang thai + do phan giai");
     ndi->setSourceAlive("STUDIO (Cam 1)", false);
-    CHECK(waitFor([&] { return lsrc->state() == LiveState::Lost && media->item(1)->toolTip().contains("Mất tín hiệu"); }, 6000), "Mat tin hieu NDI: Media Pool bao 'Mat tin hieu'");
+    CHECK(waitFor([&] { return lsrc->state() == LiveState::Lost && media->item(1)->toolTip().contains("Mất tín hiệu"); }, 6000), "Mat tin hieu NDI: danh sach Scenes bao 'Mat tin hieu'");
     ndi->setSourceAlive("STUDIO (Cam 1)", true);
     CHECK(waitFor([&] { return lsrc->state() == LiveState::Live; }, 6000), "NDI tro lai -> Live");
     w.undoStack()->undo();
@@ -153,7 +154,7 @@ int main(int argc, char** argv) {
     auto* lcam = dynamic_cast<LiveSource*>(p.sources[2].source.get());
     CHECK(media->count() == 3 && p.sources[2].type == "camera" && p.sources[2].size == QSize(1280, 720) && lcam && waitFor([&] { return lcam->state() == LiveState::Live; }, 3000), "Camera: them nguon + ket noi Live");
     cam->removeDevice("cam:1");
-    CHECK(waitFor([&] { return lcam->state() == LiveState::Lost; }, 4000) && waitFor([&] { return media->item(2)->toolTip().contains("Mất tín hiệu"); }, 2500), "Rut camera: Media Pool bao mat tin hieu");
+    CHECK(waitFor([&] { return lcam->state() == LiveState::Lost; }, 4000) && waitFor([&] { return media->item(2)->toolTip().contains("Mất tín hiệu"); }, 2500), "Rut camera: danh sach Scenes bao mat tin hieu");
     cam->addDevice("cam:1", "Webcam A", {{1280, 720, 30}});
     CHECK(waitFor([&] { return lcam->state() == LiveState::Live; }, 5000), "Cam lai camera -> tu noi lai");
 
@@ -204,7 +205,7 @@ int main(int argc, char** argv) {
         const QJsonObject st = js(call(api, "GET", "/api/state"));
         const QJsonArray so = st["sources"].toArray();
         CHECK(so.size() == 2 && so[0].toObject()["kind"] == "ndi" && so[0].toObject()["index"].toInt() == 2 && so[1].toObject()["kind"] == "camera" && so[0].toObject()["state"] == "live",
-              "GET /api/state: sources (chi nguon truc tiep) co kind/state, chi so 1-based theo Media Pool");
+              "GET /api/state: sources (chi nguon truc tiep) co kind/state, chi so 1-based theo danh sach Scenes");
         const QJsonArray ou = st["outputs"].toArray();
         CHECK(ou[0].toObject()["kind"] == "screen" && ou[1].toObject()["kind"] == "ndi" && ou[1].toObject()["ndi"].toObject()["sending"].toBool(), "GET /api/state: outputs co kind va khoi ndi");
         const QJsonArray api2 = js(call(api, "GET", "/api/sources"))["sources"].toArray();

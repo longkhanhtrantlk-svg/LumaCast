@@ -17,6 +17,8 @@ public:
 
     // --- UI thread ---
     bool isFullscreenOutput() const { return ident_.fullscreen; }
+    // Cau hinh `c` dung duoc voi chinh cua so nay (cung che do va cung man hinh)? Khac thi phai tao cua so moi.
+    bool matches(const OutputConfig& c) const;
     bool canShow() const;                 // man hinh da cau hinh con ton tai (hoac la cua so thuong)
     bool applyScreen();                   // dua cua so len DUNG man hinh va hien; false neu man hinh khong con
     OutputHealth health() const;
@@ -27,7 +29,7 @@ private:
     OutputConfig cfg_;             // render thread co the sua qua mutableConfig()
     const OutputConfig ident_;     // dinh danh man hinh, bat bien -> UI thread doc an toan
     GlTexture testTex_;
-    QSize testSize_;
+    QString testKey_;              // kich thuoc / vung / ten cua mau thu dang nap
 };
 
 } // namespace lc

@@ -12,6 +12,9 @@
 #include "MultiviewWindow.h"
 #include "ParamEditor.h"
 #include "PlaylistPanel.h"
+#include "ScenePanel.h"
+#include "ScreenDialog.h"
+#include "Icons.h"
 #include "SettingsDialog.h"
 #include "core/AppSettings.h"
 #include "core/Startup.h"
@@ -74,7 +77,7 @@ static QStringList draggedFiles(const QMimeData* mime) {
 }
 
 namespace {
-// Hoan tac/Lam lai cho nhap media va tao Scene tu Media Pool (PRJ-07). Khong gop buoc.
+// Hoan tac/Lam lai cho nhap media / them nguon (PRJ-07). Khong gop buoc.
 constexpr int kImportCmdId = 7000001;
 class ImportCmd : public QUndoCommand {
 public:
@@ -87,10 +90,62 @@ private:
     MainWindow* w_;
     std::shared_ptr<MainWindow::ImportEntry> e_;
 };
+
+class RemoveSceneCmd : public QUndoCommand {
+public:
+    RemoveSceneCmd(MainWindow* w, std::shared_ptr<MainWindow::SceneRemoval> r, const QString& text) : QUndoCommand(text), w_(w), r_(std::move(r)) {}
+    void redo() override { if (!w_->applyRemoval(r_)) w_->removalRefused(this); }
+    void undo() override { w_->undoRemoval(r_); }
+    const Scene* scene() const { return r_->scene.get(); }
+private:
+    MainWindow* w_;
+    std::shared_ptr<MainWindow::SceneRemoval> r_;
+};
+
+class RenameSceneCmd : public QUndoCommand {
+public:
+    RenameSceneCmd(MainWindow* w, std::shared_ptr<Scene> s, QString after)
+        : QUndoCommand("Đổi tên Scene: " + after), w_(w), s_(std::move(s)), before_(s_->name), after_(std::move(after)) {}
+    void redo() override { w_->applySceneName(s_, after_); }
+    void undo() override { w_->applySceneName(s_, before_); }
+private:
+    MainWindow* w_;
+    std::shared_ptr<Scene> s_;
+    QString before_, after_;
+};
+
+class ScreenCmd : public QUndoCommand {
+public:
+    ScreenCmd(MainWindow* w, MainWindow::ScreenState before, MainWindow::ScreenState after, const QString& text)
+        : QUndoCommand(text), w_(w), before_(std::move(before)), after_(std::move(after)) {}
+    void redo() override { w_->setScreenState(after_); }
+    void undo() override { w_->setScreenState(before_); }
+private:
+    MainWindow* w_;
+    MainWindow::ScreenState before_, after_;
+};
+
+bool sameOutput(const OutputConfig& a, const OutputConfig& b) {
+    return a.kind == b.kind && a.name == b.name && a.ndiName == b.ndiName && a.ndiAudio == b.ndiAudio && a.channel == b.channel
+           && a.screenIndex == b.screenIndex && a.screenName == b.screenName && a.fullscreen == b.fullscreen && a.size == b.size
+           && a.scale == b.scale && a.rotation == b.rotation && a.crop == b.crop && a.area == b.area
+           && a.cal.brightness == b.cal.brightness && a.cal.contrast == b.cal.contrast && a.cal.gamma == b.cal.gamma
+           && a.cal.gainR == b.cal.gainR && a.cal.gainG == b.cal.gainG && a.cal.gainB == b.cal.gainB;
+}
+
+bool sameFile(const QString& a, const QString& b) {
+    const QString ca = QFileInfo(a).canonicalFilePath(), cb = QFileInfo(b).canonicalFilePath();
+#ifdef _WIN32
+    const Qt::CaseSensitivity cs = Qt::CaseInsensitive;
+#else
+    const Qt::CaseSensitivity cs = Qt::CaseSensitive;
+#endif
+    return !ca.isEmpty() && ca.compare(cb, cs) == 0;
+}
 } // namespace
 
 // Tang so nay MOI KHI them/bot/doi cho dock mac dinh.
-static constexpr int kLayoutVersion = 2;
+static constexpr int kLayoutVersion = 3;
 
 MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList pluginDirs)
     : project_(project), engine_(engine), sup_(engine), pm_(engine.registry(), std::move(pluginDirs)) {
@@ -170,13 +225,15 @@ void MainWindow::setLocked(bool on) {
     pluginPanel_->setEnabled(!on);
     audioPanel_->setEditLocked(on);
     overlayPanel_->setLocked(on);              // khoa: chi con hien/an va dong ho dem nguoc
-    importBtn_->setEnabled(!on);
+    scenes_->setLocked(on);                    // khoa: khong nhap/doi ten/xoa/lap; phat/tua/tieng van dung duoc
     importAct_->setEnabled(!on);
-    for (QWidget* w : {static_cast<QWidget*>(addNdiBtn_), static_cast<QWidget*>(addCamBtn_)}) w->setEnabled(!on);
     for (QAction* a : {addNdiAct_, addCamAct_, addNdiOutAct_}) a->setEnabled(!on);
     openAct_->setEnabled(!on);
     recentMenu_->setEnabled(!on && !appSettings().value("recent").toStringList().isEmpty());
     settingsAct_->setEnabled(!on);
+    screenAct_->setEnabled(!on);
+    newAct_->setEnabled(!on);
+    screenBtn_->setEnabled(!on);
     inputAct_->setEnabled(!on);
     updateUndoActions();
     lockLabel_->setText(on ? "🔒 KHOÁ VẬN HÀNH" : "🔓 Mở khoá");
@@ -352,37 +409,22 @@ static QScrollArea* scrollable(QWidget* content) {
 }
 
 void MainWindow::buildDocks() {
-    // Scenes
-    auto* scenesDock = new QDockWidget("Scenes", this);
-    scenesDock->setObjectName("dockScenes");
-    sceneList_ = new QListWidget;
-    sceneList_->setObjectName("sceneList");
-    sceneList_->setTextElideMode(Qt::ElideMiddle);
-    sceneList_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    sceneList_->setMinimumWidth(140);
-    scenesDock->setWidget(sceneList_);
-    addDockWidget(Qt::LeftDockWidgetArea, scenesDock);
-    connect(sceneList_, &QListWidget::itemClicked, this, [this](QListWidgetItem* it) {
-        auto ch = project_.channels[channelIdx()];
-        const int idx = sceneList_->row(it);
-        if (autoBtn_->isChecked()) {                       // AUTO: chon scene = chuyen thang len Program
-            const TransitionSpec spec = currentSpec();
-            engine_.post([ch, idx, spec](double now) { ch->setPreview(idx); ch->startTransition(spec, now); });
-        } else {
-            engine_.post([ch, idx](double) { ch->setPreview(idx); });
-        }
-    });
-    connect(sceneList_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* it) {
-        auto ch = project_.channels[channelIdx()];
-        const int idx = sceneList_->row(it);
-        engine_.post([ch, idx](double now) { ch->setPreview(idx); ch->cut(now); });
-    });
-
     // Outputs
     auto* outDock = new QDockWidget("Outputs", this);
     outDock->setObjectName("dockOutputs");
     auto* outW = new QWidget;
     auto* ov = new QVBoxLayout(outW);
+    screenBtn_ = new QToolButton;
+    screenBtn_->setObjectName("screenSetupBtn");
+    screenBtn_->setIcon(glyphIcon(Glyph::Screen));
+    screenBtn_->setIconSize(QSize(18, 18));
+    screenBtn_->setFocusPolicy(Qt::NoFocus);
+    screenBtn_->setToolTip("Thiết lập màn hình và khung hình: thêm/xoá Output, chọn màn, vùng LED, video wall");
+    connect(screenBtn_, &QToolButton::clicked, this, [this] { showScreenSetup(); });
+    auto* setupRow = new QHBoxLayout;
+    setupRow->addWidget(screenBtn_);
+    setupRow->addStretch();
+    ov->addLayout(setupRow);
     outRowsLayout_ = new QVBoxLayout;
     ov->addLayout(outRowsLayout_);
     for (int i = 0; i < engine_.outputCount(); ++i) addOutputRow(i);
@@ -414,59 +456,39 @@ void MainWindow::buildDocks() {
     connect(inspector_, &InspectorPanel::mappingRequested, this, [this] { showMapping(); });
     addDockWidget(Qt::RightDockWidgetArea, inspDock);
 
-    // Media Pool
-    auto* mediaDock = new QDockWidget("Media Pool", this);
-    mediaDock->setObjectName("dockMedia");
-    auto* mw = new QWidget;
-    auto* mv = new QVBoxLayout(mw);
-    auto* mtop = new QHBoxLayout;
-    auto* importB = new QPushButton("Nhập media...");
-    importBtn_ = importB;
-    mtop->addWidget(importB);
-    addNdiBtn_ = new QPushButton("Thêm NDI...");
-    addNdiBtn_->setObjectName("addNdiBtn");
-    addNdiBtn_->setToolTip("Thêm nguồn NDI từ mạng (cần NDI Runtime)");
-    addCamBtn_ = new QPushButton("Thêm camera...");
-    addCamBtn_->setObjectName("addCamBtn");
-    addCamBtn_->setToolTip("Thêm webcam / card capture");
-    mtop->addWidget(addNdiBtn_);
-    mtop->addWidget(addCamBtn_);
-    connect(addNdiBtn_, &QPushButton::clicked, this, [this] { showAddNdiSource(); });
-    connect(addCamBtn_, &QPushButton::clicked, this, [this] { showAddCamera(); });
-    mtop->addWidget(new QLabel("Nhấp đúp để tạo Scene từ nguồn"));
-    mtop->addStretch();
-    mv->addLayout(mtop);
-    mediaList_ = new QListWidget;
-    mediaList_->setObjectName("mediaList");
-    mediaList_->setViewMode(QListView::IconMode);
-    mediaList_->setIconSize(QSize(128, 72));
-    mediaList_->setResizeMode(QListView::Adjust);
-    mediaList_->setMovement(QListView::Static);
-    mediaList_->setWordWrap(true);
-    mediaList_->setTextElideMode(Qt::ElideMiddle);
-    mv->addWidget(mediaList_);
-    mediaDock->setWidget(mw);
-    addDockWidget(Qt::BottomDockWidgetArea, mediaDock);
-    connect(importB, &QPushButton::clicked, this, [this] {
-        for (const QString& f : QFileDialog::getOpenFileNames(this, "Nhập media", QString(), kMediaFilter)) addMediaFile(f);
+    // Scenes: danh sach o anh thu nho duoi man hinh (nhap media, camera, keo tha; phat/tieng/doi ten/xoa tren tung o)
+    auto* scenesDock = new QDockWidget("Scenes", this);
+    scenesDock->setObjectName("dockScenes");
+    scenes_ = new ScenePanel(project_, engine_);
+    sceneList_ = scenes_->list();
+    scenesDock->setWidget(scenes_);
+    addDockWidget(Qt::BottomDockWidgetArea, scenesDock);
+    scenes_->renameScene = [this](const std::shared_ptr<Scene>& s, const QString& n) { renameScene(s, n); };
+    scenes_->deleteScene = [this](const std::shared_ptr<Scene>& s) { deleteScene(s); };
+    scenes_->setSceneLoop = [this](const std::shared_ptr<Scene>& s, bool on) {
+        const auto it = std::find(project_.scenes.begin(), project_.scenes.end(), s);
+        if (it != project_.scenes.end()) timeline_->setSceneLoop(int(it - project_.scenes.begin()), on);
+    };
+    connect(scenes_->importButton(), &QToolButton::clicked, this, [this] { chooseMediaFiles(); });
+    connect(scenes_->ndiButton(), &QToolButton::clicked, this, [this] { showAddNdiSource(); });
+    connect(scenes_->cameraButton(), &QToolButton::clicked, this, [this] { showAddCamera(); });
+    connect(sceneList_, &QListWidget::itemClicked, this, [this](QListWidgetItem* it) {
+        auto ch = project_.channels[channelIdx()];
+        const int idx = sceneList_->row(it);
+        if (autoBtn_->isChecked()) {                       // AUTO: chon scene = chuyen thang len Program
+            const TransitionSpec spec = currentSpec();
+            engine_.post([ch, idx, spec](double now) { ch->setPreview(idx); ch->startTransition(spec, now); });
+        } else {
+            engine_.post([ch, idx](double) { ch->setPreview(idx); });
+        }
     });
-    connect(mediaList_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* it) {
-        if (locked_) { showMessage("Đang khoá vận hành: không tạo Scene mới được"); return; }
-        const int k = it->data(Qt::UserRole).toInt();
-        if (k < 0 || k >= int(project_.sources.size())) return;
-        auto src = project_.sources[k].source;
-        auto e = std::make_shared<ImportEntry>();
-        e->addsSource = false;
-        e->def = project_.sources[k];
-        e->scene = std::make_shared<Scene>();
-        e->scene->name = src->name();
-        e->scene->size = project_.channels[0]->size;
-        e->scene->layers.push_back({src, {0, 0, 1, 1}, 1.0f, LayerFit::Fit, true});
-        pushImport(e, "Tạo Scene: " + src->name());
+    connect(sceneList_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* it) {
+        auto ch = project_.channels[channelIdx()];
+        const int idx = sceneList_->row(it);
+        engine_.post([ch, idx](double now) { ch->setPreview(idx); ch->cut(now); });
     });
 
-
-    // Timeline (tab canh Media Pool)
+    // Timeline (tab canh Scenes)
     auto* tlDock = new QDockWidget("Timeline", this);
     tlDock->setObjectName("dockTimeline");
     timeline_ = new TimelineWidget(*inspector_, engine_, project_);
@@ -476,19 +498,19 @@ void MainWindow::buildDocks() {
         tlDock->setWindowTitle("Timeline (không có trong gói)");
     }
     addDockWidget(Qt::BottomDockWidgetArea, tlDock);
-    tabifyDockWidget(mediaDock, tlDock);
+    tabifyDockWidget(scenesDock, tlDock);
 
-    // Playlist / slide anh tu chuyen (tab canh Media Pool)
+    // Playlist / slide anh tu chuyen (tab canh Scenes)
     auto* plDock = new QDockWidget("Playlist", this);
     plDock->setObjectName("dockPlaylist");
     playlist_ = new PlaylistPanel(project_, engine_, &undo_);
     playlist_->mediaFilter = kMediaFilter;
-    playlist_->importFile = [this](const QString& path) { return importForPlaylist(path); };
+    playlist_->importFile = [this](const QString& path) { return importMedia(path); };
     playlist_->showMessage = [this](const QString& m) { showMessage(m); };
     plDock->setWidget(playlist_);
     addDockWidget(Qt::BottomDockWidgetArea, plDock);
     tabifyDockWidget(tlDock, plDock);
-    mediaDock->raise();
+    scenesDock->raise();
     connect(timeline_, &TimelineWidget::playheadChanged, this, [this] { inspector_->refreshProps(); });
 
     // Plug-in Manager
@@ -543,18 +565,19 @@ void MainWindow::buildDocks() {
     pm_.watch(true);
 
     setCorner(Qt::BottomRightCorner, Qt::RightDockWidgetArea);
-    resizeDocks({scenesDock, inspDock}, {170, 390}, Qt::Horizontal);
+    resizeDocks({inspDock}, {390}, Qt::Horizontal);
     resizeDocks({outDock, inspDock}, {190, 520}, Qt::Vertical);
-    resizeDocks({mediaDock}, {330}, Qt::Vertical);        // du cao cho 6 lan keyframe cua Timeline
+    resizeDocks({scenesDock}, {330}, Qt::Vertical);       // du cao cho 6 lan keyframe cua Timeline
     rebuildSceneList();
-    rebuildMediaList();
 }
 
 void MainWindow::addOutputRow(int i) {
     OutputSink* sink = engine_.output(i);
     const OutputConfig& c = sink->config();
     OutRow r;
-    auto* row = new QHBoxLayout;
+    r.box = new QWidget;
+    auto* row = new QHBoxLayout(r.box);
+    row->setContentsMargins(0, 0, 0, 0);
     r.dot = new QLabel("●");
     r.info = new QLabel(QString("<b>%1</b><br><small>%2x%3 · kênh %4</small>")
                             .arg(c.name).arg(c.size.width()).arg(c.size.height()).arg(c.channel + 1));
@@ -578,10 +601,18 @@ void MainWindow::addOutputRow(int i) {
     r.reopen->setStyleSheet("background:#8a1c1c;color:white;font-weight:bold");
     r.reopen->setVisible(false);
     row->addWidget(r.reopen);
+    r.warn = new QToolButton;
+    r.warn->setText("⚠");
+    r.warn->setObjectName(QString("outputWarn%1").arg(i));
+    r.warn->setStyleSheet("color:#ffb74d;font-weight:bold");
+    r.warn->setFocusPolicy(Qt::NoFocus);
+    r.warn->setVisible(false);
+    connect(r.warn, &QToolButton::clicked, this, [this] { showScreenSetup(); });
+    row->addWidget(r.warn);
     row->addWidget(r.black);
     row->addWidget(r.freeze);
     row->addWidget(r.pattern);
-    outRowsLayout_->addLayout(row);
+    outRowsLayout_->addWidget(r.box);
     connect(r.black, &QToolButton::toggled, this, [sink](bool on) { sink->black = on; });
     connect(r.freeze, &QToolButton::toggled, this, [sink](bool on) { sink->freeze = on; });
     connect(r.pattern, &QToolButton::toggled, this, [sink](bool on) { sink->testPattern = on; });
@@ -590,6 +621,132 @@ void MainWindow::addOutputRow(int i) {
         if (w && !w->applyScreen()) showMessage("Không mở lại được: màn hình của Output này không còn");
     });
     outRows_.push_back(r);
+}
+
+void MainWindow::rebuildOutputRows() {
+    for (OutRow& r : outRows_) {
+        r.box->hide();
+        r.box->setParent(nullptr);
+        r.box->deleteLater();
+    }
+    outRows_.clear();
+    for (int i = 0; i < engine_.outputCount(); ++i) addOutputRow(i);
+}
+
+// ---------------- thiet lap man hinh ----------------
+
+ScreenSetup MainWindow::screenSetup() const {
+    ScreenSetup s;
+    for (int i = 0; i < engine_.outputCount(); ++i) s.outputs.push_back(engine_.output(i)->config());
+    for (const auto& ch : project_.channels) s.canvases.push_back(ch->size);
+    return s;
+}
+
+bool MainWindow::applyScreenSetup(const ScreenSetup& after, const std::vector<char>& allScenes, const QString& text) {
+    if (locked_) { showMessage("Đang khoá vận hành: không đổi màn hình / khung hình được"); return false; }
+    const ScreenSetup now = screenSetup();
+    auto reject = [this](const QString& why) { showMessage("Không áp dụng được: " + why); return false; };
+    if (after.outputs.empty()) return reject("cần ít nhất một Output");
+    if (after.canvases.size() != project_.channels.size()) return reject("số kênh không khớp");
+    for (const QSize& s : after.canvases)
+        if (s.width() < kMinCanvasSide || s.height() < kMinCanvasSide || s.width() > kMaxCanvasSide || s.height() > kMaxCanvasSide)
+            return reject("khung hình không hợp lệ");
+    int ndiBefore = 0, ndiAfter = 0;
+    for (const OutputConfig& o : now.outputs) ndiBefore += o.kind == OutputKind::Ndi;
+    for (const OutputConfig& o : after.outputs) {
+        const int limit = o.kind == OutputKind::Ndi ? 8192 : kMaxCanvasSide;
+        if (o.channel < 0 || o.channel >= int(project_.channels.size())) return reject("Output trỏ tới kênh không có");
+        if (o.size.width() < 16 || o.size.height() < 16 || o.size.width() > limit || o.size.height() > limit) return reject("kích thước Output không hợp lệ");
+        if (o.crop.width() <= 0 || o.crop.height() <= 0) return reject("vùng cắt không hợp lệ");
+        ndiAfter += o.kind == OutputKind::Ndi;
+    }
+    const Entitlements& ent = Entitlements::current();
+    if (ndiAfter > ndiBefore && !ent.ndi) return reject("NDI không có trong gói giấy phép hiện tại");
+    if (ent.maxOutputs > 0 && after.outputs.size() > now.outputs.size() && int(after.outputs.size()) > ent.maxOutputs)
+        return reject(QString("gói giấy phép tối đa %1 Output").arg(ent.maxOutputs));
+
+    ScreenState from{now.outputs, now.canvases, {}}, to{after.outputs, after.canvases, {}};
+    for (size_t c = 0; c < project_.channels.size(); ++c) {
+        const bool all = c < allScenes.size() && allScenes[c];
+        const QSize old = now.canvases[c], next = after.canvases[c];
+        if (old == next && !all) continue;
+        for (const auto& s : project_.channels[c]->scenes) {
+            if (s->size == next || (!all && s->size != old)) continue;
+            if (std::any_of(from.scenes.begin(), from.scenes.end(), [&](const auto& e) { return e.first == s; })) continue;
+            from.scenes.push_back({s, s->size});
+            to.scenes.push_back({s, next});
+        }
+    }
+    const bool sameOutputs = now.outputs.size() == after.outputs.size() &&
+                             std::equal(now.outputs.begin(), now.outputs.end(), after.outputs.begin(), sameOutput);
+    if (sameOutputs && now.canvases == after.canvases && to.scenes.empty()) return true;      // khong co gi doi
+    undo_.push(new ScreenCmd(this, std::move(from), std::move(to), text));
+    showMessage("Đã áp dụng: " + text);
+    return true;
+}
+
+void MainWindow::setScreenState(const ScreenState& state) {
+    // canvas + Scene + Output doi trong CUNG mot khung hinh
+    engine_.applyOutputs(state.outputs, [channels = project_.channels, canvases = state.canvases, scenes = state.scenes] {
+        for (size_t i = 0; i < channels.size() && i < canvases.size(); ++i) channels[i]->size = canvases[i];
+        for (const auto& [scene, size] : scenes) scene->size = size;
+    });
+    rebuildOutputRows();
+    inspector_->rebuildOutputs();
+    inspector_->refreshFromProject();
+    if (mapping_) {                                        // cua so Mapping giu danh sach Output / co kenh cu: tao lai
+        const bool visible = mapping_->isVisible();
+        mapping_->hide();
+        mapping_->setObjectName("mappingWindowOld");
+        mapping_->deleteLater();
+        mapping_ = nullptr;
+        if (visible) showMapping();
+    }
+    ctlApi_->refreshProject();
+    sup_.check();
+    timeline_->refresh();
+    refreshSlow();
+    QStringList desc;
+    for (const OutputConfig& o : state.outputs)
+        desc << QString("%1 %2x%3%4").arg(o.name).arg(o.size.width()).arg(o.size.height()).arg(o.fullscreen ? " toàn màn hình" : "");
+    qInfo().noquote() << "Thiết lập màn hình:" << desc.join("; ");
+}
+
+ScreenDialog* MainWindow::createScreenDialog() {
+    auto* dlg = new ScreenDialog(project_, this);
+    dlg->current = [this] { return screenSetup(); };
+    dlg->apply = [this](const ScreenSetup& s, const std::vector<char>& all) { return applyScreenSetup(s, all); };
+    dlg->testPattern = [this](bool on) {
+        for (int i = 0; i < engine_.outputCount(); ++i) engine_.output(i)->testPattern = on;
+    };
+    dlg->reload();
+    return dlg;
+}
+
+void MainWindow::showScreenSetup() {
+    if (locked_) { showMessage("Đang khoá vận hành: không đổi màn hình / khung hình được"); return; }
+    std::unique_ptr<ScreenDialog> dlg(createScreenDialog());
+    dlg->exec();
+}
+
+void MainWindow::showNewProject() {
+    if (locked_) { showMessage("Đang khoá vận hành: không tạo project mới được"); return; }
+    NewProjectDialog dlg(this);
+    if (dlg.exec() != QDialog::Accepted) return;
+    const QString path = QFileDialog::getSaveFileName(this, "Lưu project mới", "su-kien-moi.lumacast.json", "LumaCast project (*.json)");
+    if (!path.isEmpty() && createProject(path, dlg.project())) launchProject(path);      // hoi xac nhan truoc khi dong project hien tai
+}
+
+bool MainWindow::createProject(const QString& path, const Project& project) {
+    if (locked_) return false;
+    if (QFileInfo(path).absoluteFilePath() == QFileInfo(project_.filePath).absoluteFilePath()) {
+        showMessage("Chọn tên file khác với project đang mở");
+        return false;
+    }
+    QString err;
+    if (!lc::saveProject(project, path, &err)) { showMessage("Lỗi lưu: " + err); return false; }
+    QFile::remove(path + ".autosave");                      // ghi de project cu cung ten: bo ban tu luu cu
+    return true;
 }
 
 void MainWindow::rebuildPluginList() {
@@ -619,22 +776,21 @@ void MainWindow::rebuildPluginList() {
 
 void MainWindow::buildMenus() {
     auto* file = menuBar()->addMenu("&File");
+    newAct_ = file->addAction("Project mới…", this, [this] { showNewProject(); });
     openAct_ = file->addAction("Mở project...", QKeySequence::Open, this, [this] { openProject(); });
     recentMenu_ = file->addMenu("Gần đây");
     file->addSeparator();
     file->addAction("Lưu", QKeySequence::Save, this, [this] { saveProject(false); });
     file->addAction("Lưu thành...", QKeySequence::SaveAs, this, [this] { saveProject(true); });
     file->addSeparator();
-    importAct_ = file->addAction("Nhập media...", this, [this] {
-        for (const QString& f : QFileDialog::getOpenFileNames(this, "Nhập media", QString(), kMediaFilter)) addMediaFile(f);
-    });
+    importAct_ = file->addAction("Nhập media...", this, [this] { chooseMediaFiles(); });
     addNdiAct_ = file->addAction("Thêm nguồn NDI...", this, [this] { showAddNdiSource(); });
     addCamAct_ = file->addAction("Thêm camera...", this, [this] { showAddCamera(); });
     addNdiOutAct_ = file->addAction("Thêm Output NDI...", this, [this] { showAddNdiOutput(); });
     if (!ndiCompiledIn()) {                                       // ban dich khong co NDI: an moi muc NDI
         addNdiAct_->setVisible(false);
         addNdiOutAct_->setVisible(false);
-        addNdiBtn_->setVisible(false);
+        scenes_->ndiButton()->setVisible(false);
     }
     file->addSeparator();
     file->addAction("Thoát", QKeySequence::Quit, this, [this] { close(); });
@@ -647,7 +803,7 @@ void MainWindow::buildMenus() {
     redoAct_ = new QAction("Làm lại", this);
     redoAct_->setShortcuts({QKeySequence::Redo, QKeySequence(Qt::CTRL | Qt::Key_Y)});
     connect(undoAct_, &QAction::triggered, this, [this] { if (!locked_) doUndo(); });
-    connect(redoAct_, &QAction::triggered, this, [this] { if (!locked_) undo_.redo(); });
+    connect(redoAct_, &QAction::triggered, this, [this] { if (!locked_) doRedo(); });
     for (auto sig : {&QUndoStack::canUndoChanged, &QUndoStack::canRedoChanged}) connect(&undo_, sig, this, [this] { updateUndoActions(); });
     for (auto sig : {&QUndoStack::undoTextChanged, &QUndoStack::redoTextChanged}) connect(&undo_, sig, this, [this] { updateUndoActions(); });
     edit->addAction(undoAct_);
@@ -666,6 +822,7 @@ void MainWindow::buildMenus() {
 
     auto* settings = menuBar()->addMenu("&Cài đặt");
     settingsAct_ = settings->addAction("Cài đặt vận hành…", this, [this] { openSettings(); });
+    screenAct_ = settings->addAction("Màn hình và khung hình…", this, [this] { showScreenSetup(); });
     setupInput(settings);                                 // phim tat tu dat + MIDI (MainWindowInput.cpp)
 
     auto* help = menuBar()->addMenu("&Help");
@@ -714,14 +871,22 @@ TransitionSpec MainWindow::currentSpec() const {
         s.params = transParams_.value(s.pluginId);
     } else if (key == "s") {
         s.type = TransitionType::Stinger;
-        const int k = stingerCombo_->currentData().toInt();
-        if (stingerCombo_->currentIndex() >= 0 && k >= 0 && k < int(project_.sources.size())) {
-            s.stinger = project_.sources[k].source;
+        if (auto src = stingerSource()) {
+            s.stinger = src;
             s.cutPoint = cutSpin_->value();
-            if (s.stinger && s.stinger->durationSeconds() > 0) s.duration = s.stinger->durationSeconds();
+            if (s.stinger->durationSeconds() > 0) s.duration = s.stinger->durationSeconds();
         }
     }
     return s;
+}
+
+// Video stinger dang chon (theo id nguon: danh sach nguon co the doi khi xoa Scene).
+std::shared_ptr<Source> MainWindow::stingerSource() const {
+    const QString id = stingerCombo_->currentData().toString();
+    if (id.isEmpty()) return nullptr;
+    for (const SourceDef& d : project_.sources)
+        if (d.id == id) return d.source;
+    return nullptr;
 }
 
 void MainWindow::rebuildTransitionCombo() {
@@ -741,8 +906,8 @@ void MainWindow::rebuildTransitionCombo() {
         const QVariant keepSt = stingerCombo_->currentData();
         stingerCombo_->clear();
         for (size_t i = 0; i < project_.sources.size(); ++i)
-            if (project_.sources[i].type == "video") stingerCombo_->addItem(project_.sources[i].source ? project_.sources[i].source->name() : project_.sources[i].id, int(i));
-        if (stingerCombo_->count() == 0) stingerCombo_->addItem("(chưa có video)", -1);
+            if (project_.sources[i].type == "video") stingerCombo_->addItem(project_.sources[i].source ? project_.sources[i].source->name() : project_.sources[i].id, project_.sources[i].id);
+        if (stingerCombo_->count() == 0) stingerCombo_->addItem("(chưa có video)", QString());
         const int ks = stingerCombo_->findData(keepSt);
         stingerCombo_->setCurrentIndex(ks >= 0 ? ks : 0);
     }
@@ -754,9 +919,8 @@ void MainWindow::onTransitionChanged() {
     const bool stinger = key == "s";
     stingerCombo_->setVisible(stinger);
     cutSpin_->setVisible(stinger);
-    durSpin_->setEnabled(!stinger || !(stingerCombo_->currentData().toInt() >= 0 && stingerCombo_->currentIndex() >= 0 &&
-                                      project_.sources[stingerCombo_->currentData().toInt()].source &&
-                                      project_.sources[stingerCombo_->currentData().toInt()].source->durationSeconds() > 0));
+    const auto st = stinger ? stingerSource() : nullptr;
+    durSpin_->setEnabled(!(st && st->durationSeconds() > 0));
     bool hasParams = false;
     if (key.startsWith("p:")) {
         auto d = engine_.registry().find(key.mid(2));
@@ -809,17 +973,8 @@ void MainWindow::refresh() {
     program_->setSceneName(sceneName(ci, pg) + (ch.inTransition() ? "  (đang chuyển)" : ""));
     preview_->setSceneName(sceneName(ci, pv));
     program_->setOnAir(ch.ftbAmount < 1.0f);
-
-    if (pg != lastProgram_ || pv != lastPreview_ || ci != lastChannel_) {
-        lastProgram_ = pg; lastPreview_ = pv; lastChannel_ = ci;
-        for (int i = 0; i < sceneList_->count(); ++i) {
-            QListWidgetItem* it = sceneList_->item(i);
-            const bool isPg = i == pg, isPv = i == pv;
-            it->setForeground(isPg ? QColor(colors::kProgram) : isPv ? QColor(colors::kPreview) : QColor(0xe6, 0xe8, 0xee));
-            it->setText(QString("%1  %2%3").arg(i + 1, 2, 10, QChar('0')).arg(sceneName(ci, i))
-                            .arg(isPg ? "   ● PGM" : isPv ? "   ○ PVW" : ""));
-        }
-    }
+    scenes_->setMarks(pg, pv);
+    scenes_->refresh();
     if (!ch.manualActive() && tbar_->value() != 0 && !tbar_->isSliderDown() &&
         QDateTime::currentMSecsSinceEpoch() - tbarMovedMs_ > 400) {      // T-bar da hoan tat/huy -> ve 0
         QSignalBlocker bt(tbar_);
@@ -838,7 +993,8 @@ void MainWindow::refreshSlow() {
     const double dt = lastSlowMs_ ? (now - lastSlowMs_) / 1000.0 : 0;
     lastSlowMs_ = now;
     int ready = 0;
-    for (int i = 0; i < engine_.outputCount(); ++i) {
+    const std::vector<OutputConfig> configs = screenSetup().outputs;
+    for (int i = 0; i < engine_.outputCount() && i < int(outRows_.size()); ++i) {
         OutputSink* sink = engine_.output(i);
         OutRow& r = outRows_[i];
         const OutputHealth hl = sup_.health(i);
@@ -857,9 +1013,20 @@ void MainWindow::refreshSlow() {
         else if (!exposed) extra = " · " + sup_.text(i);
         else if (sink->testPattern) extra = " · MẪU THỬ";
         else if (sink->freeze) extra = " · DỪNG HÌNH";
+        const QSize signal = outputSignalSize(c);
+        if (!c.area.isEmpty()) extra.prepend(QString(" · LED %1x%2").arg(c.area.width()).arg(c.area.height()));
         r.info->setText(QString("<b>%1</b><br><small>%2x%3 · kênh %4 · %5 fps%6</small>")
-                            .arg(c.name).arg(c.size.width()).arg(c.size.height()).arg(c.channel + 1)
+                            .arg(c.name.toHtmlEscaped()).arg(signal.width()).arg(signal.height()).arg(c.channel + 1)
                             .arg(fps, 0, 'f', 0).arg(extra));
+        QStringList warnings;
+        if (c.channel >= 0 && c.channel < int(project_.channels.size())) {
+            const Channel& channel = *project_.channels[size_t(c.channel)];
+            warnings = outputWarnings(configs, i, channel.size, signal);
+            const QString scenes = sceneSizeWarning(channel.scenes, channel.size);
+            if (!scenes.isEmpty()) warnings << scenes;
+        }
+        r.warn->setVisible(!warnings.isEmpty());
+        r.warn->setToolTip(warnings.join("\n"));
         QSignalBlocker bb(r.black), bf(r.freeze), bp(r.pattern);
         r.black->setChecked(sink->black);
         r.freeze->setChecked(sink->freeze);
@@ -880,37 +1047,13 @@ void MainWindow::refreshSlow() {
                               .arg(engine_.gpuName().isEmpty() ? "-" : engine_.gpuName())
                               .arg(engine_.fps(), 0, 'f', 1).arg(engine_.droppedFrames()).arg(ready).arg(engine_.outputCount())
                               .arg(engine_.frameP50(), 0, 'f', 1).arg(engine_.frameP99(), 0, 'f', 1));
-    updateLiveStatus();
-    // anh thu nho cua nguon dong (video) cap nhat cham
-    static int tick = 0;
-    if (++tick % 4 == 0)
-        for (int i = 0; i < mediaList_->count(); ++i) {
-            const int k = mediaList_->item(i)->data(Qt::UserRole).toInt();
-            if (k >= 0 && k < int(project_.sources.size()) && (project_.sources[k].type == "video" ||
-                (dynamic_cast<LiveSource*>(project_.sources[k].source.get()) && dynamic_cast<LiveSource*>(project_.sources[k].source.get())->isLive()))) {
-                const QImage im = project_.sources[k].source->snapshot(160);
-                if (!im.isNull()) mediaList_->item(i)->setIcon(QIcon(QPixmap::fromImage(im)));
-            }
-        }
 }
 
 void MainWindow::rebuildSceneList() {
     const int ci = channelIdx();
-    sceneList_->clear();
-    for (size_t i = 0; i < sceneNames_[ci].size(); ++i) sceneList_->addItem(QString());
-    lastProgram_ = lastPreview_ = -2;
-}
-
-void MainWindow::rebuildMediaList() {
-    mediaList_->clear();
-    for (size_t k = 0; k < project_.sources.size(); ++k) {
-        const SourceDef& d = project_.sources[k];
-        auto* it = new QListWidgetItem(d.source ? d.source->name() : d.id);
-        it->setData(Qt::UserRole, int(k));
-        const QImage im = d.source ? d.source->snapshot(160) : QImage();
-        if (!im.isNull()) it->setIcon(QIcon(QPixmap::fromImage(im)));
-        mediaList_->addItem(it);
-    }
+    const Channel& ch = *project_.channels[size_t(ci)];
+    scenes_->setScenes(ci, ch.scenes, sceneNames_[size_t(ci)]);
+    scenes_->setMarks(ch.program, ch.preview);
 }
 
 void MainWindow::onProjectChanged() {
@@ -921,7 +1064,6 @@ void MainWindow::onProjectChanged() {
         sceneNames_.push_back(std::move(names));
     }
     rebuildSceneList();
-    rebuildMediaList();
     inspector_->refreshFromProject();
     rebuildTransitionCombo();                              // danh sach nguon Stinger co the doi
     timeline_->refresh();
@@ -931,23 +1073,63 @@ void MainWindow::onProjectChanged() {
 
 // ---------------- media ----------------
 
-bool MainWindow::addMediaFile(const QString& path) {
-    if (locked_) { showMessage("Đang khoá vận hành: không nhập media được"); return false; }
+bool MainWindow::addMediaFile(const QString& path) { return importMedia(path) != nullptr; }
+
+void MainWindow::chooseMediaFiles() {
+    for (const QString& f : QFileDialog::getOpenFileNames(this, "Nhập media", QString(), kMediaFilter)) addMediaFile(f);
+}
+
+// Scene "cua rieng" mot nguon: dung mot Layer va nguon con dung duoc.
+std::shared_ptr<Scene> MainWindow::homeScene(const std::function<bool(const SourceDef&)>& same) const {
+    for (const auto& s : project_.scenes) {
+        if (s->layers.size() != 1) continue;
+        const SourceDef* d = project_.findSource(s->layers[0].source.get());
+        if (d && d->source && d->source->error().isEmpty() && same(*d)) return s;
+    }
+    return nullptr;
+}
+
+void MainWindow::announceExisting(const std::shared_ptr<Scene>& s) {
+    scenes_->reveal(s.get());
+    showMessage("Đã có trong danh sách Scenes: " + s->name);
+}
+
+static std::shared_ptr<MainWindow::ImportEntry> importEntry(const SourceDef& d, std::shared_ptr<Source> src, QSize canvas) {
+    auto e = std::make_shared<MainWindow::ImportEntry>();
+    e->def = d;
+    e->def.source = src;
+    e->scene = std::make_shared<Scene>();
+    e->scene->name = src->name();
+    e->scene->size = canvas;
+    e->scene->layers.push_back({src, {0, 0, 1, 1}, 1.0f, LayerFit::Fit, true});
+    return e;
+}
+
+std::shared_ptr<Scene> MainWindow::importMedia(const QString& path, bool* created) {
+    if (created) *created = false;
+    if (locked_) { showMessage("Đang khoá vận hành: không nhập media được"); return nullptr; }
     SourceDef d;
     d.path = QFileInfo(path).absoluteFilePath();
     d.type = kImageExt.contains(QFileInfo(path).suffix().toLower()) ? "image" : "video";
-    QString err;
-    auto src = createSource(d, &err);
-    if (!src) { showMessage("Không nhập được: " + err); return false; }
-    d.source = src;
-    auto e = std::make_shared<ImportEntry>();
-    e->def = d;
-    e->scene = std::make_shared<Scene>();
-    e->scene->name = src->name();
-    e->scene->size = project_.channels[0]->size;
-    e->scene->layers.push_back({src, {0, 0, 1, 1}, 1.0f, LayerFit::Fit, true});
+    const QString file = d.path;
+    auto same = [&file](const SourceDef& o) { return (o.type == "video" || o.type == "image") && sameFile(o.path, file); };
+    if (auto s = homeScene(same)) { announceExisting(s); return s; }
+    std::shared_ptr<Source> src;
+    bool addsSource = true;
+    for (const SourceDef& o : project_.sources)                    // nguon con (Scene ghep dang dung) nhung Scene rieng da bi xoa
+        if (same(o) && o.source && o.source->error().isEmpty()) { d = o; src = o.source; addsSource = false; break; }
+    if (!src) {
+        QString err;
+        src = createSource(d, &err);
+        if (!src) { showMessage("Không nhập được: " + err); return nullptr; }
+    }
+    auto e = importEntry(d, src, project_.channels[0]->size);
+    e->addsSource = addsSource;
+    auto scene = e->scene;
     pushImport(e, "Nhập media: " + src->name());
-    return true;
+    if (created) *created = true;
+    scenes_->reveal(scene.get());
+    return scene;
 }
 
 // Keo tha file = lenh "Nhap media" cho tung file (cung duong addMediaFile: cung khoa van hanh, hoan tac duoc, khong dung Program/Preview).
@@ -987,45 +1169,43 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* ev) {
     return true;
 }
 
-std::shared_ptr<Scene> MainWindow::importForPlaylist(const QString& path) {
-    const size_t before = project_.scenes.size();
-    if (!addMediaFile(path) || project_.scenes.size() <= before) return nullptr;
-    return project_.scenes.back();
-}
-
 // toPlaylist: tha vao khung Playlist -> nhap roi them luon vao cuoi playlist.
 void MainWindow::importDroppedFiles(const QStringList& files, bool toPlaylist) {
-    int added = 0;
+    int added = 0, existing = 0;
     QStringList skipped;
     std::vector<std::shared_ptr<Scene>> imported;
     for (const QString& f : files) {
         const QFileInfo fi(f);
         const QString ext = fi.suffix().toLower();
         std::shared_ptr<Scene> scene;
-        if (fi.isFile() && (kImageExt.contains(ext) || kVideoExt.contains(ext))) scene = importForPlaylist(f);
-        if (scene) { ++added; imported.push_back(scene); }
+        bool created = false;
+        if (fi.isFile() && (kImageExt.contains(ext) || kVideoExt.contains(ext))) scene = importMedia(f, &created);
+        if (scene) { created ? ++added : ++existing; imported.push_back(scene); }
         else skipped << (fi.fileName().isEmpty() ? f : fi.fileName());
     }
     if (toPlaylist) playlist_->addScenes(imported);
+    QString msg;
     if (skipped.isEmpty()) {
-        showMessage(QString("Đã nhập %1 file bằng kéo thả").arg(added));
-        return;
+        msg = QString("Đã nhập %1 file bằng kéo thả").arg(added);
+    } else {
+        qWarning().noquote() << "Kéo thả: bỏ qua file không hỗ trợ hoặc không đọc được:" << skipped.join(", ");
+        QString names = skipped.mid(0, 3).join(", ");
+        if (skipped.size() > 3) names += ", …";
+        msg = QString("Đã nhập %1 file; bỏ qua %2 file không hỗ trợ hoặc không đọc được: %3").arg(added).arg(skipped.size()).arg(names);
     }
-    qWarning().noquote() << "Kéo thả: bỏ qua file không hỗ trợ hoặc không đọc được:" << skipped.join(", ");
-    QString names = skipped.mid(0, 3).join(", ");
-    if (skipped.size() > 3) names += ", …";
-    showMessage(QString("Đã nhập %1 file; bỏ qua %2 file không hỗ trợ hoặc không đọc được: %3").arg(added).arg(skipped.size()).arg(names));
+    if (existing) msg += QString(" · %1 file đã có trong danh sách Scenes").arg(existing);
+    showMessage(msg);
 }
 
-static std::shared_ptr<MainWindow::ImportEntry> liveImportEntry(const SourceDef& d, std::shared_ptr<Source> src, QSize canvas) {
-    auto e = std::make_shared<MainWindow::ImportEntry>();
-    e->def = d;
-    e->def.source = src;
-    e->scene = std::make_shared<Scene>();
-    e->scene->name = src->name();
-    e->scene->size = canvas;
-    e->scene->layers.push_back({src, {0, 0, 1, 1}, 1.0f, LayerFit::Fit, true});
-    return e;
+bool MainWindow::addLiveSource(const SourceDef& def, const QString& what) {
+    QString err;
+    auto src = createSource(def, &err);
+    if (!src) { showMessage("Không thêm được " + what + ": " + err); return false; }
+    auto e = importEntry(def, src, project_.channels[0]->size);
+    auto scene = e->scene;
+    pushImport(e, "Thêm " + what + ": " + src->name());
+    scenes_->reveal(scene.get());
+    return true;
 }
 
 bool MainWindow::addNdiSource(const QString& name, const QString& url, const QString& label) {
@@ -1036,11 +1216,8 @@ bool MainWindow::addNdiSource(const QString& name, const QString& url, const QSt
     d.device = name.trimmed();
     d.url = url;
     d.label = label;
-    QString err;
-    auto src = createSource(d, &err);
-    if (!src) { showMessage("Không thêm được nguồn NDI: " + err); return false; }
-    pushImport(liveImportEntry(d, src, project_.channels[0]->size), "Thêm nguồn NDI: " + src->name());
-    return true;
+    if (auto s = homeScene([&](const SourceDef& o) { return o.type == "ndi" && o.device == d.device; })) { announceExisting(s); return true; }
+    return addLiveSource(d, "nguồn NDI");
 }
 
 bool MainWindow::addCameraSource(const QString& deviceId, const QString& deviceName, CameraFormat fmt, const QString& label) {
@@ -1052,11 +1229,10 @@ bool MainWindow::addCameraSource(const QString& deviceId, const QString& deviceN
     d.size = QSize(fmt.w, fmt.h);
     d.fps = fmt.fps;
     d.label = label;
-    QString err;
-    auto src = createSource(d, &err);
-    if (!src) { showMessage("Không thêm được camera: " + err); return false; }
-    pushImport(liveImportEntry(d, src, project_.channels[0]->size), "Thêm camera: " + src->name());
-    return true;
+    // mot thiet bi chi mo duoc mot lan: dung lai Scene da co
+    if (!deviceId.isEmpty())
+        if (auto s = homeScene([&](const SourceDef& o) { return o.type == "camera" && o.device == d.device; })) { announceExisting(s); return true; }
+    return addLiveSource(d, "camera");
 }
 
 bool MainWindow::addNdiOutput(const QString& name, int channel, QSize size, bool audio) {
@@ -1073,10 +1249,11 @@ bool MainWindow::addNdiOutput(const QString& name, int channel, QSize size, bool
     c.size = size;
     c.scale = ScaleMode::Stretch;
     c.ndiAudio = audio;
-    const int i = engine_.addNdiOutput(c);
-    if (i < 0) { showMessage("Không thêm được Output NDI"); return false; }
-    addOutputRow(i);
-    ctlApi_->refreshProject();
+    const Entitlements& ent = Entitlements::current();
+    ScreenSetup setup = screenSetup();
+    setup.outputs.push_back(c);
+    if (!ent.ndi || (ent.maxOutputs > 0 && int(setup.outputs.size()) > ent.maxOutputs) ||
+        !applyScreenSetup(setup, {}, "Thêm Output NDI: " + c.name)) { showMessage("Không thêm được Output NDI"); return false; }
     qInfo().noquote() << QString("Thêm Output NDI '%1' (kênh %2, %3x%4)").arg(c.name).arg(channel + 1).arg(size.width()).arg(size.height());
     showMessage("Đã thêm Output NDI: " + c.name);
     return true;
@@ -1105,32 +1282,6 @@ void MainWindow::showAddNdiOutput() {
     if (dlg.exec() == QDialog::Accepted) addNdiOutput(dlg.name(), dlg.channel(), dlg.size(), dlg.audio());
 }
 
-// Trang thai nguon truc tiep tren Media Pool (UI thread, ~2 lan/giay): chi doc cac atomic/mutex ngan cua LiveSource.
-void MainWindow::updateLiveStatus() {
-    for (int i = 0; i < mediaList_->count(); ++i) {
-        const int k = mediaList_->item(i)->data(Qt::UserRole).toInt();
-        if (k < 0 || k >= int(project_.sources.size())) continue;
-        auto* ls = dynamic_cast<LiveSource*>(project_.sources[size_t(k)].source.get());
-        if (!ls) continue;
-        const char* dot = "●";
-        QColor col(colors::kPreview);
-        switch (ls->state()) {
-        case LiveState::Live: break;
-        case LiveState::Connecting: col = QColor(colors::kWarn); break;
-        case LiveState::Lost: col = QColor(colors::kProgram); break;
-        case LiveState::Unavailable: col = QColor(0x8a, 0x90, 0xa2); dot = "○"; break;
-        }
-        QListWidgetItem* it = mediaList_->item(i);
-        it->setText(QString("%1 %2").arg(dot, ls->name()));
-        it->setForeground(col);
-        it->setToolTip(QString("%1: %2").arg(ls->kind() == "ndi" ? "NDI" : "Camera", ls->statusText()));
-        if (ls->state() != LiveState::Live) {                    // mat nguon: icon la khung cuoi, nhung nhat mau de nhin thay
-            const QImage im = ls->snapshot(160);
-            if (!im.isNull()) it->setIcon(QIcon(QPixmap::fromImage(im)));
-        }
-    }
-}
-
 void MainWindow::pushImport(std::shared_ptr<ImportEntry> e, const QString& text) { undo_.push(new ImportCmd(this, std::move(e), text)); }
 
 void MainWindow::doUndo() {
@@ -1142,6 +1293,150 @@ void MainWindow::doUndo() {
             return;
         }
     undo_.undo();
+}
+
+void MainWindow::doRedo() {
+    // Lam lai lenh Xoa: nhu lenh Xoa, khong go Scene dang On Air.
+    if (undo_.canRedo())
+        if (auto* c = dynamic_cast<const RemoveSceneCmd*>(undo_.command(undo_.index())); c && sceneOnAir(c->scene())) {
+            showMessage("Không làm lại được: Scene này đang ở PROGRAM/đang chuyển cảnh");
+            return;
+        }
+    undo_.redo();
+}
+
+bool MainWindow::sceneOnAir(const Scene* s) const {
+    for (const auto& c : project_.channels) {
+        const int pg = c->program, pv = c->preview;
+        const auto& sc = c->scenes;
+        if (pg >= 0 && pg < int(sc.size()) && sc[size_t(pg)].get() == s) return true;
+        if (c->inTransition() && !c->autoTransition() && pv >= 0 && pv < int(sc.size()) && sc[size_t(pv)].get() == s) return true;
+        if (c->isIncoming(s)) return true;
+    }
+    return false;
+}
+
+bool MainWindow::renameScene(const std::shared_ptr<Scene>& s, const QString& name) {
+    if (locked_) { showMessage("Đang khoá vận hành: không đổi tên Scene được"); return false; }
+    const QString n = name.trimmed();
+    if (!s || n.isEmpty() || n == s->name || std::find(project_.scenes.begin(), project_.scenes.end(), s) == project_.scenes.end()) return false;
+    undo_.push(new RenameSceneCmd(this, s, n));
+    return true;
+}
+
+void MainWindow::applySceneName(const std::shared_ptr<Scene>& s, const QString& name) {
+    engine_.postAndWait([s, name](double) { s->name = name; });          // render thread cung doc ten (thong bao playlist)
+    onProjectChanged();
+}
+
+bool MainWindow::deleteScene(const std::shared_ptr<Scene>& s) {
+    if (locked_) { showMessage("Đang khoá vận hành: không xoá Scene được"); return false; }
+    if (!s || std::find(project_.scenes.begin(), project_.scenes.end(), s) == project_.scenes.end()) return false;
+    if (sceneOnAir(s.get())) {
+        showMessage("Không xoá được: Scene đang ở PROGRAM/đang chuyển cảnh. Đưa Scene khác lên Program rồi xoá.");
+        return false;
+    }
+    auto r = std::make_shared<SceneRemoval>();
+    r->scene = s;
+    const QString name = s->name;
+    undo_.push(new RemoveSceneCmd(this, r, "Xoá Scene: " + name));
+    if (std::find(project_.scenes.begin(), project_.scenes.end(), s) != project_.scenes.end()) return false;
+    showMessage("Đã xoá Scene: " + name + " (Ctrl+Z để lấy lại)");
+    return true;
+}
+
+// Go Scene khoi project + moi Channel + playlist; nguon khong con Scene nao dung thi go theo (video duoc tam dung, giu lai cho Hoan tac).
+bool MainWindow::applyRemoval(const std::shared_ptr<SceneRemoval>& r) {
+    auto done = std::make_shared<std::atomic<bool>>(false);
+    engine_.postAndWait([this, r, done](double) {
+        const auto sit = std::find(project_.scenes.begin(), project_.scenes.end(), r->scene);
+        if (sit == project_.scenes.end() || sceneOnAir(r->scene.get())) return;
+        r->projectIndex = int(sit - project_.scenes.begin());
+        r->channelIndex.assign(project_.channels.size(), -1);
+        r->items.assign(project_.channels.size(), {});
+        r->sources.clear();
+        r->pausedBefore.clear();
+        for (size_t c = 0; c < project_.channels.size(); ++c) {
+            Channel& ch = *project_.channels[c];
+            auto& items = ch.playlist.data.items;
+            for (int i = 0; i < int(items.size()); ++i)
+                if (items[size_t(i)].scene == r->scene) r->items[c].push_back({i, items[size_t(i)]});
+            items.erase(std::remove_if(items.begin(), items.end(), [&](const PlaylistItem& it) { return it.scene == r->scene; }), items.end());
+            const auto it = std::find(ch.scenes.begin(), ch.scenes.end(), r->scene);
+            if (it == ch.scenes.end()) continue;
+            const int k = int(it - ch.scenes.begin());
+            r->channelIndex[c] = k;
+            ch.scenes.erase(it);
+            const int pv = ch.preview, pg = ch.program;
+            if (pv == k) ch.preview = -1;
+            else if (pv > k) ch.preview = pv - 1;
+            if (pg > k) ch.program = pg - 1;
+        }
+        project_.scenes.erase(sit);
+        auto usedElsewhere = [&](const Source* src) {
+            for (const auto& sc : project_.scenes)
+                for (const Layer& l : sc->layers) if (l.source.get() == src) return true;
+            return false;
+        };
+        for (int i = 0; i < int(project_.sources.size()); ++i) {
+            const Source* src = project_.sources[size_t(i)].source.get();
+            bool mine = false;
+            for (const Layer& l : r->scene->layers) mine = mine || l.source.get() == src;
+            if (mine && !usedElsewhere(src)) {
+                r->sources.push_back({i, project_.sources[size_t(i)]});
+                r->pausedBefore.push_back(src && src->paused());
+            }
+        }
+        for (auto it = r->sources.rbegin(); it != r->sources.rend(); ++it) {
+            project_.sources.erase(project_.sources.begin() + it->first);
+            if (it->second.source) it->second.source->setPaused(true);       // khong ai xem: thoi giai ma
+        }
+        *done = true;
+    });
+    if (!*done) return false;
+    inspector_->sceneRemoved(r->projectIndex);
+    timeline_->sceneRemoved(r->projectIndex);
+    onProjectChanged();
+    return true;
+}
+
+// Lenh live (CUT...) xen vao giua kiem tra UI va render thread: bo luon buoc nay khoi ngan xep Hoan tac.
+void MainWindow::removalRefused(const QUndoCommand* cmd) {
+    QMetaObject::invokeMethod(this, [this, cmd] {
+        showMessage("Xoá Scene bị huỷ: Scene vừa được đưa lên PROGRAM");
+        if (undo_.index() > 0 && undo_.command(undo_.index() - 1) == cmd) {
+            const_cast<QUndoCommand*>(cmd)->setObsolete(true);
+            undo_.undo();
+        }
+    }, Qt::QueuedConnection);
+}
+
+void MainWindow::undoRemoval(const std::shared_ptr<SceneRemoval>& r) {
+    if (r->projectIndex < 0) return;
+    engine_.postAndWait([this, r](double) {
+        if (std::find(project_.scenes.begin(), project_.scenes.end(), r->scene) != project_.scenes.end()) return;
+        for (size_t i = 0; i < r->sources.size(); ++i) {
+            const int at = std::min(r->sources[i].first, int(project_.sources.size()));
+            project_.sources.insert(project_.sources.begin() + at, r->sources[i].second);
+            if (r->sources[i].second.source) r->sources[i].second.source->setPaused(r->pausedBefore[i]);
+        }
+        project_.scenes.insert(project_.scenes.begin() + std::min(r->projectIndex, int(project_.scenes.size())), r->scene);
+        for (size_t c = 0; c < project_.channels.size() && c < r->channelIndex.size(); ++c) {
+            Channel& ch = *project_.channels[c];
+            if (const int k = r->channelIndex[c]; k >= 0) {
+                const int at = std::min(k, int(ch.scenes.size()));
+                ch.scenes.insert(ch.scenes.begin() + at, r->scene);
+                const int pv = ch.preview, pg = ch.program;
+                if (pv >= at) ch.preview = pv + 1;
+                if (pg >= at) ch.program = pg + 1;
+            }
+            auto& items = ch.playlist.data.items;
+            for (const auto& [pos, item] : r->items[c]) items.insert(items.begin() + std::min(pos, int(items.size())), item);
+        }
+    });
+    inspector_->sceneInserted(r->projectIndex);
+    timeline_->sceneInserted(r->projectIndex);
+    onProjectChanged();
 }
 
 bool MainWindow::importInUse(const ImportEntry& e) const {

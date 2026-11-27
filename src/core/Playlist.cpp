@@ -163,7 +163,14 @@ void Playlist::play(Channel& ch, double now, int itemId) {
             cueFrom(ch, now, k >= 0 ? k : cuePos_);
         } else if (onAir_ && ch.showing(onAir_.get())) {                  // hinh van la muc dang do: chay tiep
             const double len = seconds_ > 0 ? 0 : sceneClipSeconds(*onAir_);
-            if (len > 0) started_ = now - std::fmod(std::max(0.0, now - started_), len);   // video van lap trong luc tam dung
+            double position = -1;                                          // vi tri that cua video (co the da bi tam dung / tua tay)
+            for (const Layer& l : onAir_->layers)
+                if (l.visible && l.source && l.source->hasTransport()) {
+                    l.source->setPaused(false);                            // chay lai playlist = chay lai video
+                    if (l.source->durationSeconds() >= len) position = l.source->positionSeconds();
+                }
+            if (len > 0 && position >= 0) { started_ = now - position; inLen_ = 0; }
+            else if (len > 0) started_ = now - std::fmod(std::max(0.0, now - started_), len);   // video van lap trong luc tam dung
             else started_ += now - pausedAt_;
         } else {                                                          // nguoi van hanh da doi hinh: dua muc dang do len lai
             const int k = indexOf(current_);

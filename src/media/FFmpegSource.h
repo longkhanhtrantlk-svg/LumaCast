@@ -39,6 +39,13 @@ public:
     double durationSeconds() const override { return duration_; }
     void restart() override;                    // seek ve 0; cho den khi co khung moi thi acquire() tra ve rong (khong hien khung cu)
     void rewind() override;                     // hien ngay khung dau da giu san roi phat tu dau
+    bool hasTransport() const override { return duration_ > 0; }
+    void setPaused(bool paused) override;       // da het file (khong lap) ma bo tam dung -> phat lai tu dau
+    bool paused() const override { return paused_; }
+    bool ended() const override { return ended_; }
+    void seekTo(double seconds) override;       // khung dang hien giu nguyen cho den khi co khung o vi tri moi (ca khi tam dung)
+    double positionSeconds() const override { return position_; }
+    void setLooping(bool loop) override { loop_ = loop; }
     QString error() const override;     // rong neu khong loi
     bool ready() const override { std::lock_guard lk(m_); return latest_ != nullptr; }
     AudioStream* audio() override { return hasAudio_ ? audio_.get() : nullptr; }
@@ -65,7 +72,10 @@ private:
     void setError(const QString& e);
 
     QString path_, name_;
-    bool loop_;
+    std::atomic<bool> loop_;
+    std::atomic<bool> paused_{false}, ended_{false};
+    std::atomic<double> position_{0};
+    std::atomic<double> seekReq_{-1};                    // giay can tua toi; < 0 = khong co yeu cau
     std::atomic<bool> stop_{false};
     std::thread thread_;
 
@@ -79,7 +89,7 @@ private:
     std::atomic<bool> rewindReq_{false};
     std::shared_ptr<Frame> first_;                       // khung dau tien cua file (giu san cho rewind); bao ve boi m_
     bool rewindPending_ = false;                         // bao ve boi m_: dang cho tua -> khong cho khung giua de len
-    void publish(std::shared_ptr<Frame> out);            // thread giai ma: dua khung len latest_
+    void publish(std::shared_ptr<Frame> out, bool nearStart);   // thread giai ma: dua khung len latest_
     std::atomic<bool> waitFirst_{false};
     std::unique_ptr<AudioStream> audio_;
     std::atomic<bool> hasAudio_{false};

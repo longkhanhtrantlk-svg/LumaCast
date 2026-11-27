@@ -358,7 +358,7 @@ int main(int argc, char** argv) {
         auto* tlLoop = tl->findChild<QCheckBox*>("tlLoop");
         auto* tlPlay = tl->findChild<QPushButton*>("tlPlay");
         auto* tlStop = tl->findChild<QPushButton*>("tlStop");
-        auto* importB = button(&w, "Nhập media...");
+        auto* importB = w.findChild<QToolButton*>("importBtn");
         auto actionByPrefix = [&](const QString& prefix) -> QAction* {
             for (auto* m : w.menuBar()->findChildren<QMenu*>()) for (auto* a : m->actions()) if (a->text().startsWith(prefix)) return a;
             return nullptr;
@@ -531,7 +531,6 @@ int main(int argc, char** argv) {
         const QString png = dir.filePath("nhap1.png"), png2 = dir.filePath("nhap2.png");
         img.save(png); img.fill(Qt::cyan); img.save(png2);
         auto* scenesL = w.findChild<QListWidget*>("sceneList");
-        auto* mediaL = w.findChild<QListWidget*>("mediaList");
         auto* insp = w.inspector();
         auto* sceneCombo = insp->findChild<QComboBox*>("sceneCombo");
         const int s0 = int(p.scenes.size()), src0 = int(p.sources.size());
@@ -540,7 +539,7 @@ int main(int argc, char** argv) {
 
         CHECK(w.addMediaFile(png), "nhap anh 1");
         CHECK(waitFor([&] { return int(p.scenes.size()) == s0 + 1 && scenesL->count() == s0 + 1; }), "nhap: them Scene + nguon, danh sach Scene va Media Pool cap nhat");
-        CHECK(int(p.sources.size()) == src0 + 1 && mediaL->count() == src0 + 1 && int(ch->scenes.size()) == s0 + 1 && w.undoStack()->count() == 1, "nhap: nguon + Scene vao project va kenh, co 1 buoc Hoan tac");
+        CHECK(int(p.sources.size()) == src0 + 1 && int(ch->scenes.size()) == s0 + 1 && w.undoStack()->count() == 1, "nhap: nguon + Scene vao project va kenh, co 1 buoc Hoan tac");
         auto scene1 = p.scenes.back();
         const QString id1 = p.sources.back().id;
         CHECK(!id1.isEmpty() && w.undoStack()->undoText().contains("Nhập media"), "nhap: nguon co id, ten buoc Hoan tac ro rang");
@@ -552,7 +551,7 @@ int main(int argc, char** argv) {
         w.undoStack()->undo();
         CHECK(waitFor([&] { return int(p.scenes.size()) == s0; }), "Hoan tac nhap: Scene bi go khoi project");
         pump(150);
-        CHECK(int(p.sources.size()) == src0 && int(ch->scenes.size()) == s0 && scenesL->count() == s0 && mediaL->count() == src0, "Hoan tac: nguon, Scene kenh, danh sach UI deu go");
+        CHECK(int(p.sources.size()) == src0 && int(ch->scenes.size()) == s0 && scenesL->count() == s0, "Hoan tac: nguon, Scene kenh, danh sach UI deu go");
         CHECK(ch->program == pg0 && ch->preview == -1, "Hoan tac: Program khong doi; Preview tro vao Scene da go -> -1 (khong treo)");
         CHECK(int(p.scenes.size()) == s0 && w.controlApi().state()["scenes"].toArray().size() == s0, "Hoan tac: ban chup cua API dieu khien ngoai cung cap nhat");
         // khong tham chieu treo: Inspector/Timeline/Monitor van dung duoc
@@ -564,7 +563,7 @@ int main(int argc, char** argv) {
         w.undoStack()->redo();
         CHECK(waitFor([&] { return int(p.scenes.size()) == s0 + 1; }), "Lam lai nhap: Scene tro lai");
         pump(150);
-        CHECK(p.scenes.back() == scene1 && p.sources.back().id == id1 && int(ch->scenes.size()) == s0 + 1 && scenesL->count() == s0 + 1 && mediaL->count() == src0 + 1,
+        CHECK(p.scenes.back() == scene1 && p.sources.back().id == id1 && int(ch->scenes.size()) == s0 + 1 && scenesL->count() == s0 + 1,
               "Lam lai: dung Scene cu, dung id nguon, UI day du");
         CHECK(ch->program == pg0, "Lam lai: Program khong doi");
 
@@ -637,13 +636,16 @@ int main(int argc, char** argv) {
         w.undoStack()->undo();
         waitFor([&] { return int(p.scenes.size()) == s0; });
 
-        // tao Scene tu Media Pool (khong them nguon) + hoan tac
-        const int srcN = int(p.sources.size());
-        emit mediaL->itemDoubleClicked(mediaL->item(0));
-        CHECK(waitFor([&] { return int(p.scenes.size()) == s0 + 1; }) && int(p.sources.size()) == srcN, "Media Pool: tao Scene tu nguon co san (khong them nguon)");
+        // mot file = mot Scene: nhap lai cung file khong tao Scene thu hai
+        CHECK(w.addMediaFile(png) && waitFor([&] { return int(p.scenes.size()) == s0 + 1; }), "(chuan bi) nhap mot file");
         pump(100);
+        const int stackAfter = w.undoStack()->count(), srcN = int(p.sources.size());
+        CHECK(w.addMediaFile(png) && w.addMediaFile(png.toUpper()), "nhap lai file da co: khong bao loi");
+        pump(200);
+        CHECK(int(p.scenes.size()) == s0 + 1 && int(p.sources.size()) == srcN && w.undoStack()->count() == stackAfter,
+              "nhap lai file da co Scene: khong them Scene, nguon hay buoc Hoan tac");
         w.undoStack()->undo();
-        CHECK(waitFor([&] { return int(p.scenes.size()) == s0; }) && int(p.sources.size()) == srcN, "Hoan tac tao Scene: go Scene, GIU nguon (con dung boi Scene khac)");
+        CHECK(waitFor([&] { return int(p.scenes.size()) == s0; }), "Hoan tac: go Scene vua nhap");
         w.undoStack()->clear();
         pump(100);
         CHECK(engine.error().isEmpty(), "sau chuoi nhap/hoan tac: engine khong loi");
@@ -1005,8 +1007,8 @@ int main(int argc, char** argv) {
         const QString folder = dir.filePath("thu_muc.png");
         QDir().mkpath(folder);
 
-        auto* mediaL = w.findChild<QListWidget*>("mediaList");
-        auto* mediaDock = w.findChild<QDockWidget*>("dockMedia");
+        auto* sceneListW = w.findChild<QListWidget*>("sceneList");
+        auto* sceneDock = w.findChild<QDockWidget*>("dockScenes");
         auto* us = w.undoStack();
 
         // Gui DragEnter + Drop nhu Qt chuyen tu he dieu hanh (giu Shift = Explorer de nghi "di chuyen"). true = duoc nhan va la SAO CHEP.
@@ -1033,8 +1035,8 @@ int main(int argc, char** argv) {
         const int pg0 = ch->program, pv0 = ch->preview;
         us->clear();
 
-        CHECK(drop(mediaL->viewport(), {png1, txt, png2}), "keo tha vao Media Pool: duoc nhan, luon la sao chep (khong di chuyen file goc)");
-        CHECK(waitFor([&] { return int(p.scenes.size()) == s0 + 2; }) && int(p.sources.size()) == src0 + 2 && mediaL->count() == src0 + 2,
+        CHECK(drop(sceneListW->viewport(), {png1, txt, png2}), "keo tha vao danh sach Scenes: duoc nhan, luon la sao chep (khong di chuyen file goc)");
+        CHECK(waitFor([&] { return int(p.scenes.size()) == s0 + 2; }) && int(p.sources.size()) == src0 + 2 && sceneListW->count() == s0 + 2,
               "tha 2 anh + 1 file khong ho tro: nhap dung 2 anh");
         CHECK(message().contains("ghi_chu.txt") && message().contains("bỏ qua 1"), "file khong ho tro: bo qua va bao ten tren thanh trang thai");
         CHECK(ch->program == pg0 && ch->preview == pv0, "tha file: Program/Preview khong doi");
@@ -1066,16 +1068,16 @@ int main(int argc, char** argv) {
         waitFor([&] { return int(p.scenes.size()) == s0; });
         us->clear();
 
-        mediaDock->setFloating(true);
+        sceneDock->setFloating(true);
         pump(150);
-        CHECK(drop(mediaL->viewport(), {png1}) && waitFor([&] { return int(p.scenes.size()) == s0 + 1; }), "Media Pool tach roi thanh cua so rieng: van nhan tha");
-        mediaDock->setFloating(false);
+        CHECK(drop(sceneListW->viewport(), {png1}) && waitFor([&] { return int(p.scenes.size()) == s0 + 1; }), "danh sach Scenes tach roi thanh cua so rieng: van nhan tha");
+        sceneDock->setFloating(false);
         pump(150);
         us->undo();
         waitFor([&] { return int(p.scenes.size()) == s0; });
         us->clear();
 
-        drop(mediaL->viewport(), {txt, badPng, folder, dir.filePath("khong_co.mp4")});
+        drop(sceneListW->viewport(), {txt, badPng, folder, dir.filePath("khong_co.mp4")});
         pump(200);
         CHECK(int(p.scenes.size()) == s0 && int(p.sources.size()) == src0 && us->count() == 0, "chi file khong ho tro / anh hong / thu muc / file khong ton tai: khong nhap gi");
         CHECK(message().contains("Đã nhập 0 file") && message().contains("bỏ qua 4"), "bao so file bi bo qua");
@@ -1094,14 +1096,14 @@ int main(int argc, char** argv) {
         pump(100);
 
         w.setLocked(true);
-        CHECK(!drop(mediaL->viewport(), {png1}) && message().contains("khoá"), "khoa van hanh: tu choi keo vao Media Pool, co thong bao");
+        CHECK(!drop(sceneListW->viewport(), {png1}) && message().contains("khoá"), "khoa van hanh: tu choi keo vao danh sach Scenes, co thong bao");
         w.statusBar()->clearMessage();
         CHECK(!drop(w.centralWidget(), {png1}) && message().contains("khoá"), "khoa van hanh: tu choi keo vao vung lam viec");
         pump(200);
         CHECK(int(p.scenes.size()) == s0 && us->count() == 0, "khoa van hanh: khong nhap gi, khong co buoc Hoan tac");
         w.setLocked(false);
         w.statusBar()->clearMessage();
-        CHECK(!drop(mediaL->viewport(), {png1}, [&] { w.setLocked(true); }) && message().contains("khoá"), "khoa bat giua luc dang keo: tha ra van bi tu choi");
+        CHECK(!drop(sceneListW->viewport(), {png1}, [&] { w.setLocked(true); }) && message().contains("khoá"), "khoa bat giua luc dang keo: tha ra van bi tu choi");
         pump(200);
         CHECK(int(p.scenes.size()) == s0 && us->count() == 0 && ch->program == pg0 && ch->preview == pv0, "khoa giua chung: project va Program/Preview khong doi");
         w.setLocked(false);

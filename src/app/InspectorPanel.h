@@ -26,7 +26,9 @@ class InspectorPanel : public QTabWidget {
 public:
     InspectorPanel(Project& project, RenderEngine& engine, QUndoStack* undo, QWidget* parent = nullptr);
     void refreshFromProject();            // goi tren UI thread sau khi them scene/nguon
-    void sceneRemoved(int sceneIdx);      // UI thread: Scene sceneIdx da bi go khoi project (hoan tac nhap media) -> bo ban sao tuong ung
+    void rebuildOutputs();                // danh sach Output / canvas vua doi (thiet lap man hinh): doc lai va dung lai tab Output
+    void sceneRemoved(int sceneIdx);      // UI thread: Scene sceneIdx da bi go khoi project (xoa, hoan tac nhap media) -> bo ban sao tuong ung
+    void sceneInserted(int sceneIdx);     // UI thread: Scene duoc chen lai vao giua danh sach (hoan tac xoa)
 
     // Goi boi lenh Undo/Redo (khong ghi them vao stack):
     void applyLayers(int sceneIdx, const std::vector<Layer>& layers);
@@ -107,6 +109,7 @@ private:
     QUndoStack* undo_;
     bool locked_ = false;
     std::vector<std::vector<Layer>> layerCache_;     // theo project_.scenes
+    std::vector<const Scene*> comboScenes_;          // Scene cua tung muc trong sceneCombo_ (giu lua chon khi danh sach doi)
     std::vector<OutputConfig> outCache_;             // theo output
     std::vector<OutW> outW_;
     QComboBox* sceneCombo_ = nullptr;

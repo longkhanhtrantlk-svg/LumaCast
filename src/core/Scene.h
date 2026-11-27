@@ -41,6 +41,17 @@ struct LayerState {
 };
 LayerState evalLayer(const Layer& l, double t);
 
+// Am thanh rieng cua Scene (danh sach Scenes): nhan them vao am luong tung Layer. Nguon chi ra loa khi Scene o Program
+// (hoac dang chuyen vao). Atomic: UI doi truc tiep, render thread doc khi dung ke hoach tron.
+struct SceneAudio {
+    std::atomic<float> volume{1.0f};   // 0..2 (1 = nguyen goc)
+    std::atomic<bool> mute{false};
+    SceneAudio() = default;
+    SceneAudio(const SceneAudio& o) : volume(o.volume.load()), mute(o.mute.load()) {}
+    SceneAudio& operator=(const SceneAudio& o) { volume = o.volume.load(); mute = o.mute.load(); return *this; }
+    float gain() const { const float v = volume.load(); return mute.load() ? 0.0f : v < 0 ? 0.0f : v > 2 ? 2.0f : v; }
+};
+
 struct Scene {
     QString name;
     QSize size{1920, 1080};        // do phan giai thiet ke cua Scene
@@ -50,6 +61,25 @@ struct Scene {
     bool loop = true;
     bool restartOnAir = true;                // phat lai tu dau moi khi Scene len Program (hoac bat dau chuyen vao)
     SceneClock clock;
+    SceneAudio audio;
 };
+
+// ---- Phat/tam dung/tua mot Scene (danh sach Scenes) ----
+// Scene co video: tac dong len moi video trong Scene (video dung chung voi Scene khac cung doi theo - mot bo giai ma),
+// kem dong ho keyframe neu Scene co keyframe. Scene chi co keyframe: dong ho keyframe. Goi tren render thread.
+struct SceneMediaState {
+    bool video = false;          // co nguon dieu khien phat duoc
+    bool audio = false;          // co nguon co tieng
+    bool keyframes = false;
+    bool playing = false;
+    bool loop = true;
+    double position = 0;         // giay (theo video dai nhat; khong co video: dong ho keyframe)
+    double duration = 0;         // 0 = khong co gi de tua
+    bool canTransport() const { return video || keyframes; }
+};
+SceneMediaState sceneMediaState(const Scene& s);
+void scenePlay(Scene& s, double now);
+void scenePause(Scene& s);
+void sceneSeek(Scene& s, double seconds);
 
 } // namespace lc

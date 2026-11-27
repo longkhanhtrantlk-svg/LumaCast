@@ -109,8 +109,7 @@ int main(int argc, char** argv) {
     CHECK(anyImage, "MonitorWidget hien hinh");
 
     auto* scenes = w.findChild<QListWidget*>("sceneList");
-    auto* media = w.findChild<QListWidget*>("mediaList");
-    CHECK(scenes && scenes->count() == 2 && media && media->count() == 2, "Scene list va Media Pool co du muc");
+    CHECK(scenes && scenes->count() == 2 && !w.findChild<QListWidget*>("mediaList"), "Danh sach Scenes co du muc; khong con Media Pool");
 
     // ---- CUT / chon scene ----
     button(&w, "CUT")->click();
@@ -591,8 +590,8 @@ int main(int argc, char** argv) {
     CHECK(w.addMediaFile(png), "Nhap anh");
     CHECK(!w.addMediaFile(dir.filePath("khong_co.mp4")), "Nhap file khong ton tai -> bao loi, khong crash");
     pump(500);
-    CHECK(p.scenes.size() == 3 && scenes->count() == 3 && media->count() == 3 && ch->scenes.size() == 3,
-          "Nhap media: them nguon + Scene, cap nhat Scene list / Media Pool");
+    CHECK(p.scenes.size() == 3 && p.sources.size() == 3 && scenes->count() == 3 && ch->scenes.size() == 3,
+          "Nhap media: them nguon + Scene, cap nhat danh sach Scenes");
 
     // ---- Luu / autosave ----
     w.saveProject(false);

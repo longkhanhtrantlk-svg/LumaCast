@@ -5,6 +5,7 @@
 #include "MonitorWidget.h"
 #include "TimelineWidget.h"
 #include "media/StaticSources.h"
+#include "drag.h"
 #include <QApplication>
 #include <QDoubleSpinBox>
 #include <QElapsedTimer>
@@ -139,7 +140,7 @@ int main(int argc, char** argv) {
     CHECK(!engine.output(0)->black && !engine.output(1)->black, "BLACK ALL lan 2: tra hinh");
 
     QToolButton* freeze = nullptr;
-    for (auto* t : w.findChildren<QToolButton*>()) if (t->text() == "Dừng") { freeze = t; break; }
+    for (auto* t : w.findChildren<QToolButton*>("outFreeze0")) { freeze = t; break; }
     freeze->click();
     pump(200);
     const uint64_t p0 = engine.output(0)->presented, p1 = engine.output(1)->presented;
@@ -167,12 +168,10 @@ int main(int argc, char** argv) {
     alpha->setValue(0.5);
     pump(200);
     CHECK(std::abs(p.scenes[0]->layers[0].opacity - 0.5f) < 1e-4, "Inspector: doi alpha -> Scene.layers[0].opacity = 0.5");
-    button(insp, "Thêm layer")->click();
+    insp->findChild<QPushButton*>("layerAdd")->click();
     pump(200);
     CHECK(p.scenes[0]->layers.size() == 2, "Them layer");
-    QPushButton* del = nullptr;
-    for (auto* bt : insp->findChildren<QPushButton*>()) if (bt->text() == "Xoá") del = bt;
-    del->click();
+    insp->findChild<QPushButton*>("layerDelete")->click();
     pump(200);
     CHECK(p.scenes[0]->layers.size() == 1, "Xoa layer vua them");
     byPrefix(insp, "sáng ")->setValue(0.5);
@@ -206,14 +205,14 @@ int main(int argc, char** argv) {
 
     // ---- Layer: an/hien, doi thu tu (keo-tha), them/xoa deu hoan tac duoc ----
     auto* ll = insp->layerList();
-    button(insp, "Thêm layer")->click();
+    insp->findChild<QPushButton*>("layerAdd")->click();
     pump(200);
     CHECK(p.scenes[0]->layers.size() == 2 && ll->count() == 2 && ll->currentRow() == 0, "Them layer: layer moi o tren cung va duoc chon");
     alpha->setValue(0.3);                                  // danh dau layer moi (index 1)
     pump(200);
     CHECK(std::abs(p.scenes[0]->layers[1].opacity - 0.3f) < 1e-4 && std::abs(p.scenes[0]->layers[0].opacity - 0.4f) < 1e-4,
           "Thuoc tinh ap dung cho layer dang chon");
-    ll->model()->moveRow(QModelIndex(), 0, QModelIndex(), 2);       // keo layer tren cung xuong duoi
+    testdrag::dragRow(ll, 0, 2);                           // keo layer tren cung xuong duoi
     pump(300);
     CHECK(std::abs(p.scenes[0]->layers[0].opacity - 0.3f) < 1e-4 && std::abs(p.scenes[0]->layers[1].opacity - 0.4f) < 1e-4,
           "Keo-tha doi thu tu layer -> engine nhan thu tu moi");
@@ -295,8 +294,7 @@ int main(int argc, char** argv) {
         pump(250);
         emit scenes->itemClicked(scenes->item(1));
         pump(250);
-        auto* dur = w.findChild<QDoubleSpinBox*>();
-        for (auto* d : w.findChildren<QDoubleSpinBox*>()) if (d->suffix() == " s") dur = d;
+        auto* dur = w.findChild<QDoubleSpinBox*>("transDuration");
         dur->setValue(0.4);
         tc->setCurrentIndex(itemIdx("p:builtin.push"));
         w.findChild<QComboBox*>("easingCombo")->setCurrentIndex(1);        // Tuyen tinh

@@ -6,7 +6,9 @@
 #include "core/AppSettings.h"
 #include "media/FFmpegSource.h"
 #include "media/StaticSources.h"
+#include "drag.h"
 #include <QApplication>
+#include <QDockWidget>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -497,8 +499,11 @@ void uiTests(const QDir& dir) {
     spin("plItemSeconds")->setValue(7);
     CHECK(ch->playlist.data.items[1].seconds == 7 && list->item(1)->text().contains("7 s"), "dat thoi luong rieng cho muc");
     list->setCurrentRow(1);
-    btn("plUp")->click();
-    CHECK(ch->playlist.data.items[0].scene == p.scenes[1], "dua muc len");
+    for (QDockWidget* d : w.findChildren<QDockWidget*>("dockPlaylist")) d->raise();
+    pump(200);
+    CHECK(!panel->findChild<QPushButton*>("plUp") && !panel->findChild<QPushButton*>("plDown"), "khong con nut len/xuong");
+    testdrag::dragRow(list, 1, 0);
+    CHECK(ch->playlist.data.items[0].scene == p.scenes[1] && ch->program == 0, "keo muc len dau; Program khong doi");
     w.undoStack()->undo();
     CHECK(ch->playlist.data.items[0].scene == p.scenes[0], "hoan tac doi thu tu");
     w.undoStack()->undo();

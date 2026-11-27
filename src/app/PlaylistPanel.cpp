@@ -1,5 +1,8 @@
 #include "PlaylistPanel.h"
+#include "DragList.h"
+#include "Text.h"
 #include "Theme.h"
+#include "Ui.h"
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -64,18 +67,11 @@ PlaylistPanel::PlaylistPanel(Project& project, RenderEngine& engine, QUndoStack*
     v->setContentsMargins(6, 4, 6, 4);
 
     auto* top = new QHBoxLayout;
-    auto button = [](const QString& text, const char* name, const QString& tip) {
-        auto* b = new QPushButton(text);
-        b->setObjectName(name);
-        b->setToolTip(tip);
-        b->setAutoDefault(false);
-        return b;
-    };
-    prev_ = button("⏮ Mục trước", "plPrev", "Chuyển ngay về mục trước");
-    play_ = button("▶ Chạy", "plPlay", "Chạy playlist trên PROGRAM (đang tạm dừng: tiếp tục). Nhấp đúp một mục để chạy từ mục đó");
-    pause_ = button("⏸ Tạm dừng", "plPause", "Giữ mục hiện tại, không tự chuyển");
-    stop_ = button("⏹ Dừng", "plStop", "Dừng playlist; hình đang ở PROGRAM giữ nguyên");
-    next_ = button("⏭ Mục sau", "plNext", "Chuyển ngay sang mục sau");
+    prev_ = ui::iconButton(Glyph::Prev, "plPrev", text::plPrev());
+    play_ = ui::iconButton(Glyph::Play, "plPlay", text::plPlay());
+    pause_ = ui::iconButton(Glyph::Pause, "plPause", text::plPause());
+    stop_ = ui::iconButton(Glyph::Stop, "plStop", text::plStop());
+    next_ = ui::iconButton(Glyph::Next, "plNext", text::plNext());
     for (auto* b : {prev_, play_, pause_, stop_, next_}) top->addWidget(b);
     status_ = new QLabel;
     status_->setObjectName("plStatus");
@@ -85,8 +81,11 @@ PlaylistPanel::PlaylistPanel(Project& project, RenderEngine& engine, QUndoStack*
     top->addWidget(status_, 1);
     v->addLayout(top);
 
-    list_ = new QListWidget;
+    auto* items_list = new DragList;
+    items_list->onReorder = [this](const std::vector<int>& rows, int before) { reorder(rows, before); };
+    list_ = items_list;
     list_->setObjectName("playlistList");
+    list_->setToolTip(text::plListTip());
     list_->setSelectionMode(QAbstractItemView::ExtendedSelection);
     list_->setTextElideMode(Qt::ElideMiddle);
     list_->setMinimumHeight(60);
@@ -96,15 +95,14 @@ PlaylistPanel::PlaylistPanel(Project& project, RenderEngine& engine, QUndoStack*
     auto* ev = new QVBoxLayout(editBox_);
     ev->setContentsMargins(0, 0, 0, 0);
     auto* items = new QHBoxLayout;
-    addScene_ = button("Thêm Scene…", "plAddScene", "Thêm Scene của kênh vào cuối playlist");
-    addFile_ = button("Thêm file…", "plAddFile", "Nhập ảnh/video (tạo Scene) rồi thêm vào playlist. Cũng có thể kéo thả file vào khung này");
-    remove_ = button("Bỏ mục", "plRemove", "Bỏ các mục đang chọn khỏi playlist (Scene vẫn còn)");
-    up_ = button("↑", "plUp", "Đưa mục lên");
-    down_ = button("↓", "plDown", "Đưa mục xuống");
+    addScene_ = ui::iconButton(Glyph::AddScene, "plAddScene", text::plAddScene());
+    addFile_ = ui::iconButton(Glyph::AddFile, "plAddFile", text::plAddFile());
+    remove_ = ui::iconButton(Glyph::Remove, "plRemove", text::plRemove());
+    ui::setWhy(remove_, text::plNoSelectionWhy());
     itemSeconds_ = secondsSpin("plItemSeconds", 0, kPlaylistMaxSeconds, 1);
     itemSeconds_->setSpecialValueText("Tự động");
     itemSeconds_->setToolTip("Thời lượng riêng của mục đang chọn. Tự động: video chuyển khi phát hết, còn lại dùng thời lượng ảnh");
-    for (QWidget* w : std::initializer_list<QWidget*>{addScene_, addFile_, remove_, up_, down_}) items->addWidget(w);
+    for (QWidget* w : std::initializer_list<QWidget*>{addScene_, addFile_, remove_}) items->addWidget(w);
     items->addSpacing(12);
     items->addWidget(new QLabel("Thời lượng mục"));
     items->addWidget(itemSeconds_);
@@ -160,8 +158,6 @@ PlaylistPanel::PlaylistPanel(Project& project, RenderEngine& engine, QUndoStack*
     });
     connect(addFile_, &QPushButton::clicked, this, [this] { addFiles(); });
     connect(remove_, &QPushButton::clicked, this, [this] { removeSelected(); });
-    connect(up_, &QPushButton::clicked, this, [this] { moveSelected(-1); });
-    connect(down_, &QPushButton::clicked, this, [this] { moveSelected(1); });
 
     connect(itemSeconds_, &QDoubleSpinBox::valueChanged, this, [this](double value) {
         PlaylistData d = channel()->playlist.data;
@@ -234,6 +230,7 @@ void PlaylistPanel::setChannel(int index) {
 void PlaylistPanel::setLocked(bool on) {
     locked_ = on;
     editBox_->setEnabled(!on);
+    static_cast<DragList*>(list_)->setReorderEnabled(!on);
 }
 
 void PlaylistPanel::refreshTransitions() {
@@ -324,8 +321,6 @@ void PlaylistPanel::refresh() {
     }
     itemSeconds_->setEnabled(!rows.empty());
     remove_->setEnabled(!rows.empty());
-    up_->setEnabled(!rows.empty() && rows.front() > 0);
-    down_->setEnabled(!rows.empty() && rows.back() + 1 < int(d.items.size()));
     transSeconds_->setEnabled(d.transition != TransitionType::Cut);
     queryItemInfo();
     tick();
@@ -365,9 +360,14 @@ void PlaylistPanel::tick() {
         if (left >= 0) text += " · còn " + clockText(left);
     }
     status_->setText(text);
+    ui::setWhy(play_, d.items.empty() ? text::plEmptyWhy() : text::plPlayingWhy());
     play_->setEnabled(!d.items.empty() && state != Playlist::State::Playing);
+    ui::setWhy(pause_, text::plNotRunningWhy());
     pause_->setEnabled(state == Playlist::State::Playing);
-    for (auto* b : {stop_, prev_, next_}) b->setEnabled(state != Playlist::State::Stopped);
+    for (auto* b : {stop_, prev_, next_}) {
+        ui::setWhy(b, text::plNotRunningWhy());
+        b->setEnabled(state != Playlist::State::Stopped);
+    }
 }
 
 void PlaylistPanel::control(std::function<void(Channel&, double)> fn) {
@@ -414,14 +414,11 @@ void PlaylistPanel::removeSelected() {
     edit(d, "Bỏ mục khỏi playlist");
 }
 
-void PlaylistPanel::moveSelected(int dir) {
+void PlaylistPanel::reorder(const std::vector<int>& rows, int before) {
     PlaylistData d = channel()->playlist.data;
-    auto rows = selectedRows();
-    if (rows.empty()) return;
-    if (dir < 0 ? rows.front() == 0 : rows.back() + 1 >= int(d.items.size())) return;
-    if (dir > 0) std::reverse(rows.begin(), rows.end());
-    for (int r : rows) std::swap(d.items[size_t(r)], d.items[size_t(r + dir)]);
-    edit(d, "Đổi thứ tự playlist");
+    if (locked_ || rows.empty() || rows.back() >= int(d.items.size())) return;
+    d.items = movedRows(d.items, rows, before);
+    edit(d, text::plUndoReorder());
 }
 
 } // namespace lc

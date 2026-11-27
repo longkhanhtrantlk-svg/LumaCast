@@ -1,5 +1,6 @@
 #pragma once
 #include "audio/AudioMixer.h"
+#include "core/CountdownAlarm.h"
 #include "core/Project.h"
 #include "render/EffectRegistry.h"
 #include "render/FrameStats.h"
@@ -97,6 +98,7 @@ private:
     mutable std::mutex sinksMu_;
     std::unique_ptr<QOffscreenSurface> surface_;
     AudioMixer audio_;
+    CountdownAlarm alarm_;                          // render thread: tieng nhac cua dong ho dem nguoc
     std::shared_ptr<AudioPlan> lastPlan_;
     EffectRegistry ownRegistry_;
     EffectRegistry* registry_ = &ownRegistry_;

@@ -426,6 +426,16 @@ void RenderEngine::run() {
             auto plan = buildAudioPlan(project_, t);
             if (!lastPlan_ || !plan->sameAs(*lastPlan_)) { lastPlan_ = plan; audio_.setPlan(plan); }
         }
+        // tieng nhac dem nguoc: ke hoach da gom mute/am luong cua kenh nen chi can bao bat/tat
+        {
+            std::vector<AlarmEvent> events;
+            for (size_t i = 0; i < project_.channels.size(); ++i)
+                alarm_.update(int(i), project_.channels[i]->overlays.frames(t), events);
+            for (const AlarmEvent& e : events) {
+                if (e.stop) audio_.stopTones(e.channel, e.overlayId);
+                else audio_.playTone(e.channel, e.overlayId, e.kind, e.volume);
+            }
+        }
 
         const int64_t upNs = GlProfile::uploadNs(), scNs = comp.timing().sceneNs, trNs = comp.timing().transitionNs;
         const int64_t monT0 = GlProfile::nowNs();

@@ -1,4 +1,6 @@
 #include "TimelineWidget.h"
+#include "Text.h"
+#include "Ui.h"
 #include "InspectorPanel.h"
 #include <QCheckBox>
 #include <QDoubleSpinBox>
@@ -326,10 +328,8 @@ TimelineWidget::TimelineWidget(InspectorPanel& inspector, RenderEngine& engine, 
 
     auto* v = new QVBoxLayout(this);
     auto* bar = new QHBoxLayout;
-    stopBtn_ = new QPushButton("⏮ Về 0");
-    stopBtn_->setObjectName("tlStop");
-    playBtn_ = new QPushButton("▶ Phát");
-    playBtn_->setObjectName("tlPlay");
+    stopBtn_ = ui::iconButton(Glyph::Rewind, "tlStop", text::tlStop());
+    playBtn_ = ui::iconButton(Glyph::Play, "tlPlay", text::tlPlay());
     timeLabel_ = new QLabel;
     timeLabel_->setObjectName("tlTime");
     timeLabel_->setMinimumWidth(130);
@@ -352,18 +352,12 @@ TimelineWidget::TimelineWidget(InspectorPanel& inspector, RenderEngine& engine, 
     warnLabel_->setStyleSheet("color:#e0a526;font-weight:bold");
     warnLabel_->setWordWrap(true);                      // canh bao dai o DONG RIENG: khong ep cua so phai rong them
     bar->addStretch();
-    zoomOut_ = new QPushButton("−");
-    zoomOut_->setObjectName("tlZoomOut");
-    zoomOut_->setToolTip("Thu nhỏ timeline (Ctrl + lăn chuột)");
-    zoomIn_ = new QPushButton("+");
-    zoomIn_->setObjectName("tlZoomIn");
-    zoomIn_->setToolTip("Phóng to timeline (Ctrl + lăn chuột)");
-    zoomFitBtn_ = new QPushButton("Vừa khít");
-    zoomFitBtn_->setObjectName("tlZoomFit");
+    zoomOut_ = ui::iconButton(Glyph::ZoomOut, "tlZoomOut", text::tlZoomOut());
+    zoomIn_ = ui::iconButton(Glyph::ZoomIn, "tlZoomIn", text::tlZoomIn());
+    zoomFitBtn_ = ui::iconButton(Glyph::ZoomFit, "tlZoomFit", text::tlZoomFit());
     zoomLabel_ = new QLabel("×1");
     zoomLabel_->setObjectName("tlZoomLabel");
     zoomLabel_->setMinimumWidth(36);
-    for (QPushButton* b : {zoomOut_, zoomIn_}) b->setFixedWidth(30);
     for (QWidget* w : std::initializer_list<QWidget*>{zoomOut_, zoomLabel_, zoomIn_, zoomFitBtn_}) bar->addWidget(w);
     v->addLayout(bar);
     v->addWidget(warnLabel_);
@@ -457,9 +451,16 @@ void TimelineWidget::refresh() {
     syncScroll();
     const SceneProps& sp = props();
     timeLabel_->setText(QString("%1 / %2 s").arg(playhead(), 0, 'f', 2).arg(sp.duration, 0, 'f', 2));
-    playBtn_->setText(playing() ? "⏸ Tạm dừng" : "▶ Phát");
+    if (const bool p = playing(); playBtn_->property("playing").toBool() != p) {
+        playBtn_->setProperty("playing", p);
+        playBtn_->setIcon(glyphIcon(p ? Glyph::Pause : Glyph::Play));
+        playBtn_->setToolTip(p ? text::tlPause() : text::tlPlay());
+    }
     const bool has = insp_.currentScenePtr() != nullptr;
-    for (QWidget* w : std::initializer_list<QWidget*>{playBtn_, stopBtn_}) w->setEnabled(has);
+    for (QWidget* w : std::initializer_list<QWidget*>{playBtn_, stopBtn_}) {
+        ui::setWhy(w, text::tlNoSceneWhy());
+        w->setEnabled(has);
+    }
     for (QWidget* w : std::initializer_list<QWidget*>{durSpin_, loopChk_, restartChk_}) w->setEnabled(has && !locked_);
     // Canh bao an toan: Scene dang chon dang o Program cua mot kenh -> phat/tua/sua keyframe tac dong TRUC TIEP len man hinh
     bool onAir = false;

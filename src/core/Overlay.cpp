@@ -55,6 +55,12 @@ QString overlayDisplayText(const OverlayDef& d, int secondsLeft) {
     return d.text;
 }
 
+OverlayDef overlayShownDef(const OverlayFrame& f) {
+    OverlayDef d = f.def;
+    if (f.alerting) d.color = kAlertColor;
+    return d;
+}
+
 // ---------------- OverlayStack ----------------
 
 const OverlayDef* OverlayStack::find(int id) const {
@@ -162,6 +168,7 @@ OverlayFrame OverlayStack::frameOf(const OverlayDef& d, double now) const {
     OverlayFrame f;
     f.def = d;
     f.secondsLeft = d.type == OverlayType::Countdown ? d.seconds : 0;
+    f.remaining = f.secondsLeft;
     auto it = live_.find(d.id);
     if (it == live_.end()) return f;
     Live& l = it->second;
@@ -178,6 +185,9 @@ OverlayFrame OverlayStack::frameOf(const OverlayDef& d, double now) const {
         }
         f.secondsLeft = int(std::ceil(d.seconds - elapsed - 1e-6));
         f.running = l.running;
+        f.remaining = std::max(0.0, d.seconds - elapsed);
+        f.finished = !l.running && elapsed >= d.seconds;
+        f.alerting = d.alert && l.on && (f.finished || (f.running && f.remaining <= d.alertSeconds + 1e-6));
     }
     return f;
 }
@@ -239,7 +249,14 @@ QJsonArray overlaysToJson(const OverlayStack& s, const QDir& base) {
             o["outlineWidth"] = double(d.outlineWidth);
         }
         if (d.type == OverlayType::Ticker) o["speed"] = d.speed;
-        if (d.type == OverlayType::Countdown) o["seconds"] = d.seconds;
+        if (d.type == OverlayType::Countdown) {
+            o["seconds"] = d.seconds;
+            const OverlayDef def;                                    // tieng nhac: chi ghi phan khac mac dinh
+            if (d.alert) o["alert"] = true;
+            if (d.alertSeconds != def.alertSeconds) o["alertSeconds"] = d.alertSeconds;
+            if (d.fastSeconds != def.fastSeconds) o["fastSeconds"] = d.fastSeconds;
+            if (d.alertVolume != def.alertVolume) o["alertVolume"] = d.alertVolume;
+        }
         if (s.isOn(d.id)) o["on"] = true;
         a.append(o);
     }
@@ -284,6 +301,10 @@ void overlaysFromJson(OverlayStack& s, const QJsonArray& a, const QDir& base) {
         d.outlineWidth = float(num(o, "outlineWidth", 0, 0, 50));
         d.speed = num(o, "speed", 150, 1, 5000);
         d.seconds = int(num(o, "seconds", 300, 1, kMaxCountdownSeconds));
+        d.alert = o["alert"].toBool(false);
+        d.alertSeconds = int(num(o, "alertSeconds", d.alertSeconds, 1, kMaxAlertSeconds));
+        d.fastSeconds = int(num(o, "fastSeconds", std::min(d.fastSeconds, d.alertSeconds), 0, d.alertSeconds));
+        d.alertVolume = int(num(o, "alertVolume", d.alertVolume, 0, 100));
         const QString img = o["image"].toString();
         if (!img.isEmpty()) d.image = QDir::cleanPath(base.absoluteFilePath(img));     // thieu file: van mo duoc project, lop phu trong
         if (o["on"].toBool(false)) on.push_back(d.id);

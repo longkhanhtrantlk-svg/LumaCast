@@ -158,7 +158,8 @@ static void testKeyStore(const QString& dir) {
     for (const QKeySequence& k : {QKeySequence(Qt::Key_Space), QKeySequence(Qt::Key_Return), QKeySequence(Qt::Key_Enter), QKeySequence(Qt::CTRL | Qt::Key_Space),
                                   QKeySequence(Qt::SHIFT | Qt::Key_Return), QKeySequence(Qt::Key_Escape), QKeySequence(Qt::Key_Delete), QKeySequence(Qt::Key_Tab),
                                   QKeySequence(Qt::CTRL | Qt::Key_S), QKeySequence(Qt::CTRL | Qt::Key_O), QKeySequence(Qt::CTRL | Qt::Key_Z), QKeySequence(Qt::CTRL | Qt::Key_Y),
-                                  QKeySequence(Qt::CTRL | Qt::Key_C), QKeySequence(Qt::ALT | Qt::Key_F), QKeySequence(Qt::CTRL | Qt::Key_M), QKeySequence(Qt::Key_F11)})
+                                  QKeySequence(Qt::CTRL | Qt::Key_C), QKeySequence(Qt::ALT | Qt::Key_F), QKeySequence(Qt::CTRL | Qt::Key_M), QKeySequence(Qt::Key_F11),
+                                  QKeySequence(Qt::Key_F9), QKeySequence(Qt::CTRL | Qt::Key_F1), QKeySequence(Qt::CTRL | Qt::Key_F2), QKeySequence(Qt::CTRL | Qt::Key_F3)})
         reserved = reserved && !shortcuts::reservedReason(k).isEmpty();
     CHECK(reserved, "phim co dinh / phim menu / phim timeline khong gan duoc");
     CHECK(shortcuts::reservedReason(QKeySequence(Qt::Key_F5)).isEmpty() && shortcuts::reservedReason(QKeySequence(Qt::Key_PageDown)).isEmpty() &&
@@ -175,7 +176,7 @@ static void testKeyStore(const QString& dir) {
     m.remove("preview.1");
     m["output.2.black"] = QKeySequence(Qt::Key_1);
     m["take"] = QKeySequence(Qt::Key_PageDown);
-    m["blackAll"] = QKeySequence(Qt::Key_F9);
+    m["blackAll"] = QKeySequence(Qt::Key_F8);
     shortcuts::save(st, m);
     CHECK(shortcuts::load(st) == m, "luu roi doc lai dung (ke ca phim mac dinh da go)");
     CHECK(!st.contains("shortcuts/lock") && !st.contains("shortcuts/preview.2") && st.contains("shortcuts/preview.1"), "chi ghi phan khac mac dinh");
@@ -256,7 +257,7 @@ int main(int argc, char** argv) {
 
     {   // cau hinh co san truoc khi mo cua so: phai duoc nap
         QSettings st = appSettings();
-        st.setValue("shortcuts/blackAll", "F9");
+        st.setValue("shortcuts/blackAll", "F8");
         st.setValue("midi/enabled", true);
         st.setValue("midi/device", "thiet bi chua cam");
     }
@@ -286,13 +287,13 @@ int main(int argc, char** argv) {
     auto settle = [&] { waitFor([&] { return !ch->inTransition(); }, 5000); pump(80); };
 
     // ================= nap cau hinh luc khoi dong =================
-    CHECK(w.keyMap().value("blackAll") == QKeySequence(Qt::Key_F9), "khoi dong: nap phim tat da luu");
+    CHECK(w.keyMap().value("blackAll") == QKeySequence(Qt::Key_F8), "khoi dong: nap phim tat da luu");
     CHECK(w.midi().config().enabled && !w.midi().connected() && w.midi().statusText().contains("Chưa thấy"), "khoi dong: MIDI bat nhung thiet bi chua cam -> cho, khong loi");
     CHECK(ctlLabel->text().contains("MIDI: chưa nối"), "thanh trang thai bao MIDI chua noi");
-    press(w, QKeySequence(Qt::Key_F9));
-    CHECK(waitFor(allBlack), "phim da doi (F9) chay BLACK ALL");
-    press(w, QKeySequence(Qt::Key_F9));
-    CHECK(waitFor(noBlack), "F9 lan nua: tra hinh");
+    press(w, QKeySequence(Qt::Key_F8));
+    CHECK(waitFor(allBlack), "phim da doi (F8) chay BLACK ALL");
+    press(w, QKeySequence(Qt::Key_F8));
+    CHECK(waitFor(noBlack), "F8 lan nua: tra hinh");
     press(w, QKeySequence(Qt::Key_B));
     pump(150);
     CHECK(noBlack(), "phim cu (B) khong con tac dung");
@@ -349,7 +350,7 @@ int main(int argc, char** argv) {
         press(w, QKeySequence(Qt::Key_F5));
         CHECK(engine.output(0)->freeze.load() && engine.output(0)->testPattern.load() && !engine.output(1)->freeze.load(), "F4/F5 = Dung/Mau Output 1");
         bool buttonsFollow = false;
-        for (auto* tb : w.findChildren<QToolButton*>()) if (tb->text() == "Dừng" && tb->isChecked()) buttonsFollow = true;
+        for (auto* tb : w.findChildren<QToolButton*>()) if (tb->objectName().startsWith("outFreeze") && tb->isChecked()) buttonsFollow = true;
         CHECK(buttonsFollow, "nut Dung cua Output sang theo phim ngay");
         press(w, QKeySequence(Qt::Key_F4));
         press(w, QKeySequence(Qt::Key_F5));

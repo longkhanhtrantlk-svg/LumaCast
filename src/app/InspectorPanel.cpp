@@ -1,6 +1,9 @@
 #include "InspectorPanel.h"
+#include "DragList.h"
 #include "ParamEditor.h"
-#include <QAbstractItemModel>
+#include "Text.h"
+#include "Ui.h"
+#include <QAbstractSpinBox>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -12,7 +15,6 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSignalBlocker>
-#include <QTimer>
 #include <QUndoCommand>
 #include <QUndoStack>
 
@@ -82,6 +84,16 @@ InspectorPanel::InspectorPanel(Project& project, RenderEngine& engine, QUndoStac
     addTab(buildSceneTab(), "Scene / Layer");
     addTab(buildEffectTab(), "Effect");
     addTab(buildOutputTab(), "Output");
+    narrowFields(this);
+}
+
+// Cot Inspector hep (~270): o so va hop chon duoc phep co lai thay vi sinh thanh cuon ngang.
+void InspectorPanel::narrowFields(QWidget* root) {
+    for (auto* s : root->findChildren<QAbstractSpinBox*>()) s->setMinimumWidth(78);
+    for (auto* c : root->findChildren<QComboBox*>()) {
+        c->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+        c->setMinimumContentsLength(4);
+    }
 }
 
 void InspectorPanel::editLayers(int si, std::vector<Layer> after, const QString& text, int mergeId) {
@@ -143,25 +155,26 @@ QWidget* InspectorPanel::buildSceneTab() {
     sceneCombo_->setObjectName("sceneCombo");
     v->addWidget(sceneCombo_);
 
-    layerList_ = new QListWidget;
+    auto* layers = new DragList;
+    layerList_ = layers;
     layerList_->setObjectName("layerList");
-    layerList_->setDragDropMode(QAbstractItemView::InternalMove);
-    layerList_->setDefaultDropAction(Qt::MoveAction);
-    layerList_->setToolTip("Dau danh sach = layer o tren cung. Keo-tha de doi thu tu, tick de an/hien.");
+    layerList_->setToolTip(text::layerListTip());
+    layers->onReorder = [this](const std::vector<int>& rows, int before) { reorderLayers(rows, before); };
     v->addWidget(layerList_, 1);
 
     auto* add = new QHBoxLayout;
     addSrcCombo_ = new QComboBox;
-    auto* addB = new QPushButton("Thêm layer");
-    auto* upB = new QPushButton("Lên"), * downB = new QPushButton("Xuống"), * delB = new QPushButton("Xoá");
+    addSrcCombo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    addSrcCombo_->setMinimumContentsLength(6);
+    auto* addB = ui::iconButton(Glyph::Add, "layerAdd", text::layerAdd());
+    auto* delB = ui::iconButton(Glyph::Delete, "layerDelete", text::layerDelete());
+    ui::setWhy(delB, text::layerNoneWhy());
+    layerDel_ = delB;
+    layerAdd_ = addB;
     add->addWidget(addSrcCombo_, 1);
     add->addWidget(addB);
+    add->addWidget(delB);
     v->addLayout(add);
-    auto* ops = new QHBoxLayout;
-    ops->addWidget(upB);
-    ops->addWidget(downB);
-    ops->addWidget(delB);
-    v->addLayout(ops);
 
     propBox_ = new QGroupBox("Thuộc tính layer đang chọn");
     propBox_->setToolTip("Ô viền vàng = thuộc tính đang có keyframe: chỉnh giá trị sẽ tự đặt/sửa keyframe tại vị trí playhead.");
@@ -232,8 +245,6 @@ QWidget* InspectorPanel::buildSceneTab() {
         after[li].visible = it->checkState() == Qt::Checked;
         editLayers(si, after, after[li].visible ? "Hiện layer" : "Ẩn layer");
     });
-    connect(layerList_->model(), &QAbstractItemModel::rowsMoved, this,
-            [this] { QTimer::singleShot(0, this, [this] { onLayersReordered(); }); });
     connect(addB, &QPushButton::clicked, this, [this] {
         const int si = currentScene(), k = addSrcCombo_->currentIndex();
         if (si < 0 || k < 0) return;
@@ -244,16 +255,6 @@ QWidget* InspectorPanel::buildSceneTab() {
         editLayers(si, after, "Thêm layer");
         syncLayerList(int(after.size()) - 1);
     });
-    auto swapLayer = [this](int dir) {
-        const int si = currentScene(), li = currentLayerIdx();
-        if (li < 0 || li + dir < 0 || li + dir >= int(layerCache_[si].size())) return;
-        auto after = layerCache_[si];
-        std::swap(after[li], after[li + dir]);
-        editLayers(si, after, "Đổi thứ tự layer");
-        syncLayerList(li + dir);
-    };
-    connect(upB, &QPushButton::clicked, this, [swapLayer] { swapLayer(+1); });
-    connect(downB, &QPushButton::clicked, this, [swapLayer] { swapLayer(-1); });
     connect(delB, &QPushButton::clicked, this, [this] {
         const int si = currentScene(), li = currentLayerIdx();
         if (li < 0) return;
@@ -282,6 +283,7 @@ void InspectorPanel::rebuildOutputs() {
     wallW_.clear();
     canvasCache_.clear();
     insertTab(2, buildOutputTab(), "Output");
+    narrowFields(widget(2));
     setCurrentIndex(tab);
     emit layerDataChanged();
 }
@@ -340,6 +342,12 @@ void InspectorPanel::syncProps() {
     const int si = currentScene(), li = currentLayerIdx();
     const bool ok = li >= 0;
     propBox_->setEnabled(ok);
+    if (layerDel_) layerDel_->setEnabled(ok);
+    if (layerAdd_) {
+        const bool can = si >= 0 && !project_.sources.empty();
+        ui::setWhy(layerAdd_, can ? QString() : text::noSourceWhy());
+        layerAdd_->setEnabled(can);
+    }
     if (fxList_) syncEffectList(fxList_->currentRow());
     auto setv = [](QDoubleSpinBox* s, double v) { QSignalBlocker b(s); s->setValue(v); };
     if (!ok) return;
@@ -406,21 +414,55 @@ void InspectorPanel::setLayerProp(AnimProp p, double v) {
     }, "Sửa thuộc tính layer", 1000000 + si * 10000 + li * 100 + int(p));
 }
 
-void InspectorPanel::onLayersReordered() {
+// rows/before tinh theo danh sach (hang 0 = layer tren cung = phan tu cuoi cua vector)
+void InspectorPanel::reorderLayers(const std::vector<int>& rows, int before) {
     const int si = currentScene();
-    if (si < 0) return;
-    const auto before = layerCache_[si];
-    const int n = int(before.size());
-    if (layerList_->count() != n) return;
-    std::vector<Layer> after(n);
-    for (int r = 0; r < n; ++r) {
-        const int old = layerList_->item(r)->data(Qt::UserRole).toInt();
-        if (old < 0 || old >= n) return;
-        after[n - 1 - r] = before[old];
+    if (si < 0 || si >= int(layerCache_.size()) || rows.empty() || rows.back() >= int(layerCache_[si].size())) return;
+    std::vector<Layer> shown(layerCache_[si].rbegin(), layerCache_[si].rend());
+    shown = movedRows(shown, rows, before);
+    const int n = int(shown.size());
+    const int selRow = rows.front() < before ? before - int(rows.size()) : before;       // hang moi cua muc keo dau tien
+    editLayers(si, std::vector<Layer>(shown.rbegin(), shown.rend()), "Sắp xếp layer");
+    syncLayerList(std::clamp(n - 1 - selRow, 0, n - 1));
+}
+
+const std::vector<Layer>* InspectorPanel::layersOf(int si) const {
+    return si >= 0 && si < int(layerCache_.size()) ? &layerCache_[size_t(si)] : nullptr;
+}
+
+void InspectorPanel::selectLayer(int si, int li) {
+    if (si < 0 || si >= int(layerCache_.size()) || si >= sceneCombo_->count()) return;
+    if (sceneCombo_->currentIndex() != si) sceneCombo_->setCurrentIndex(si);
+    const int n = int(layerCache_[size_t(si)].size());
+    if (li >= 0 && li < n && layerList_->currentRow() != n - 1 - li) layerList_->setCurrentRow(n - 1 - li);
+}
+
+void InspectorPanel::setLayerRect(int si, int li, const QRectF& rect, const QString& text, int mergeId, int fit) {
+    if (locked_ || si < 0 || si >= int(layerCache_.size()) || li < 0 || li >= int(layerCache_[size_t(si)].size())) return;
+    if (rect.width() <= 0 || rect.height() <= 0) return;
+    const double t = double(project_.scenes[size_t(si)]->clock.time);
+    std::vector<Layer> after = layerCache_[size_t(si)];
+    Layer& l = after[size_t(li)];
+    const LayerState now = evalLayer(l, t);
+    const double want[4] = {rect.x(), rect.y(), rect.width(), rect.height()};
+    const double have[4] = {now.rect.x(), now.rect.y(), now.rect.width(), now.rect.height()};
+    const AnimProp prop[4] = {AnimProp::X, AnimProp::Y, AnimProp::W, AnimProp::H};
+    bool changed = false;
+    for (int k = 0; k < 4; ++k) {
+        if (std::abs(want[k] - have[k]) < 1e-9) continue;
+        changed = true;
+        if (Track* tr = l.track(prop[k]); tr && !tr->keys.empty()) {          // co keyframe: dat/sua key tai playhead, nhu o so
+            const int key = findKey(*tr, t);
+            setKey(*tr, t, want[k], key >= 0 ? tr->keys[size_t(key)].interp : Interp::Linear);
+        } else if (k == 0) l.rect.moveLeft(want[k]);
+        else if (k == 1) l.rect.moveTop(want[k]);
+        else if (k == 2) l.rect.setWidth(want[k]);
+        else l.rect.setHeight(want[k]);
     }
-    const int sel = n - 1 - std::max(0, layerList_->currentRow());
-    editLayers(si, after, "Sắp xếp layer");
-    syncLayerList(sel);
+    if (fit >= 0 && l.fit != LayerFit(fit)) { l.fit = LayerFit(fit); changed = true; }
+    if (!changed) return;
+    editLayers(si, std::move(after), text, mergeId);
+    if (currentScene() == si) syncProps();
 }
 
 void InspectorPanel::pushLayers(int si) {
@@ -447,15 +489,18 @@ QWidget* InspectorPanel::buildEffectTab() {
     auto* add = new QHBoxLayout;
     fxAddCombo_ = new QComboBox;
     fxAddCombo_->setObjectName("effectAddCombo");
-    auto* addB = new QPushButton("Thêm Effect");
-    addB->setObjectName("effectAdd");
+    fxAddCombo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    fxAddCombo_->setMinimumContentsLength(6);
+    auto* addB = ui::iconButton(Glyph::Add, "effectAdd", text::effectAdd());
     add->addWidget(fxAddCombo_, 1);
     add->addWidget(addB);
     v->addLayout(add);
     auto* ops = new QHBoxLayout;
-    auto* upB = new QPushButton("Effect lên"), * downB = new QPushButton("Effect xuống"), * delB = new QPushButton("Gỡ Effect");
-    upB->setObjectName("effectUp"); downB->setObjectName("effectDown"); delB->setObjectName("effectDel");
-    ops->addWidget(upB); ops->addWidget(downB); ops->addWidget(delB);
+    auto* upB = ui::iconButton(Glyph::Up, "effectUp", text::effectUp());
+    auto* downB = ui::iconButton(Glyph::Down, "effectDown", text::effectDown());
+    auto* delB = ui::iconButton(Glyph::Delete, "effectDel", text::effectDelete());
+    for (QPushButton* b : {upB, downB, delB}) { ui::setWhy(b, text::effectNoneWhy()); ops->addWidget(b); fxOps_.push_back(b); }
+    ops->addStretch();
     v->addLayout(ops);
 
     fxNote_ = new QLabel;
@@ -553,6 +598,7 @@ void InspectorPanel::syncEffectParams() {
     if (fxParams_) { fxParams_->hide(); fxParams_->deleteLater(); fxParams_ = nullptr; }
     const int si = currentScene(), li = currentLayerIdx(), ei = fxList_->currentRow();
     const bool ok = si >= 0 && li >= 0 && ei >= 0 && li < int(layerCache_[si].size()) && ei < int(layerCache_[si][li].effects.size());
+    for (QPushButton* b : fxOps_) b->setEnabled(ok);
     fxParamBox_->setVisible(ok);
     fxNote_->clear();
     if (!ok) return;
@@ -617,7 +663,7 @@ QWidget* InspectorPanel::buildOutputTab() {
     auto* host = new QWidget;
     auto* root = new QVBoxLayout(host);
     outW_.resize(engine_.outputCount());
-    auto* mapBtn = new QPushButton("Mapping trực quan…  (Ctrl+M)");
+    auto* mapBtn = new QPushButton(glyphIcon(Glyph::Layout), "Mapping trực quan…");
     mapBtn->setObjectName("openMapping");
     mapBtn->setToolTip("Kéo thả vùng cắt của từng Output trên hình Channel");
     connect(mapBtn, &QPushButton::clicked, this, [this] { emit mappingRequested(); });

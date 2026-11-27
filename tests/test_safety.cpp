@@ -14,6 +14,7 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QProcess>
+#include <QDockWidget>
 #include <QPushButton>
 #include <QSettings>
 #include <QTemporaryDir>
@@ -172,7 +173,14 @@ int main(int argc, char** argv) {
         out->close();
         pump(900);
         CHECK(!out->isVisible() && out->handle() != nullptr, "dong cua so Output: chi an, khong huy cua so");
-        CHECK(reopen->isVisibleTo(&w), "bang Outputs hien nut Mo lai");
+        auto* status = w.findChild<QPushButton*>("statusReopen");
+        auto* outDock = w.findChild<QDockWidget*>("dockOutputs");
+        w.applyLayout("prepare");                       // bo cuc an khung Outputs
+        pump(900);
+        CHECK(outDock->isHidden() && status && status->isVisibleTo(&w), "khung Outputs an: thanh trang thai van co nut Mo lai");
+        w.applyLayout("live");
+        pump(900);
+        CHECK(!outDock->isHidden() && reopen->isVisibleTo(&w) && !status->isVisibleTo(&w), "bang Outputs hien nut Mo lai");
         reopen->click();
         pump(900);
         const uint64_t n = out->presented;

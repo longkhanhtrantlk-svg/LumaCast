@@ -1,5 +1,7 @@
 #include "AudioPanel.h"
+#include "Text.h"
 #include "Theme.h"
+#include "Ui.h"
 #include <QComboBox>
 #include <QGridLayout>
 #include <QLabel>
@@ -54,14 +56,16 @@ void LevelMeter::paintEvent(QPaintEvent*) {
 AudioPanel::AudioPanel(Project& project, RenderEngine& engine, QWidget* parent) : QWidget(parent), project_(project), engine_(engine) {
     setObjectName("audioPanel");
     auto* v = new QVBoxLayout(this);
+    v->setContentsMargins(6, 4, 6, 4);
+    v->setSpacing(3);
     auto* top = new QHBoxLayout;
-    top->addWidget(new QLabel("Thiết bị ra:"));
     device_ = new QComboBox;
     device_->setObjectName("audioDevice");
+    device_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);     // ten thiet bi dai khong ep cot rong ra
+    device_->setMinimumContentsLength(6);
     device_->setToolTip("Thiết bị phát âm thanh của toàn bộ các Channel (mix chung). Lưu trong project; máy khác không có thiết bị này sẽ dùng mặc định.");
     top->addWidget(device_, 1);
-    auto* refresh = new QPushButton("Làm mới");
-    refresh->setObjectName("audioDevRefresh");
+    auto* refresh = ui::iconButton(Glyph::Refresh, "audioDevRefresh", text::audioRefresh());
     top->addWidget(refresh);
     v->addLayout(top);
     status_ = new QLabel;
@@ -69,19 +73,19 @@ AudioPanel::AudioPanel(Project& project, RenderEngine& engine, QWidget* parent) 
     status_->setWordWrap(true);
     v->addWidget(status_);
 
-    auto* grid = new QGridLayout;
+    auto* grid = new QGridLayout;                 // moi kenh hai hang (nut + thanh, roi meter) de vua cot hep
     grid->setColumnStretch(2, 1);
-    grid->setColumnStretch(4, 2);
     for (size_t i = 0; i < project_.channels.size(); ++i) {
         Strip s;
-        const int row = int(i);
+        const int row = int(i) * 2;
         s.name = new QLabel(QString("Kênh %1").arg(i + 1));
         s.name->setToolTip(project_.channels[i]->name);
         s.mute = new QToolButton;
         s.mute->setObjectName(QString("muteBtn%1").arg(i));
         s.mute->setCheckable(true);
-        s.mute->setText("Tắt tiếng");
-        s.mute->setToolTip("Bật/tắt tiếng riêng Channel này (không ảnh hưởng hình). Tiếng vẫn được xử lý nên đồng bộ hình–tiếng không bị lệch khi bật lại.");
+        s.mute->setIcon(glyphIcon(Glyph::Speaker));
+        s.mute->setFocusPolicy(Qt::NoFocus);
+        s.mute->setToolTip(text::audioMute());
         s.vol = new QSlider(Qt::Horizontal);
         s.vol->setObjectName(QString("volSlider%1").arg(i));
         s.vol->setRange(0, 150);
@@ -95,10 +99,11 @@ AudioPanel::AudioPanel(Project& project, RenderEngine& engine, QWidget* parent) 
         grid->addWidget(s.mute, row, 1);
         grid->addWidget(s.vol, row, 2);
         grid->addWidget(s.volText, row, 3);
-        grid->addWidget(s.meter, row, 4);
+        grid->addWidget(s.meter, row + 1, 0, 1, 4);
         strips_.push_back(s);
         auto ch = project_.channels[i];
-        connect(s.mute, &QToolButton::toggled, this, [this, ch](bool on) {
+        connect(s.mute, &QToolButton::toggled, this, [this, ch, b = s.mute](bool on) {
+            b->setIcon(glyphIcon(on ? Glyph::Muted : Glyph::Speaker));
             engine_.post([ch, on](double) { ch->mute = on; });
         });
         connect(s.vol, &QSlider::valueChanged, this, [this, ch, i](int pct) {
@@ -179,7 +184,11 @@ void AudioPanel::refreshMeters() {
         // dong bo voi trang thai that (co the doi tu HTTP/OSC): khong ghi de khi nguoi dung dang keo
         const Channel& ch = *project_.channels[i];
         const bool mu = ch.mute.load();
-        if (s.mute->isChecked() != mu) { QSignalBlocker b(s.mute); s.mute->setChecked(mu); }
+        if (s.mute->isChecked() != mu) {
+            QSignalBlocker b(s.mute);
+            s.mute->setChecked(mu);
+            s.mute->setIcon(glyphIcon(mu ? Glyph::Muted : Glyph::Speaker));
+        }
         const int pct = int(std::lround(ch.volume.load() * 100));
         if (!s.vol->isSliderDown() && s.vol->value() != pct) { QSignalBlocker b(s.vol); s.vol->setValue(pct); }
         s.volText->setText(QString("%1%").arg(s.vol->value()));

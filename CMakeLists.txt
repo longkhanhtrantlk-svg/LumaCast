@@ -59,6 +59,8 @@ endif()
 add_library(lumacast_core STATIC
   src/core/Channel.cpp
   src/core/Overlay.h src/core/Overlay.cpp
+  src/core/CountdownAlarm.h src/core/CountdownAlarm.cpp
+  src/audio/Tone.h src/audio/Tone.cpp
   src/render/OverlayRaster.h src/render/OverlayRaster.cpp
   src/render/OverlayCache.h src/render/OverlayCache.cpp
   src/core/Project.cpp
@@ -124,6 +126,12 @@ add_library(lumacast_ui STATIC
   src/app/Theme.cpp
   src/app/AboutInfo.h src/app/AboutInfo.cpp
   src/app/MonitorWidget.h src/app/MonitorWidget.cpp
+  src/app/PreviewMonitor.h src/app/PreviewMonitor.cpp
+  src/app/NowShowing.h src/app/NowShowing.cpp
+  src/app/DragList.h src/app/DragList.cpp
+  src/app/DockChrome.h src/app/DockChrome.cpp
+  src/app/Ui.h src/app/Ui.cpp src/app/Text.h
+  src/app/MainWindowLayouts.cpp
   src/app/OverlayPanel.h src/app/OverlayPanel.cpp
   src/app/MultiviewWindow.h src/app/MultiviewWindow.cpp
   src/app/InspectorPanel.h src/app/InspectorPanel.cpp
@@ -405,3 +413,8 @@ add_executable(lumacast_license_tests tests/test_license.cpp)
 target_link_libraries(lumacast_license_tests PRIVATE lumacast_ui)
 target_compile_definitions(lumacast_license_tests PRIVATE LUMACAST_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 add_test(NAME license COMMAND lumacast_license_tests)
+
+# Dot 4 + 5: tieng nhac dem nguoc, keo tha, dai "Dang hien", keo overlay / hinh, tooltip
+add_executable(lumacast_ux_tests tests/test_ux.cpp)
+target_link_libraries(lumacast_ux_tests PRIVATE lumacast_ui)
+add_test(NAME ux COMMAND lumacast_ux_tests)

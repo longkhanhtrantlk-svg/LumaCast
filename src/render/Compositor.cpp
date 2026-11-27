@@ -385,7 +385,7 @@ void Compositor::renderOverlays(const OverlayStack& stack, QSize canvas, double 
     const double W = dst.w, H = dst.h;
     const double k = canvas.height() > 0 ? H / canvas.height() : 1.0;       // px canvas -> px dich
     for (const OverlayFrame& f : frames) {
-        const OverlayRasterKey key = overlayRasterKey(f.def, f.secondsLeft, canvas, target);
+        const OverlayRasterKey key = overlayRasterKey(overlayShownDef(f), f.secondsLeft, canvas, target);
         const OverlayCache::Entry* e = overlays_.request(&stack, f.def.id, target, key);      // ke ca dang tat: dung san
         const float alpha = f.def.opacity * f.level;
         if (alpha <= 0.0f) continue;

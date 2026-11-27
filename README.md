@@ -36,6 +36,7 @@ Mở *Cài đặt > Phím tắt và MIDI…* (bị khoá khi đang Khoá vận h
 
 - **Lệnh gán được:** CUT, TAKE, FTB, BLACK ALL, chọn Preview 1–9, Đen/Dừng/Mẫu từng Output, và Khoá vận hành (chỉ phím tắt, chỉ để khoá).
 - **Mặc định giữ nguyên như trước:** Space = TAKE, Enter = CUT, B = BLACK ALL, 1–9 = Preview, Ctrl+L = khoá. FTB và Đen/Dừng/Mẫu chưa gán.
+- **Phím giữ chỗ cho giao diện:** **Ctrl+F1 / F2 / F3** (đổi bố cục) và **F9** (ẩn/hiện cột phải) không gán được cho lệnh khác. Nếu trước đây đã gán một trong các phím này cho lệnh live, phím gán đó bị bỏ qua khi mở (ghi vào log): gán lại phím khác.
 - **Space và Enter cố định:** luôn là TAKE/CUT, không gán cho lệnh khác. TAKE và CUT có thể thêm một phím phụ (vd. PageDown cho bút trình chiếu).
 - Trùng phím hoặc phím đã dùng cho menu/Timeline thì hộp thoại báo lỗi và không lưu. *Khôi phục phím mặc định* trả về như ban đầu.
 - **MIDI** (Windows, API `winmm`, mặc định **tắt**): tích *Bật điều khiển MIDI*, chọn thiết bị, bấm **Học** ở dòng lệnh rồi nhấn nút trên thiết bị. Nhận Note On, CC (tính khi giá trị vượt lên từ dưới 64) và Program Change.
@@ -54,15 +55,38 @@ Mở *Cài đặt > Phím tắt và MIDI…* (bị khoá khi đang Khoá vận h
 ## An toàn khi đang diễn
 - **Enter** trong ô số hoặc ô chữ chỉ xác nhận giá trị, không CUT. Ngoài ô nhập, Enter vẫn là CUT.
 - **Video lên Program thì phát lại từ đầu** (CUT/TAKE/AUTO/T-bar/MIDI/HTTP, ngay khi bắt đầu chuyển). Ở Preview video **vẫn chạy**. Hai Scene dùng chung một video thì chuyển qua lại không giật về đầu. Bỏ chọn *Phát lại khi lên Program* (Timeline) để video của Scene đó không bị tua. Một file đang ở cả Preview và Program thì Preview hiện đúng đoạn Program đang phát.
-- **Đóng cửa sổ Output** (nút X, Alt+F4) chỉ ẩn nó; bảng *Outputs* hiện nút **Mở lại**.
+- **Đóng cửa sổ Output** (nút X, Alt+F4) chỉ ẩn nó; bảng *Outputs* hiện nút **Mở lại**. Nếu bố cục đang ẩn bảng *Outputs* thì nút **⚠ Output đã đóng — Mở lại** hiện ở thanh trạng thái.
 - Mở project **thiếu hoặc hỏng file ảnh/video**: project vẫn mở, chỗ đó hiện hình *THIẾU FILE*, có thông báo liệt kê. Lưu không làm mất tham chiếu; chép file về rồi mở lại.
+
+## Giao diện: nút biểu tượng, kéo thả
+- **Nút phụ chỉ còn biểu tượng:** rê chuột để xem tên (kèm phím tắt theo phím bạn đặt); nút bị mờ thì dòng nhắc nói **vì sao** (đang khoá, playlist trống, chưa chọn layer…). CUT, TAKE, AUTO, BLACK ALL, FTB vẫn giữ chữ. Các hộp thoại (Cài đặt, Màn hình, Mapping…) vẫn dùng nút chữ.
+- **Kéo để đổi thứ tự** trong Overlay, Playlist (chọn nhiều mục thì kéo cả nhóm) và danh sách Layer ở Inspector. Thả ra ngoài danh sách = huỷ, **không xoá**. Esc huỷ lần kéo. Mỗi lần kéo là một bước Hoàn tác.
+- **Đặt hình trên Preview:** kéo trong hình để đổi vị trí, kéo cạnh để đổi một chiều, kéo góc để phóng/thu giữ tỉ lệ; hình bắt dính vào mép và giữa. Ba nút dưới màn Preview đặt hình theo cả khung màn: **Fit** (trọn hình, có thể viền đen), **Fill** (phủ kín, có thể cắt mép), **Stretch** (kéo giãn). Layer có keyframe vị trí/kích thước thì thao tác này đặt keyframe tại playhead.
+- ⚠ Kéo hình là **sửa Scene**: nếu Scene đó cũng đang ở Program (hoặc đang chuyển vào) thì **màn LED đổi ngay** (Preview hiện cảnh báo đỏ). Ctrl+Z trả lại. Khoá vận hành chặn.
+
+## Bố cục khung
+- **Tên khung nằm trên đầu** như một hàng thẻ (kiểu Photoshop): thẻ đang chọn liền màu với nội dung, chữ trắng đậm; không có dòng tên lặp lại.
+- **Kéo tên khung** để đặt cạnh nhau (hai cột) hoặc thả chồng lên khung khác để gộp tab. Trong nhóm tab: kéo một tên ra ngoài = tách riêng khung đó; kéo **vạch chấm mỏng ngay dưới hàng tên** = dời cả nhóm. Vùng sẽ thả được tô xanh.
+- **Chuột phải vào tên khung:** *Tách khung ra* / *Gắn lại vào cửa sổ* / *Đóng khung* (mở lại ở menu *View*). Khung đã tách là cửa sổ phụ, Space/Enter vẫn TAKE/CUT.
+- Ba bố cục dựng sẵn (*View > Bố cục* hoặc nút **Bố cục: …** cạnh nút khoá):
+
+  | Phím | Bố cục | Gồm |
+  |---|---|---|
+  | Ctrl+F1 | **Chuẩn bị** | một cột: Inspector (có tab Effect), Overlay |
+  | Ctrl+F2 | **Đang diễn** | hình to; cột hẹp Outputs / Âm thanh / Overlay; ẩn Inspector, Timeline |
+  | Ctrl+F3 | **Màn lớn** | cột hẹp Outputs / Âm thanh / Overlay + cột Inspector / Plug-in |
+
+  Khung nào đang ẩn vẫn bật lại được ở menu *View*. Lần mở đầu: màn rộng từ 1800 điểm (sau khi Windows phóng to) dùng *Màn lớn*, nhỏ hơn dùng *Chuẩn bị*. Sau đó chương trình nhớ bố cục đang dùng.
+- Sửa khung bằng tay thì tên hiện thêm *(đã chỉnh)*. **Lưu thành bố cục của tôi** giữ cách sắp đó (một chỗ lưu); ba bố cục dựng sẵn không bao giờ bị ghi đè; *Đặt lại bố cục đang dùng* trả về như ban đầu.
+- **F9** ẩn/hiện toàn bộ cột phải.
+- **Khoá vận hành** khoá luôn việc kéo/tách/đóng khung, kể cả kéo thẻ và menu chuột phải (đổi bố cục bằng phím vẫn được). Đổi bố cục **không đụng tới hình đang phát**.
 
 ## Danh sách Scenes
 Khung **Scenes** nằm dưới hai màn hình (tab cạnh *Timeline* và *Playlist*): mỗi Scene một ô ảnh thu nhỏ đánh số. Thay cho *Media Pool* và cột Scene bên trái trước đây.
 
 - **Bấm** ảnh hoặc tên = đưa vào Preview; **nhấp đúp** = CUT; phím **1–9** chọn Preview. Nút **AUTO** giữ nguyên hành vi. Viền đỏ/nhãn PGM = đang ở Program, viền xanh/PVW = Preview. Bấm vào hàng nút của ô không bao giờ chọn hay CUT Scene.
 - Ba nút trên đầu khung: nhập media, thêm nguồn NDI, thêm camera (rê chuột để xem tên). Kéo thả file cũng được.
-- **Mỗi file là đúng một Scene:** nhập lại file đã có thì không thêm gì, danh sách cuộn tới ô đó. Muốn ghép nhiều hình trong một Scene thì *Thêm layer* ở Inspector.
+- **Mỗi file là đúng một Scene:** nhập lại file đã có thì không thêm gì, danh sách cuộn tới ô đó. Muốn ghép nhiều hình trong một Scene thì thêm layer (nút **+**) ở Inspector.
 - **Phát** (Scene có video hoặc keyframe): về đầu, phát/tạm dừng, kéo thanh để tua, thời gian còn lại, bật/tắt lặp. Khi video đưa từ Preview lên Program nó vẫn **phát lại từ đầu**, kể cả đang tạm dừng (tắt bằng ô *Phát lại khi lên Program* ở Timeline). Không lặp thì hết video giữ khung cuối.
 - **Tiếng** (Scene có tiếng): nút loa và thanh âm lượng 0–150 % riêng từng Scene; mặc định bật. Chỉ Scene ở Program mới ra loa. Lưu trong project.
 - **Đổi tên** (nút bút chì: Enter xác nhận, Esc huỷ) và **xoá** (nút thùng rác); cũng có ở menu chuột phải. Cả hai Hoàn tác được (Ctrl+Z). Không xoá được Scene đang ở Program hoặc đang chuyển vào. Xoá một Scene cũng bỏ các mục playlist trỏ tới nó (Hoàn tác trả lại); file media trên đĩa không bị đụng tới. Xoá làm **số thứ tự các Scene phía sau dồn lên** (ảnh hưởng phím 1–9, MIDI, HTTP/OSC).
@@ -100,15 +124,20 @@ Mở bằng nút hình màn hình trên bảng *Outputs*, hoặc *Cài đặt > 
 - Project lưu khe ngay trong kích thước canvas và `crop` (không đổi định dạng). Project wall cũ mở rồi đặt khe được. Nếu sửa tay `crop` làm lệch lưới, ô khe bị khoá cho tới khi Hoàn tác hoặc sửa lại.
 
 ## Chữ và logo overlay
-- Dock **Overlay** (tab cạnh *Inspector*): thêm **Tiêu đề** (chữ tĩnh), **Chữ chạy** (sang trái), **Đếm ngược**, **Logo** (PNG/WebP/GIF/JPG/BMP, giữ kênh trong suốt; GIF chỉ lấy khung đầu).
+- Dock **Overlay**: bốn nút thêm **Tiêu đề** (chữ tĩnh), **Chữ chạy** (sang trái), **Đếm ngược**, **Logo** (PNG/WebP/GIF/JPG/BMP, giữ kênh trong suốt; GIF chỉ lấy khung đầu).
 - Overlay thuộc **từng Kênh**, vẽ đè lên Program: đổi Scene, CUT/TAKE hay transition đều giữ nguyên. FTB che cả overlay; Đen/Dừng/Mẫu của Output áp dụng như thường. Preview không hiện overlay; xem trước ở khung nhỏ trong dock.
-- **Thêm không tự đưa gì lên Program.** Bấm *HIỆN lên Program* hoặc tick trong danh sách; hiện/ẩn mờ dần 0,3 s (đổi được, 0 = cắt ngay). Đầu danh sách = lớp trên cùng.
-- Đếm ngược theo thời lượng: *Bắt đầu / Tạm dừng / Đặt lại*; hết giờ dừng ở 00:00.
+- **Danh sách:** mỗi overlay một dòng: tay kéo, **👁** hiện/ẩn, tên, **🗑** xoá; đếm ngược có thêm thời gian, ▶/⏸ và đặt lại. **Dòng đang hiện nền đỏ.** Kéo để đổi thứ tự (đầu danh sách = lớp trên cùng); phím **Delete** xoá mục đang chọn; xoá Hoàn tác được. Kéo ra ngoài danh sách không xoá gì.
+- **Thêm không tự đưa gì lên Program.** Bấm 👁 để hiện; hiện/ẩn mờ dần 0,3 s (đổi được, 0 = cắt ngay). **Hiện và chạy giờ là hai thao tác riêng.**
+- Dải **Đang hiện** ngay dưới màn Program: mỗi overlay đang hiện một thẻ, **✕** chỉ ẩn (không xoá), **Tắt tất cả** ẩn hết của kênh đang chọn.
+- Đếm ngược theo thời lượng; hết giờ dừng ở 00:00.
+- **Tiếng nhắc đếm ngược** (bật riêng từng đồng hồ, mặc định **tắt**; tiếng tự tổng hợp, không cần file): còn *Nhắc từ* giây (mặc định 10) thì mỗi giây một tiếng "tít"; còn *Gấp từ* giây (mặc định 5; 0 = không) thì tiếng cao hơn, mỗi giây hai tiếng; đến 00:00 một hồi chuông dài. Âm lượng mặc định 80 %, nút loa để **Nghe thử** (nghe thử kêu cả khi đồng hồ không hiện). **Chỉ kêu khi đồng hồ đang chạy và đang hiện trên Program**; tạm dừng, đặt lại hoặc ẩn thì im ngay. Tiếng đi qua bus của kênh: tắt tiếng kênh hoặc FTB là tắt; BLACK ALL / Đen của Output **không** tắt tiếng. Trong lúc nhắc, **số đổi đỏ** (trên màn và trong danh sách), hết giờ vẫn đỏ cho tới khi đặt lại hoặc ẩn.
+- **Đặt vị trí bằng chuột** trên khung xem trước trong dock: kéo hộp để dời, kéo cạnh để đổi hộp, kéo góc để đổi cả hộp lẫn cỡ chữ; năm nút đặt nhanh: giữa và bốn góc.
+- ⚠ **Sửa một overlay đang hiện là màn đổi ngay** (kéo, gõ chữ, đổi màu…): dock hiện dải đỏ nhắc. Muốn sửa kín thì ẩn nó trước.
 - Chọn font, cỡ (px theo độ phân giải Kênh), đậm/nghiêng, màu chữ/viền/nền (kể cả độ trong suốt), căn lề, vị trí và kích thước hộp (0–1). Chữ không vừa hộp bị cắt và dock báo cảnh báo.
-- **Khoá vận hành:** vẫn hiện/ẩn và điều khiển đồng hồ; không thêm/xoá/sửa. Sửa đổi có Hoàn tác; hiện/ẩn và đồng hồ thì không.
+- **Khoá vận hành:** vẫn hiện/ẩn (cả dải *Đang hiện*) và điều khiển đồng hồ; không thêm/xoá/kéo/sửa. Sửa đổi có Hoàn tác; hiện/ẩn và đồng hồ thì không.
 - Trong ô nhập của dock, **Enter** chỉ xác nhận giá trị, không CUT. Ở chỗ khác trong dock, phím tắt live (Space, Enter, B, 1–9) vẫn chạy như thường.
 - Lưu trong project (kể cả overlay đang hiện: mở lại là hiện ngay; đồng hồ mở lại ở trạng thái dừng, đầy đủ). Logo lưu đường dẫn tới file gốc; mất file thì overlay đó trống, project vẫn mở. Font không có trên máy khác sẽ được thay thế.
-- Chưa có: điều khiển overlay qua HTTP/OSC, chữ chạy sang phải/lên xuống, kéo chuột để đặt vị trí.
+- Chưa có: điều khiển overlay qua HTTP/OSC, chữ chạy sang phải/lên xuống. **Chưa nghe thử tiếng nhắc bằng loa thật** (`docs/TEST-PLAN.md`: T-ALARM).
 
 ## Multiview
 *View > Multiview…* mở một cửa sổ lưới: hàng trên là **Preview + Program của từng kênh**, bên dưới là **một ô cho mỗi Scene** của kênh đang chọn.
@@ -153,10 +182,10 @@ Mở bằng nút hình màn hình trên bảng *Outputs*, hoặc *Cài đặt > 
 ## Playlist / slide ảnh tự chuyển
 Dock **Playlist** (tab cạnh *Scenes* và *Timeline*): một danh sách mục tự chạy lần lượt lên Program. **Mỗi kênh một playlist**, các kênh chạy độc lập.
 
-- **Mục** là một Scene (ảnh/video nhập vào đều là một Scene). *Thêm Scene…* lấy Scene có sẵn; *Thêm file…* hoặc **kéo thả file vào khung Playlist** thì nhập media (thêm Scene như bình thường) rồi thêm vào cuối danh sách.
+- **Mục** là một Scene (ảnh/video nhập vào đều là một Scene). Nút *Thêm Scene* lấy Scene có sẵn; nút *Thêm file* hoặc **kéo thả file vào khung Playlist** thì nhập media (thêm Scene như bình thường) rồi thêm vào cuối danh sách.
 - **Thời gian:** mục không phải video giữ đúng *Thời lượng ảnh* (mặc định 8 s, tính sau khi chuyển vào xong); mục video để *Tự động* thì **phát từ đầu và chuyển khi phát hết** (hiệu ứng bắt đầu sớm để kết thúc đúng lúc video hết). Mỗi mục đặt được thời lượng riêng. Tính theo đồng hồ thật.
 - **Hiệu ứng** riêng của playlist (Fade, Cut, Dip, Wipe, Push/Slide/Zoom/Luma và plug-in Transition; không có Stinger), lưu cùng project, không phụ thuộc thanh chuyển. Playlist **không đụng tới Preview**.
-- **Điều khiển:** Chạy / Tạm dừng / Dừng / Mục trước / Mục sau, nhấp đúp một mục để chạy từ đó; khung hiện mục đang phát và thời gian còn lại. Chỉ lên Program khi bạn bấm Chạy; sửa danh sách không đổi Preview/Program. Dừng giữ nguyên hình đang phát.
+- **Điều khiển:** Chạy / Tạm dừng / Dừng / Mục trước / Mục sau (nút biểu tượng), kéo để đổi thứ tự mục, nhấp đúp một mục để chạy từ đó; khung hiện mục đang phát và thời gian còn lại. Chỉ lên Program khi bạn bấm Chạy; sửa danh sách không đổi Preview/Program. Dừng giữ nguyên hình đang phát.
 - **Bạn can thiệp thì playlist tạm dừng:** CUT, TAKE, T-bar, bấm Scene khi AUTO bật, nhấp đúp Scene, hay lệnh CUT/TAKE từ HTTP/OSC. Hình của bạn được giữ; bấm *Chạy* thì mục đang dở quay lại Program rồi đi tiếp. Chỉ chọn Scene vào Preview thì playlist chạy tiếp. Đen, Dừng hình, FTB không ảnh hưởng playlist.
 - **Mục lỗi** (video không đọc được, không ra khung hình trong 3 s, Scene đã bị gỡ) được bỏ qua, có thông báo ở thanh trạng thái và log; mọi mục đều lỗi thì playlist dừng. Video chỉ được đưa lên khi đã có khung hình đầu.
 - Sửa danh sách hoàn tác được (Ctrl+Z) và bị khoá khi **Khoá vận hành**; điều khiển chạy vẫn dùng được. Điều khiển ngoài: `POST /api/channels/{n}/playlist/play|pause|stop|next|prev`, OSC `/lumacast/playlist/{n}/play…` (`docs/CONTROL-API.md`).

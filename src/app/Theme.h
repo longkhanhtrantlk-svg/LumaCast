@@ -14,6 +14,7 @@ constexpr const char* kAccent = "#2f7de1";
 constexpr const char* kWarn = "#e0a526";
 constexpr const char* kPanel = "#1b1e27";
 constexpr const char* kBg = "#12141a";
+constexpr const char* kTabStrip = "#08090c";      // dai nen cua hang ten khung (tab dang chon lien mau noi dung)
 } // namespace colors
 
 } // namespace lc

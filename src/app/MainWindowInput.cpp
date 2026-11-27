@@ -2,6 +2,7 @@
 #include "MainWindow.h"
 #include "InputDialog.h"
 #include "LockButton.h"
+#include "Text.h"
 #include "core/AppSettings.h"
 #include <QAction>
 #include <QDoubleSpinBox>
@@ -31,6 +32,27 @@ void MainWindow::setupInput(QMenu* settingsMenu) {
 void MainWindow::applyKeys(const KeyMap& keys) {
     binder_->apply(keys);
     lockBtn_->setShortcutText(keys.value("lock").toString(QKeySequence::NativeText));
+    updateKeyHints();
+}
+
+void MainWindow::updateKeyHints() {
+    const KeyMap& keys = binder_->map();
+    auto hint = [&](QWidget* w, const QString& tip, const QString& id, const QString& fixed = {}) {
+        QStringList parts;
+        if (!fixed.isEmpty()) parts << fixed;
+        const QString k = keys.value(id).toString(QKeySequence::NativeText);
+        if (!k.isEmpty()) parts << k;
+        w->setToolTip(parts.isEmpty() ? tip : text::withKey().arg(tip, parts.join(" / ")));
+    };
+    hint(cutBtn_, text::cutTip(), "cut", "Enter");
+    hint(takeBtn_, text::takeTip(), "take", "Space");
+    hint(blackAll_, text::blackAllTip(), "blackAll");
+    hint(ftb_, text::ftbTip(), "ftb");
+    for (int i = 0; i < int(outRows_.size()); ++i) {
+        hint(outRows_[i].black, text::outBlack(), QString("output.%1.black").arg(i + 1));
+        hint(outRows_[i].freeze, text::outFreeze(), QString("output.%1.freeze").arg(i + 1));
+        hint(outRows_[i].pattern, text::outPattern(), QString("output.%1.pattern").arg(i + 1));
+    }
 }
 
 void MainWindow::openInputDialog() {

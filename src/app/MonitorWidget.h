@@ -3,6 +3,8 @@
 #include <QImage>
 #include <QWidget>
 
+class QPainter;
+
 namespace lc {
 
 // Khung xem Preview (vien xanh la) hoac Program (vien do + nhan ON AIR).
@@ -16,11 +18,14 @@ public:
     QSize sizeHint() const override { return {420, 260}; }
     QSize minimumSizeHint() const override { return {200, 130}; }
     bool hasImage() const { return !img_.isNull(); }
+    QRect imageRect() const;             // vung hinh dang ve (rong khi chua co hinh)
 
 protected:
     void paintEvent(QPaintEvent*) override;
+    virtual void paintExtra(QPainter&) {}      // ve them len tren hinh
 
 private:
+    QRect imageArea() const;
     QString title_, scene_;
     QColor color_;
     bool program_, onAir_ = false;

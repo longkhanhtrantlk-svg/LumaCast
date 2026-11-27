@@ -1,6 +1,7 @@
 #pragma once
 #include "audio/AudioDevice.h"
 #include "audio/AudioStream.h"
+#include "audio/Tone.h"
 #include "media/Source.h"
 #include <QString>
 #include <array>
@@ -23,6 +24,7 @@ struct AudioPlanEntry {
 struct AudioPlan {
     int channels = 0;
     std::vector<AudioPlanEntry> entries;
+    std::vector<float> channelGain;     // he so rieng cua bus (am luong Channel, mute, FTB) cho tieng tu tong hop; thieu = 1
     bool sameAs(const AudioPlan& o) const;
 };
 
@@ -53,6 +55,11 @@ public:
     // Render thread.
     void setPlan(std::shared_ptr<const AudioPlan> plan);
 
+    // Tieng nhac tu tong hop tren bus cua `channel` (chiu am luong / mute cua Channel nhu moi tieng khac). `id` de dung lai
+    // nhung tieng cua mot nguoi goi; volume 0..1; delaySeconds = hen truoc. Goi tu thread bat ky.
+    void playTone(int channel, int id, ToneKind kind, float volume, double delaySeconds = 0);
+    void stopTones(int channel, int id);                    // im ngay (tat dan 5 ms), bo ca tieng dang hen
+
     // Mo thiet bi (id rong = mac dinh) va chay thread mixer. Neu da chay thi dong truoc. Luon thanh cong (roi ve Null neu thiet bi hong).
     bool start(const QString& deviceId, QString* err = nullptr);
     void stop();
@@ -79,6 +86,14 @@ private:
     struct Key { const Source* src; int ch; float gain; };
     void threadMain();
     void adoptPlan();
+    struct ToneCmd { bool stop; int channel, id; ToneKind kind; float volume; int delay; };
+    struct Voice { int channel, id; ToneKind kind; float volume; int pos; int release; float gain; };   // pos < 0: dang hen
+    void adoptTones();
+    void mixTones(int channels, int frames);
+    std::mutex toneMu_;
+    std::vector<ToneCmd> toneCmds_;
+    std::atomic<bool> toneDirty_{false};
+    std::vector<Voice> voices_;                             // chi mixer
 
     // plan (render thread -> mixer)
     std::mutex planMu_;

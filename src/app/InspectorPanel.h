@@ -10,6 +10,7 @@ class QDoubleSpinBox;
 class QGroupBox;
 class QLabel;
 class QListWidget;
+class QPushButton;
 class QSpinBox;
 class QUndoStack;
 
@@ -42,6 +43,12 @@ public:
     void setOutputCrop(int outIdx, const QRectF& crop, const QString& text, int mergeId);
 
     QListWidget* layerList() const { return layerList_; }       // cho test
+    // Dung chung voi viec keo hinh tren man Preview (ban sao UI la noi duy nhat sua Layer).
+    const std::vector<Layer>* layersOf(int sceneIdx) const;
+    void selectLayer(int sceneIdx, int layerIdx);
+    // Doi khung (va kieu fit neu fit >= 0) cua mot Layer: co Hoan tac, ton trong Khoa van hanh, thuoc tinh co keyframe thi sua key.
+    void setLayerRect(int sceneIdx, int layerIdx, const QRectF& rect, const QString& text, int mergeId, int fit = -1);
+    void reorderLayers(const std::vector<int>& rows, int before);   // theo hang cua danh sach (keo tha)
     QUndoStack* undoStack() const { return undo_; }
     // Khoa van hanh: vo hieu ca panel VA chan moi chinh sua bang lenh (defence in depth).
     void setLocked(bool on) { locked_ = on; setEnabled(!on); }
@@ -80,6 +87,7 @@ public:
     void setWallGap(int channel, QSize gap, int axis);
 
 private:
+    static void narrowFields(QWidget* root);
     QWidget* buildSceneTab();
     QWidget* buildOutputTab();
     QWidget* buildEffectTab();
@@ -94,7 +102,6 @@ private:
     void pushOutput(int outIdx);
     void editLayers(int si, std::vector<Layer> after, const QString& text, int mergeId = -1);
     void editOutput(int i, OutputConfig after, const QString& text, int mergeId = -1);
-    void onLayersReordered();
     void syncOutputWidgets(int i);
 
     struct OutW {
@@ -115,6 +122,8 @@ private:
     QComboBox* sceneCombo_ = nullptr;
     QComboBox* addSrcCombo_ = nullptr;
     QListWidget* layerList_ = nullptr;
+    QPushButton *layerAdd_ = nullptr, *layerDel_ = nullptr;
+    std::vector<QPushButton*> fxOps_;                              // Effect len / xuong / go
     QGroupBox* propBox_ = nullptr;
     QDoubleSpinBox* propSpin_[kAnimPropCount] = {};                // x, y, w, h, alpha, xoay (theo AnimProp)
     QDoubleSpinBox* cropSpin_[4] = {};

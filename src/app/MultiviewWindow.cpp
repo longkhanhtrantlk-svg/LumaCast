@@ -1,4 +1,6 @@
 #include "MultiviewWindow.h"
+#include "Text.h"
+#include "Ui.h"
 #include "Theme.h"
 #include "core/AppSettings.h"
 #include "render/OutputWindow.h"
@@ -31,7 +33,7 @@ MultiviewWindow::MultiviewWindow(Project& project, RenderEngine& engine, QWidget
     setObjectName("multiviewWindow");
     setWindowTitle("LumaCast — Multiview");
     setMinimumSize(480, 300);
-    fullBtn_ = new QPushButton("Toàn màn hình (F11)", this);
+    fullBtn_ = ui::iconButton(Glyph::FullScreen, "mvFullScreen", text::mvFullScreen(), this);
     fullBtn_->setObjectName("multiviewFullScreen");
     fullBtn_->setFocusPolicy(Qt::NoFocus);               // Space/Enter la TAKE/CUT, khong bam nut nay
     fullBtn_->setAutoDefault(false);
@@ -284,7 +286,7 @@ void MultiviewWindow::hideEvent(QHideEvent* e) {
 void MultiviewWindow::changeEvent(QEvent* e) {
     QWidget::changeEvent(e);
     if (e->type() != QEvent::WindowStateChange) return;
-    fullBtn_->setText(isFullScreen() ? "Thoát toàn màn hình (Esc)" : "Toàn màn hình (F11)");
+    fullBtn_->setToolTip(isFullScreen() ? "Thoát toàn màn hình (Esc)" : text::mvFullScreen());
     placeButton();
 }
 

@@ -35,6 +35,7 @@ public:
     void refresh();                                        // dung lai danh sach (sau khi project doi)
     void refreshTransitions();                             // danh sach hieu ung (sau khi nap lai plug-in)
     void addScenes(const std::vector<std::shared_ptr<Scene>>& scenes);   // them vao cuoi danh sach (hoan tac duoc)
+    void reorder(const std::vector<int>& rows, int before);              // keo tha trong danh sach (hoan tac duoc)
     void apply(const std::shared_ptr<Channel>& ch, const PlaylistData& data);   // dung boi lenh Hoan tac/Lam lai
 
 protected:
@@ -45,7 +46,6 @@ private:
     void edit(const PlaylistData& after, const QString& text, const QString& mergeKey = {});
     void addFiles();
     void removeSelected();
-    void moveSelected(int dir);
     std::vector<int> selectedRows() const;
     void control(std::function<void(Channel&, double)> fn);
     void tick();
@@ -67,7 +67,7 @@ private:
     QLabel* status_ = nullptr;
     QListWidget* list_ = nullptr;
     QPushButton *play_ = nullptr, *pause_ = nullptr, *stop_ = nullptr, *prev_ = nullptr, *next_ = nullptr;
-    QPushButton *addScene_ = nullptr, *addFile_ = nullptr, *remove_ = nullptr, *up_ = nullptr, *down_ = nullptr;
+    QPushButton *addScene_ = nullptr, *addFile_ = nullptr, *remove_ = nullptr;
     QDoubleSpinBox *itemSeconds_ = nullptr, *imageSeconds_ = nullptr, *transSeconds_ = nullptr;
     QCheckBox* loop_ = nullptr;
     QComboBox* trans_ = nullptr;

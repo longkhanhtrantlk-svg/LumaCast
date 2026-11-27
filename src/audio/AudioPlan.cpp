@@ -17,6 +17,7 @@ std::shared_ptr<AudioPlan> buildAudioPlan(const Project& p, double now) {
         const Channel& c = *p.channels[size_t(ci)];
         c.audioWeights(now, w, stinger);
         const float chGain = c.mute.load() ? 0.0f : std::clamp(c.volume.load(), 0.0f, 2.0f) * (1.0f - std::clamp(c.ftbAmount.load(), 0.0f, 1.0f));
+        plan->channelGain.push_back(chGain);
         for (size_t si = 0; si < c.scenes.size(); ++si) {
             const float sceneGain = c.scenes[si]->audio.gain();          // tat tieng / am luong rieng cua Scene
             for (const Layer& l : c.scenes[si]->layers) {

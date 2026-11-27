@@ -1,6 +1,7 @@
 #pragma once
 #include "Shortcuts.h"
 #include "core/ScreenSetup.h"
+#include "core/Types.h"
 #include "control/ControlService.h"
 #include "control/Midi.h"
 #include "render/Engine.h"
@@ -22,6 +23,7 @@ class QListWidget;
 class QMenu;
 class QPushButton;
 class QSlider;
+class QSettings;
 class QToolButton;
 class QUndoCommand;
 class QVBoxLayout;
@@ -31,12 +33,15 @@ namespace lc {
 
 class PlaylistPanel;
 class AudioPanel;
+class DockChrome;
 class InspectorPanel;
 class LockButton;
 class MappingWindow;
 class TimelineWidget;
 class MonitorWidget;
+class NowShowing;
 class OverlayPanel;
+class PreviewMonitor;
 class MultiviewWindow;
 class ScenePanel;
 class ScreenDialog;
@@ -124,6 +129,16 @@ public:
     const KeyMap& keyMap() const { return binder_->map(); }
     void applyKeys(const KeyMap& keys);            // doi phim tat dang chay (khong luu)
     void showMultiview();                          // UI-06: cua so luoi Preview/Program/Scene (tao khi mo lan dau)
+    // ---- Bo cuc khung (MainWindowLayouts.cpp) ----
+    // "prepare" (Chuan bi) / "live" (Dang dien) / "big" (Man lon) dung san, "mine" = cua nguoi dung. Chi sap lai khung,
+    // khong dung toi Program/Preview/Output. false: "mine" chua luu hoac cua phien ban khac.
+    bool applyLayout(const QString& id);
+    QString layoutId() const { return layoutId_; }
+    bool saveMyLayout();                                            // false khi dang khoa
+    void toggleRightColumn();                                       // F9
+    DockChrome* dockChrome() const { return chrome_; }             // hang ten khung tren dau, menu tach / dong
+    static QString layoutName(const QString& id);
+
     // UI-07: Khoa van hanh (theo phien, khong luu vao project). Khoa = vo hieu moi dieu khien SUA, giu dieu khien live.
     void setLocked(bool on);
     bool isLocked() const { return locked_; }                           // hop thoai Cai dat van hanh (dieu khien ngoai...)
@@ -151,6 +166,22 @@ private:
     void rebuildSceneList();
     void addOutputRow(int i);
     void rebuildOutputRows();
+    void reopenOutputs();
+    int previewSceneIndex() const;                  // trong project_.scenes; -1 = Preview trong
+    int previewTargetLayer(int sceneIdx) const;
+    void refreshPreviewEditing();
+    void applyPreviewFit(LayerFit fit);
+    void updateKeyHints();                          // tooltip kem phim tat (theo phim nguoi dung dat)
+    // bo cuc
+    void initLayout();
+    void arrangeDocks(const QString& id);
+    void sizeDocks(const QString& id);
+    void buildLayoutMenu(QMenu* view);
+    void updateLayoutActions();
+    void updateLayoutLabel();
+    void saveLayout(QSettings& st) const;
+    void lockDocks(bool on);
+    QString arrangement() const;
     std::shared_ptr<Source> stingerSource() const;
     int channelIdx() const;
     QString sceneName(int ch, int idx) const;
@@ -176,8 +207,19 @@ private:
     OverlayPanel* overlayPanel_ = nullptr;
     TimelineWidget* timeline_ = nullptr;
     MappingWindow* mapping_ = nullptr;
-    MonitorWidget* preview_ = nullptr;
+    PreviewMonitor* preview_ = nullptr;
     MonitorWidget* program_ = nullptr;
+    NowShowing* nowShowing_ = nullptr;
+    QPushButton* fitBtn_[3] = {};
+    QPushButton *cutBtn_ = nullptr, *takeBtn_ = nullptr, *statusReopen_ = nullptr;
+    DockChrome* chrome_ = nullptr;
+    QToolButton* layoutBtn_ = nullptr;
+    QAction* layoutAct_[4] = {};
+    QAction* saveLayoutAct_ = nullptr;
+    QString layoutId_ = "prepare";
+    QString layoutShape_;                           // hinh dang khung ngay sau khi ap dung (de biet da chinh chua)
+    QStringList rightHidden_;                       // F9: cac khung cot phai dang bi an (tab dang xem o cuoi)
+    QList<int> rightWidths_;
     QComboBox* chanCombo_ = nullptr;
     QComboBox* transCombo_ = nullptr;
     QDoubleSpinBox* durSpin_ = nullptr;
@@ -201,7 +243,6 @@ private:
     QAction *addNdiAct_ = nullptr, *addCamAct_ = nullptr, *addNdiOutAct_ = nullptr;
     std::vector<std::vector<QString>> sceneNames_;     // theo kenh; snapshot de timer khong cham du lieu render thread
     QTimer fastTimer_, slowTimer_, autosaveTimer_;
-    QByteArray defaultState_;
     int lastProgram_ = -2, lastPreview_ = -2, lastChannel_ = -1;
     qint64 lastSlowMs_ = 0;
     bool lastStalled_ = false;

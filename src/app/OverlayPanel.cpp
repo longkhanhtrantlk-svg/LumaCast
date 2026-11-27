@@ -1,5 +1,9 @@
 #include "OverlayPanel.h"
+#include "DragList.h"
+#include "Text.h"
 #include "Theme.h"
+#include "Ui.h"
+#include <QAbstractSpinBox>
 #include <QCheckBox>
 #include <QColorDialog>
 #include <QComboBox>
@@ -9,17 +13,20 @@
 #include <QFontComboBox>
 #include <QFontDatabase>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QKeyEvent>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSignalBlocker>
 #include <QSpinBox>
+#include <QSplitter>
 #include <QTextCursor>
 #include <QUndoCommand>
 #include <QUndoStack>
@@ -53,7 +60,9 @@ private:
 };
 
 // So thu tu truong cho viec gop buoc Hoan tac (sua lien tuc cung mot o = mot buoc).
-enum Field { FName, FText, FSize, FOutlineWidth, FX, FY, FW, FH, FOpacity, FFade, FSpeed, FDuration };
+enum Field { FName, FText, FSize, FOutlineWidth, FX, FY, FW, FH, FOpacity, FFade, FSpeed, FDuration, FAlertStart, FAlertFast, FAlertVolume };
+constexpr int kDragMergeBase = 600000000;        // + so lan keo: moi lan keo mot buoc Hoan tac
+constexpr int kTestToneId = -1000;               // tieng "Nghe thu": khong bi dong ho tu dong tat
 
 const char* typeLabel(OverlayType t) {
     switch (t) {
@@ -63,6 +72,11 @@ const char* typeLabel(OverlayType t) {
     case OverlayType::Logo: return "Logo";
     }
     return "";
+}
+
+Glyph typeGlyph(OverlayType t) {
+    return t == OverlayType::Title ? Glyph::TitleText : t == OverlayType::Ticker ? Glyph::Ticker
+           : t == OverlayType::Countdown ? Glyph::Countdown : Glyph::Logo;
 }
 
 void setSwatch(QPushButton* b, const QColor& c) {
@@ -77,23 +91,176 @@ void setSwatch(QPushButton* b, const QColor& c) {
     b->setToolTip(QString("%1, đậm đặc %2%").arg(c.name()).arg(int(std::lround(c.alphaF() * 100))));
 }
 
+// Chu ten: tu cat bot bang dau ... theo be rong.
+class ElidedLabel : public QLabel {
+public:
+    explicit ElidedLabel(QWidget* parent) : QLabel(parent) {
+        setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        setMinimumWidth(24);
+    }
+protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter p(this);
+        p.setPen(palette().color(isEnabled() ? QPalette::WindowText : QPalette::PlaceholderText));
+        p.setFont(font());
+        p.drawText(rect(), Qt::AlignVCenter | Qt::AlignLeft, fontMetrics().elidedText(text(), Qt::ElideRight, width()));
+    }
+};
+
+QPushButton* rowButton(Glyph g, const char* name, const QString& tip, QWidget* parent) {
+    QPushButton* b = ui::iconButton(g, name, tip, parent);
+    b->setFixedSize(28, 26);
+    return b;
+}
+// Be rong dong phai vua cot hep ~220: dong dong ho nam duoi, trai dai het sang cot thung rac.
+
 } // namespace
+
+// ---------------- mot dong cua danh sach ----------------
+
+class OverlayRow : public QWidget {
+public:
+    OverlayRow(const OverlayDef& d, QWidget* parent) : QWidget(parent), type_(d.type) {
+        setObjectName("ovRow");
+        auto* g = new QGridLayout(this);
+        g->setContentsMargins(4, 4, 4, 4);
+        g->setHorizontalSpacing(4);
+        g->setVerticalSpacing(2);
+        g->setColumnStretch(2, 1);
+        auto* grip = new QLabel;
+        grip->setPixmap(glyphIcon(Glyph::Grip).pixmap(14, 14));
+        grip->setToolTip(text::ovGripTip());
+        grip->setCursor(Qt::OpenHandCursor);
+        const int rows = type_ == OverlayType::Countdown ? 2 : 1;
+        g->addWidget(grip, 0, 0, rows, 1);
+        eye = rowButton(Glyph::EyeOff, "ovEye", text::ovShow(), this);
+        g->addWidget(eye, 0, 1, rows, 1);
+        name = new ElidedLabel(this);
+        name->setObjectName("ovRowName");
+        name->setTextFormat(Qt::PlainText);
+        g->addWidget(name, 0, 2);
+        remove = rowButton(Glyph::Delete, "ovDel", text::ovDelete(), this);
+        g->addWidget(remove, 0, 3);
+        if (type_ == OverlayType::Countdown) {
+            auto* line = new QHBoxLayout;
+            line->setSpacing(4);
+            clock = new QLabel(this);
+            clock->setObjectName("ovClock");
+            clock->setStyleSheet("font-size:16px;font-weight:bold");
+            play = rowButton(Glyph::Play, "ovPlay", text::ovPlay(), this);
+            reset = rowButton(Glyph::Reset, "ovReset", text::ovReset(), this);
+            line->addWidget(clock);
+            line->addWidget(play);
+            line->addWidget(reset);
+            line->addStretch();
+            g->addLayout(line, 1, 2, 1, 2);
+        }
+    }
+
+    void update(const OverlayFrame& f, bool selected, bool locked) {
+        const QString type = typeLabel(f.def.type);
+        const QString label = f.def.name.startsWith(type) ? f.def.name : f.def.name + "  ·  " + type;
+        if (name->text() != label) { name->setText(label); name->setToolTip(label); }
+        if (eyeOn_ != int(f.on)) {
+            eyeOn_ = f.on;
+            eye->setIcon(glyphIcon(f.on ? Glyph::Eye : Glyph::EyeOff));
+            eye->setToolTip(f.on ? text::ovHide() : text::ovShow());
+            eye->setProperty("on", f.on);
+        }
+        if (remove->isEnabled() == locked) remove->setEnabled(!locked);
+        if (clock) {
+            const QString t = formatCountdown(f.secondsLeft, f.def.seconds >= 3600);
+            if (clock->text() != t) clock->setText(t);
+            if (alerting_ != int(f.alerting)) {
+                alerting_ = f.alerting;
+                clock->setStyleSheet(QString("font-size:16px;font-weight:bold;color:%1").arg(f.alerting ? "#ff5a4f" : "#e6e8ee"));
+                clock->setProperty("alerting", f.alerting);
+            }
+            if (running_ != int(f.running)) {
+                running_ = f.running;
+                play->setIcon(glyphIcon(f.running ? Glyph::Pause : Glyph::Play));
+                play->setToolTip(f.running ? text::ovPause() : text::ovPlay());
+                play->setProperty("running", f.running);
+            }
+            const bool can = f.running || f.secondsLeft > 0;
+            ui::setWhy(play, can ? QString() : text::ovFinishedWhy());
+            if (play->isEnabled() != can) play->setEnabled(can);
+        }
+        if (on_ != f.on || selected_ != selected) {
+            on_ = f.on;
+            selected_ = selected;
+            setProperty("on", f.on);
+            QWidget::update();
+        }
+    }
+
+    QPushButton *eye = nullptr, *play = nullptr, *reset = nullptr, *remove = nullptr;
+    ElidedLabel* name = nullptr;
+    QLabel* clock = nullptr;
+
+protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(selected_ ? QPen(QColor(colors::kAccent), 2) : QPen(QColor("#2a2f3d"), 1));
+        p.setBrush(on_ ? QColor(0x8a, 0x1c, 0x1c) : QColor(0x22, 0x26, 0x31));      // dong dang hien: nen do
+        p.drawRoundedRect(QRectF(rect()).adjusted(1, 1, -1, -1), 4, 4);
+    }
+
+private:
+    OverlayType type_;
+    bool on_ = false, selected_ = false;
+    int eyeOn_ = -1, running_ = -1, alerting_ = -1;
+};
+
+QRectF placedRect(const QRectF& r, OverlayPlace place, QSize canvas) {
+    if (canvas.isEmpty()) return r;
+    const double m = std::round(canvas.height() * 0.03);
+    auto along = [](double size, double margin, int where) {       // where: -1 dau, 0 giua, 1 cuoi
+        if (where == 0 || size > 1 - 2 * margin) return (1 - size) / 2;
+        return where < 0 ? margin : 1 - size - margin;
+    };
+    const int h = place == OverlayPlace::Center ? 0 : place == OverlayPlace::TopLeft || place == OverlayPlace::BottomLeft ? -1 : 1;
+    const int v = place == OverlayPlace::Center ? 0 : place == OverlayPlace::TopLeft || place == OverlayPlace::TopRight ? -1 : 1;
+    return QRectF(along(r.width(), m / canvas.width(), h), along(r.height(), m / canvas.height(), v), r.width(), r.height());
+}
 
 // ---------------- xem truoc ----------------
 
 OverlayPreview::OverlayPreview(QWidget* parent) : QWidget(parent) {
     setObjectName("ovPreview");
     setMinimumHeight(110);
-    setMaximumHeight(180);
+    setMaximumHeight(220);
+    setMouseTracking(true);
+    setToolTip(text::ovDragHint());
 }
 
 void OverlayPreview::show(const OverlayDef* def, int secondsLeft, QSize canvas, const QImage& background) {
+    if (!def || (has_ && def_.id != def->id)) mode_ = 0;             // doi lop phu giua chung: bo lan keo
     has_ = def != nullptr;
     if (def) def_ = *def;
     secondsLeft_ = secondsLeft;
     canvas_ = canvas;
     background_ = background;
     update();
+}
+
+void OverlayPreview::setEditable(bool on) {
+    editable_ = on;
+    if (!on) { mode_ = 0; unsetCursor(); }
+}
+
+QRect OverlayPreview::viewRect() const {
+    const QSize area = canvas_.scaled(size(), Qt::KeepAspectRatio);
+    if (area.isEmpty()) return {};
+    return QRect(QPoint((width() - area.width()) / 2, (height() - area.height()) / 2), area);
+}
+
+QRect OverlayPreview::boxRect() const {
+    const QRect view = viewRect();
+    if (!has_ || view.isEmpty()) return {};
+    return QRect(view.left() + int(std::lround(def_.rect.x() * view.width())), view.top() + int(std::lround(def_.rect.y() * view.height())),
+                 std::max(1, int(std::lround(def_.rect.width() * view.width()))), std::max(1, int(std::lround(def_.rect.height() * view.height()))));
 }
 
 bool OverlayPreview::clipped(const OverlayDef& def, int secondsLeft, QSize canvas) {
@@ -103,19 +270,93 @@ bool OverlayPreview::clipped(const OverlayDef& def, int secondsLeft, QSize canva
     return clipped_;
 }
 
+int OverlayPreview::hit(const QPoint& p) const {
+    const QRect box = boxRect();
+    constexpr int k = 6;
+    if (!editable_ || box.isEmpty() || !box.adjusted(-k, -k, k, k).contains(p)) return 0;
+    const bool small = box.width() < 3 * k || box.height() < 3 * k;     // hop nho: ben trong la di chuyen, mep ngoai la doi co
+    const int in = small ? 0 : k;
+    int edge = 0;
+    if (p.x() <= box.left() + in) edge |= Left;
+    else if (p.x() >= box.right() - in) edge |= Right;
+    if (p.y() <= box.top() + in) edge |= Top;
+    else if (p.y() >= box.bottom() - in) edge |= Bottom;
+    return edge ? edge : Move;
+}
+
+void OverlayPreview::mousePressEvent(QMouseEvent* e) {
+    if (e->button() != Qt::LeftButton) return;
+    mode_ = hit(e->position().toPoint());
+    if (!mode_) return;
+    press_ = e->position().toPoint();
+    startRect_ = def_.rect;
+    startFont_ = def_.fontSize;
+    moved_ = false;
+    ++gesture_;
+}
+
+void OverlayPreview::mouseMoveEvent(QMouseEvent* e) {
+    const QPoint pos = e->position().toPoint();
+    if (!mode_) {
+        const int h = hit(pos);
+        if (!h) unsetCursor();
+        else if (h == Move) setCursor(Qt::SizeAllCursor);
+        else if (h == (Left | Top) || h == (Right | Bottom)) setCursor(Qt::SizeFDiagCursor);
+        else if (h == (Right | Top) || h == (Left | Bottom)) setCursor(Qt::SizeBDiagCursor);
+        else setCursor(h & (Left | Right) ? Qt::SizeHorCursor : Qt::SizeVerCursor);
+        return;
+    }
+    if (!moved_ && (pos - press_).manhattanLength() < 4) return;      // nhich tay khi bam: khong tinh la keo
+    moved_ = true;
+    const QRect view = viewRect();
+    if (view.isEmpty() || !onDrag) return;
+    const double dx = double(pos.x() - press_.x()) / view.width(), dy = double(pos.y() - press_.y()) / view.height();
+    const double snapX = 5.0 / view.width(), snapY = 5.0 / view.height();
+    auto snapped = [](double v, std::initializer_list<double> targets, double tolerance) {
+        for (double t : targets) if (std::abs(v - t) <= tolerance) return t;
+        return v;
+    };
+    double l = startRect_.left(), t = startRect_.top(), r = startRect_.left() + startRect_.width(), b = startRect_.top() + startRect_.height();
+    const double w = startRect_.width(), h = startRect_.height();
+    const double minW = std::max(0.005, 6.0 / view.width()), minH = std::max(0.005, 6.0 / view.height());
+    if (mode_ == Move) {
+        double x = l + dx, y = t + dy;
+        x = snapped(x, {0.0, 1.0 - w, (1.0 - w) / 2}, snapX);
+        y = snapped(y, {0.0, 1.0 - h, (1.0 - h) / 2}, snapY);
+        x = std::clamp(x, std::min(0.0, 1.0 - w), std::max(0.0, 1.0 - w));
+        y = std::clamp(y, std::min(0.0, 1.0 - h), std::max(0.0, 1.0 - h));
+        onDrag(QRectF(x, y, w, h), startFont_, gesture_);
+        return;
+    }
+    if (mode_ & Left) l = std::clamp(snapped(l + dx, {0.0}, snapX), std::min(0.0, startRect_.left()), r - minW);
+    if (mode_ & Right) r = std::clamp(snapped(r + dx, {1.0}, snapX), l + minW, std::max(1.0, startRect_.left() + w));
+    if (mode_ & Top) t = std::clamp(snapped(t + dy, {0.0}, snapY), std::min(0.0, startRect_.top()), b - minH);
+    if (mode_ & Bottom) b = std::clamp(snapped(b + dy, {1.0}, snapY), t + minH, std::max(1.0, startRect_.top() + h));
+    int font = startFont_;
+    const bool corner = (mode_ & (Left | Right)) && (mode_ & (Top | Bottom));
+    if (corner && def_.type != OverlayType::Logo) {                  // keo goc: chu to / nho theo hop
+        const double kw = (r - l) / w, kh = (b - t) / h;
+        const double k = def_.type == OverlayType::Ticker ? kh : std::min(kw, kh);
+        font = std::clamp(int(std::lround(startFont_ * k)), 4, 2000);
+    }
+    onDrag(QRectF(l, t, r - l, b - t), font, gesture_);
+}
+
+void OverlayPreview::mouseReleaseEvent(QMouseEvent* e) {
+    if (e->button() == Qt::LeftButton) mode_ = 0;
+}
+
 void OverlayPreview::paintEvent(QPaintEvent*) {
     QPainter p(this);
     p.fillRect(rect(), QColor("#14161c"));
-    const QSize area = canvas_.scaled(size(), Qt::KeepAspectRatio);
-    if (area.isEmpty()) return;
-    const QRect view(QPoint((width() - area.width()) / 2, (height() - area.height()) / 2), area);
+    const QRect view = viewRect();
+    if (view.isEmpty()) return;
     p.fillRect(view, Qt::black);
     p.setRenderHint(QPainter::SmoothPixmapTransform, true);
     if (!background_.isNull()) p.drawImage(view, background_);
     if (!has_) return;
 
-    const QRect box(view.left() + int(std::lround(def_.rect.x() * view.width())), view.top() + int(std::lround(def_.rect.y() * view.height())),
-                    std::max(1, int(std::lround(def_.rect.width() * view.width()))), std::max(1, int(std::lround(def_.rect.height() * view.height()))));
+    const QRect box = boxRect();
     const OverlayRasterKey key = overlayRasterKey(def_, secondsLeft_, canvas_, view.size());
     if (!(key == key_)) { key_ = key; bitmap_ = rasterizeOverlay(key); }
 
@@ -138,6 +379,10 @@ void OverlayPreview::paintEvent(QPaintEvent*) {
     p.setPen(QPen(QColor(colors::kWarn), 1, Qt::DashLine));
     p.setBrush(Qt::NoBrush);
     p.drawRect(box.adjusted(0, 0, -1, -1));
+    if (!editable_) return;
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(colors::kWarn));
+    for (const QPoint& c : {box.topLeft(), box.topRight(), box.bottomLeft(), box.bottomRight()}) p.drawRect(QRect(c.x() - 3, c.y() - 3, 6, 6));
 }
 
 // ---------------- panel ----------------
@@ -146,107 +391,97 @@ OverlayPanel::OverlayPanel(Project& project, RenderEngine& engine, QUndoStack* u
     : QWidget(parent), project_(project), engine_(engine), undo_(undo) {
     setObjectName("overlayPanel");
     auto* v = new QVBoxLayout(this);
+    v->setContentsMargins(6, 4, 6, 4);
     title_ = new QLabel;
     title_->setWordWrap(true);
     v->addWidget(title_);
 
     auto* add = new QHBoxLayout;
-    const struct { OverlayType type; const char* label; const char* name; } adds[4] = {
-        {OverlayType::Title, "+ Tiêu đề", "ovAddTitle"}, {OverlayType::Ticker, "+ Chữ chạy", "ovAddTicker"},
-        {OverlayType::Countdown, "+ Đếm ngược", "ovAddCountdown"}, {OverlayType::Logo, "+ Logo…", "ovAddLogo"}};
+    add->addWidget(new QLabel(text::ovAddLabel()));
+    const struct { OverlayType type; QString tip; const char* name; } adds[4] = {
+        {OverlayType::Title, text::ovAddTitle(), "ovAddTitle"}, {OverlayType::Ticker, text::ovAddTicker(), "ovAddTicker"},
+        {OverlayType::Countdown, text::ovAddCountdown(), "ovAddCountdown"}, {OverlayType::Logo, text::ovAddLogo(), "ovAddLogo"}};
     for (int i = 0; i < 4; ++i) {
-        addBtn_[i] = new QPushButton(adds[i].label);
-        addBtn_[i]->setObjectName(adds[i].name);
-        add->addWidget(addBtn_[i]);
         const OverlayType t = adds[i].type;
+        addBtn_[i] = ui::iconButton(typeGlyph(t), adds[i].name, adds[i].tip);
+        add->addWidget(addBtn_[i]);
         connect(addBtn_[i], &QPushButton::clicked, this, [this, t] {
             if (t != OverlayType::Logo) { addOverlay(t); return; }
             const QString f = QFileDialog::getOpenFileName(this, "Chọn logo", QString(), "Ảnh (*.png *.webp *.gif *.jpg *.jpeg *.bmp)");
             if (!f.isEmpty()) addLogo(f);
         });
     }
+    add->addStretch();
     v->addLayout(add);
 
-    list_ = new QListWidget;
+    auto* split = new QSplitter(Qt::Vertical);
+    split_ = split;
+    split->setObjectName("ovSplit");
+    split->setChildrenCollapsible(false);
+    list_ = new DragList;
     list_->setObjectName("ovList");
-    list_->setToolTip("Đầu danh sách = lớp trên cùng. Tick = đang hiện trên Program.");
-    list_->setMinimumHeight(60);
-    list_->setMaximumHeight(96);
-    v->addWidget(list_);
+    list_->setToolTip(text::ovListTip());
+    list_->setMinimumHeight(70);
+    list_->setSpacing(1);
+    list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    list_->onReorder = [this](const std::vector<int>& rows, int before) { reorder(rows, before); };
+    list_->installEventFilter(this);                       // phim Delete: CHI khi danh sach dang duoc chon
+    split->addWidget(list_);
 
-    toggle_ = new QPushButton("HIỆN lên Program");
-    toggle_->setObjectName("ovToggle");
-    toggle_->setMinimumHeight(30);
-    v->addWidget(toggle_);
-
-    clockRow_ = new QWidget;
-    auto* cl = new QHBoxLayout(clockRow_);
-    cl->setContentsMargins(0, 0, 0, 0);
-    clock_ = new QLabel;
-    clock_->setObjectName("ovClock");
-    clock_->setStyleSheet("font-size:18px;font-weight:bold");
-    startBtn_ = new QPushButton("Bắt đầu");
-    startBtn_->setObjectName("ovStart");
-    pauseBtn_ = new QPushButton("Tạm dừng");
-    pauseBtn_->setObjectName("ovPause");
-    resetBtn_ = new QPushButton("Đặt lại");
-    resetBtn_->setObjectName("ovReset");
-    cl->addWidget(clock_, 1);
-    cl->addWidget(startBtn_);
-    cl->addWidget(pauseBtn_);
-    cl->addWidget(resetBtn_);
-    v->addWidget(clockRow_);
-
-    auto* rest = new QWidget;
-    auto* rv = new QVBoxLayout(rest);
-    rv->setContentsMargins(0, 0, 0, 0);
-    auto* ops = new QHBoxLayout;
-    upBtn_ = new QPushButton("Lên");
-    upBtn_->setObjectName("ovUp");
-    downBtn_ = new QPushButton("Xuống");
-    downBtn_->setObjectName("ovDown");
-    delBtn_ = new QPushButton("Xoá");
-    delBtn_->setObjectName("ovDelete");
-    ops->addWidget(upBtn_);
-    ops->addWidget(downBtn_);
-    ops->addWidget(delBtn_);
-    rv->addLayout(ops);
-
+    auto* editor = new QWidget;
+    auto* ev = new QVBoxLayout(editor);
+    ev->setContentsMargins(0, 0, 0, 0);
+    liveWarn_ = new QLabel(text::ovLiveWarning());
+    liveWarn_->setObjectName("ovLiveWarn");
+    liveWarn_->setWordWrap(true);
+    liveWarn_->setStyleSheet("color:white;background:#8a1c1c;font-weight:bold;padding:3px 6px;border-radius:3px");
+    ev->addWidget(liveWarn_);
     preview_ = new OverlayPreview;
-    rv->addWidget(preview_);
+    ev->addWidget(preview_);
+    auto* places = new QHBoxLayout;
+    places->setSpacing(3);
+    const struct { Glyph g; QString tip; } spots[5] = {
+        {Glyph::PosCenter, text::ovPlaceCenter()}, {Glyph::PosTopLeft, text::ovPlaceTopLeft()}, {Glyph::PosTopRight, text::ovPlaceTopRight()},
+        {Glyph::PosBottomLeft, text::ovPlaceBottomLeft()}, {Glyph::PosBottomRight, text::ovPlaceBottomRight()}};
+    places->addStretch();
+    for (int i = 0; i < 5; ++i) {
+        placeBtn_[i] = ui::iconButton(spots[i].g, QString("ovPlace%1").arg(i).toUtf8().constData(), spots[i].tip);
+        connect(placeBtn_[i], &QPushButton::clicked, this, [this, i] { place(OverlayPlace(i)); });
+        places->addWidget(placeBtn_[i]);
+    }
+    places->addStretch();
+    ev->addLayout(places);
     warn_ = new QLabel;
     warn_->setObjectName("ovWarn");
     warn_->setWordWrap(true);
     warn_->setStyleSheet("color:#ff8a65");
-    rv->addWidget(warn_);
-    rv->addWidget(buildProps());
-    rv->addStretch();
+    ev->addWidget(warn_);
+    ev->addWidget(buildProps());
+    ev->addStretch();
 
     auto* sa = new QScrollArea;
+    sa->setObjectName("ovEditor");
     sa->setWidgetResizable(true);
     sa->setFrameShape(QFrame::NoFrame);
-    sa->setWidget(rest);
-    v->addWidget(sa, 1);
+    sa->setWidget(editor);
+    sa->setMinimumHeight(60);
+    split->addWidget(sa);
+    split->setStretchFactor(0, 2);
+    split->setStretchFactor(1, 3);
+    split->setSizes({220, 360});
+    v->addWidget(split, 1);
 
+    preview_->onDrag = [this](const QRectF& rect, int fontSize, int gesture) {
+        const int id = currentId();
+        if (locked_ || id < 0) return;
+        std::vector<OverlayDef> after = defs_;
+        for (auto& d : after)
+            if (d.id == id) { d.rect = rect; d.fontSize = fontSize; }
+        editDefs(std::move(after), text::ovUndoDrag(), kDragMergeBase + gesture);
+        syncProps();
+        refreshLive();
+    };
     connect(list_, &QListWidget::currentRowChanged, this, [this] { syncProps(); refreshLive(); });
-    connect(list_, &QListWidget::itemChanged, this, [this](QListWidgetItem* it) {
-        setOn(it->data(Qt::UserRole).toInt(), it->checkState() == Qt::Checked);
-    });
-    connect(toggle_, &QPushButton::clicked, this, [this] {
-        if (const OverlayDef* d = current()) setOn(d->id, !stack()->isOn(d->id));
-    });
-    connect(startBtn_, &QPushButton::clicked, this, [this] {
-        if (const OverlayDef* d = current()) { stack()->countdownStart(d->id, engine_.now()); refreshLive(); }
-    });
-    connect(pauseBtn_, &QPushButton::clicked, this, [this] {
-        if (const OverlayDef* d = current()) { stack()->countdownPause(d->id, engine_.now()); refreshLive(); }
-    });
-    connect(resetBtn_, &QPushButton::clicked, this, [this] {
-        if (const OverlayDef* d = current()) { stack()->countdownReset(d->id); refreshLive(); }
-    });
-    connect(upBtn_, &QPushButton::clicked, this, [this] { moveCurrent(+1); });
-    connect(downBtn_, &QPushButton::clicked, this, [this] { moveCurrent(-1); });
-    connect(delBtn_, &QPushButton::clicked, this, [this] { removeCurrent(); });
     setChannel(0);
 }
 
@@ -254,12 +489,15 @@ QWidget* OverlayPanel::buildProps() {
     props_ = new QWidget;
     props_->setObjectName("ovProps");
     form_ = new QFormLayout(props_);
-    form_->setRowWrapPolicy(QFormLayout::DontWrapRows);
+    form_->setContentsMargins(0, 0, 0, 0);
+    form_->setRowWrapPolicy(QFormLayout::WrapLongRows);       // cot hep: nhan len tren o nhap
+    form_->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
 
     auto row = [](std::initializer_list<QWidget*> widgets) {
         auto* w = new QWidget;
         auto* h = new QHBoxLayout(w);
         h->setContentsMargins(0, 0, 0, 0);
+        h->setSpacing(4);
         for (QWidget* c : widgets) h->addWidget(c, 1);
         return w;
     };
@@ -269,6 +507,14 @@ QWidget* OverlayPanel::buildProps() {
         s->setRange(lo, hi);
         s->setSingleStep(step);
         s->setDecimals(dec);
+        s->setKeyboardTracking(false);
+        return s;
+    };
+    auto ispin = [](const char* name, int lo, int hi, const QString& suffix) {
+        auto* s = new QSpinBox;
+        s->setObjectName(name);
+        s->setRange(lo, hi);
+        s->setSuffix(suffix);
         s->setKeyboardTracking(false);
         return s;
     };
@@ -286,8 +532,7 @@ QWidget* OverlayPanel::buildProps() {
     image_ = new QLineEdit;
     image_->setObjectName("ovImage");
     image_->setReadOnly(true);
-    auto* pick = new QPushButton("Chọn…");
-    pick->setObjectName("ovImageBtn");
+    auto* pick = ui::iconButton(Glyph::Folder, "ovImageBtn", "Chọn ảnh logo…");
     imageRow_ = row({image_});
     imageRow_->layout()->addWidget(pick);
     form_->addRow("Ảnh", imageRow_);
@@ -295,18 +540,16 @@ QWidget* OverlayPanel::buildProps() {
     font_ = new QFontComboBox;
     font_->setObjectName("ovFont");
     font_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    font_->setMinimumContentsLength(6);
     form_->addRow("Font", font_);
-    fontSize_ = new QSpinBox;
-    fontSize_->setObjectName("ovFontSize");
-    fontSize_->setRange(4, 2000);
-    fontSize_->setSuffix(" px");
-    fontSize_->setKeyboardTracking(false);
+    fontSize_ = ispin("ovFontSize", 4, 2000, " px");
     bold_ = new QCheckBox("Đậm");
     bold_->setObjectName("ovBold");
     italic_ = new QCheckBox("Nghiêng");
     italic_->setObjectName("ovItalic");
-    styleRow_ = row({fontSize_, bold_, italic_});
-    form_->addRow("Cỡ", styleRow_);
+    form_->addRow("Cỡ", fontSize_);
+    styleRow_ = row({bold_, italic_});
+    form_->addRow(QString(), styleRow_);
 
     color_ = new QPushButton("Chữ");
     color_->setObjectName("ovColor");
@@ -314,6 +557,10 @@ QWidget* OverlayPanel::buildProps() {
     outlineColor_->setObjectName("ovOutlineColor");
     bgColor_ = new QPushButton("Nền");
     bgColor_->setObjectName("ovBgColor");
+    for (QPushButton* b : {color_, outlineColor_, bgColor_}) {
+        b->setProperty("swatch", true);
+        b->setMinimumWidth(48);
+    }
     form_->addRow("Màu", row({color_, outlineColor_, bgColor_}));
     outlineWidth_ = dspin("ovOutlineWidth", 0, 50, 1, 1);
     outlineWidth_->setSuffix(" px");
@@ -343,18 +590,33 @@ QWidget* OverlayPanel::buildProps() {
     speed_ = dspin("ovSpeed", 1, 5000, 10, 0);
     speed_->setSuffix(" px/s");
     form_->addRow("Tốc độ", speed_);
-    minutes_ = new QSpinBox;
-    minutes_->setObjectName("ovMinutes");
-    minutes_->setRange(0, kMaxCountdownSeconds / 60);
-    minutes_->setSuffix(" phút");
-    minutes_->setKeyboardTracking(false);
-    seconds_ = new QSpinBox;
-    seconds_->setObjectName("ovSeconds");
-    seconds_->setRange(0, 59);
-    seconds_->setSuffix(" giây");
-    seconds_->setKeyboardTracking(false);
+    minutes_ = ispin("ovMinutes", 0, kMaxCountdownSeconds / 60, " phút");
+    seconds_ = ispin("ovSeconds", 0, 59, " giây");
     durationRow_ = row({minutes_, seconds_});
     form_->addRow("Thời lượng", durationRow_);
+
+    // ---- tieng nhac cua dem nguoc ----
+    alert_ = new QCheckBox(text::ovAlertOn());
+    alert_->setObjectName("ovAlertOn");
+    alert_->setToolTip(text::ovAlertTip());
+    alertTest_ = ui::iconButton(Glyph::Speaker, "ovAlertTest", text::ovAlertTest());
+    alertRow_ = row({alert_});
+    alertRow_->layout()->addWidget(alertTest_);
+    form_->addRow(text::ovAlertRow(), alertRow_);
+    alertStart_ = ispin("ovAlertStart", 1, kMaxAlertSeconds, text::ovAlertSecondsSuffix());
+    alertStart_->setToolTip(text::ovAlertStartTip());
+    form_->addRow(text::ovAlertStart(), alertStart_);
+    alertFast_ = ispin("ovAlertFast", 0, kMaxAlertSeconds, text::ovAlertSecondsSuffix());
+    alertFast_->setToolTip(text::ovAlertFastTip());
+    alertFast_->setSpecialValueText(text::ovAlertNoFast());
+    form_->addRow(text::ovAlertFast(), alertFast_);
+    alertVolume_ = ispin("ovAlertVolume", 0, 100, " %");
+    form_->addRow(text::ovAlertVolume(), alertVolume_);
+    alertNote_ = new QLabel(text::ovAlertMuted());
+    alertNote_->setObjectName("ovAlertNote");
+    alertNote_->setWordWrap(true);
+    alertNote_->setStyleSheet("color:#ff8a65");
+    form_->addRow(alertNote_);
 
     // ---- noi tin hieu ----
     connect(name_, &QLineEdit::textEdited, this, [this](const QString& s) {
@@ -405,14 +667,31 @@ QWidget* OverlayPanel::buildProps() {
     };
     connect(minutes_, &QSpinBox::valueChanged, this, duration);
     connect(seconds_, &QSpinBox::valueChanged, this, duration);
+    connect(alert_, &QCheckBox::toggled, this, [this](bool on) { editCurrent([on](OverlayDef& d) { d.alert = on; }, text::ovUndoAlert()); });
+    connect(alertStart_, &QSpinBox::valueChanged, this, [this](int n) {
+        editCurrent([n](OverlayDef& d) { d.alertSeconds = n; d.fastSeconds = std::min(d.fastSeconds, n); }, text::ovUndoAlert(), FAlertStart);
+    });
+    connect(alertFast_, &QSpinBox::valueChanged, this, [this](int n) {
+        editCurrent([n](OverlayDef& d) { d.fastSeconds = std::min(n, d.alertSeconds); }, text::ovUndoAlert(), FAlertFast);
+    });
+    connect(alertVolume_, &QSpinBox::valueChanged, this, [this](int n) {
+        editCurrent([n](OverlayDef& d) { d.alertVolume = n; }, text::ovUndoAlert(), FAlertVolume);
+    });
+    connect(alertTest_, &QPushButton::clicked, this, [this] { testAlert(); });
+    // cot hep (~220): o so duoc phep co lai thay vi sinh thanh cuon ngang
+    for (auto* s : props_->findChildren<QAbstractSpinBox*>()) s->setMinimumWidth(70);
     for (QWidget* w : std::initializer_list<QWidget*>{name_, font_, fontSize_, outlineWidth_, align_, rect_[0], rect_[1], rect_[2], rect_[3],
-                                                      opacity_, fade_, speed_, minutes_, seconds_})
+                                                      opacity_, fade_, speed_, minutes_, seconds_, alertStart_, alertFast_, alertVolume_})
         w->installEventFilter(this);
     return props_;
 }
 
 bool OverlayPanel::eventFilter(QObject* obj, QEvent* ev) {
-    if (ev->type() == QEvent::ShortcutOverride) {
+    if (obj == list_ && ev->type() == QEvent::KeyPress && static_cast<QKeyEvent*>(ev)->key() == Qt::Key_Delete) {
+        removeCurrent();
+        return true;
+    }
+    if (ev->type() == QEvent::ShortcutOverride && obj != list_) {
         const int key = static_cast<QKeyEvent*>(ev)->key();
         if (key == Qt::Key_Return || key == Qt::Key_Enter) { ev->accept(); return true; }
     }
@@ -421,10 +700,17 @@ bool OverlayPanel::eventFilter(QObject* obj, QEvent* ev) {
 
 OverlayStack* OverlayPanel::stack() const { return &project_.channels[size_t(ch_)]->overlays; }
 
+void OverlayPanel::preferList(bool on) {
+    split_->setStretchFactor(0, on ? 4 : 2);
+    split_->setStretchFactor(1, on ? 1 : 3);
+    split_->setSizes(on ? QList<int>{1000, 130} : QList<int>{220, 360});
+}
+
 void OverlayPanel::setChannel(int ch) {
     if (ch < 0 || ch >= int(project_.channels.size())) return;
     ch_ = ch;
-    title_->setText(QString("Lớp phủ của <b>Kênh %1</b>: đè lên Program, giữ nguyên khi đổi Scene. FTB che cả lớp phủ.").arg(ch + 1));
+    title_->setText(text::ovTitleShort().arg(ch + 1));
+    title_->setToolTip(text::ovTitleNote().arg(ch + 1));
     defs_ = stack()->defs();
     reload(defs_.empty() ? -1 : defs_.back().id);
 }
@@ -439,6 +725,12 @@ void OverlayPanel::selectId(int id) {
         if (list_->item(r)->data(Qt::UserRole).toInt() == id) { list_->setCurrentRow(r); return; }
 }
 
+QWidget* OverlayPanel::row(int id) const {
+    for (int r = 0; r < list_->count(); ++r)
+        if (list_->item(r)->data(Qt::UserRole).toInt() == id) return list_->itemWidget(list_->item(r));
+    return nullptr;
+}
+
 const OverlayDef* OverlayPanel::current() const {
     const int id = currentId();
     for (const auto& d : defs_) if (d.id == id) return &d;
@@ -450,11 +742,20 @@ void OverlayPanel::reload(int select) {
         QSignalBlocker b(list_);
         list_->clear();
         for (int i = int(defs_.size()) - 1; i >= 0; --i) {           // dau danh sach = tren cung
+            const OverlayDef& d = defs_[size_t(i)];
             auto* it = new QListWidgetItem;
-            it->setData(Qt::UserRole, defs_[size_t(i)].id);
-            it->setFlags(it->flags() | Qt::ItemIsUserCheckable);
-            it->setCheckState(Qt::Unchecked);
+            it->setData(Qt::UserRole, d.id);
+            auto* w = new OverlayRow(d, list_);
+            const int id = d.id;
+            connect(w->eye, &QPushButton::clicked, this, [this, id] { selectId(id); setOn(id, !stack()->isOn(id)); });
+            connect(w->remove, &QPushButton::clicked, this, [this, id] { removeId(id); });
+            if (w->play) {
+                connect(w->play, &QPushButton::clicked, this, [this, id] { selectId(id); toggleClock(id); });
+                connect(w->reset, &QPushButton::clicked, this, [this, id] { selectId(id); resetClock(id); });
+            }
+            it->setSizeHint(QSize(0, d.type == OverlayType::Countdown ? 64 : 40));
             list_->addItem(it);
+            list_->setItemWidget(it, w);
         }
         if (list_->count() > 0) {
             list_->setCurrentRow(0);
@@ -468,22 +769,29 @@ void OverlayPanel::reload(int select) {
 void OverlayPanel::syncProps() {
     const OverlayDef* d = current();
     props_->setEnabled(d && !locked_);
-    clockRow_->setVisible(d && d->type == OverlayType::Countdown);
-    if (!d) return;
+    preview_->setEditable(d && !locked_);
+    for (QPushButton* b : placeBtn_) {
+        ui::setWhy(b, locked_ ? text::lockedWhy() : d ? QString() : text::ovPickFirst());
+        b->setEnabled(d && !locked_);
+    }
+    const bool countdown = d && d->type == OverlayType::Countdown;
+    for (QWidget* w : std::initializer_list<QWidget*>{alertRow_, alertStart_, alertFast_, alertVolume_}) form_->setRowVisible(w, countdown);
+    if (!d) { form_->setRowVisible(alertNote_, false); return; }
     syncing_ = true;                                  // dat gia tri len o nhap khong duoc tao buoc sua
     const bool text = d->type != OverlayType::Logo;
     form_->setRowVisible(text_, text);
     form_->setRowVisible(imageRow_, !text);
     form_->setRowVisible(font_, text);
+    form_->setRowVisible(fontSize_, text);
     form_->setRowVisible(styleRow_, text);
     color_->setVisible(text);
     outlineColor_->setVisible(text);
     form_->setRowVisible(outlineWidth_, text);
     form_->setRowVisible(speed_, d->type == OverlayType::Ticker);
-    form_->setRowVisible(durationRow_, d->type == OverlayType::Countdown);
+    form_->setRowVisible(durationRow_, countdown);
     form_->setRowVisible(align_, d->type != OverlayType::Ticker);
     if (auto* l = qobject_cast<QLabel*>(form_->labelForField(text_)))
-        l->setText(d->type == OverlayType::Countdown ? "Chữ trước" : "Nội dung");
+        l->setText(countdown ? "Chữ trước" : "Nội dung");
 
     if (name_->text() != d->name) name_->setText(d->name);
     if (text_->toPlainText() != d->text) {            // chi ghi khi khac: khong lam nhay con tro luc dang go
@@ -508,6 +816,11 @@ void OverlayPanel::syncProps() {
     speed_->setValue(d->speed);
     minutes_->setValue(d->seconds / 60);
     seconds_->setValue(d->seconds % 60);
+    alert_->setChecked(d->alert);
+    alertStart_->setValue(d->alertSeconds);
+    alertFast_->setMaximum(d->alertSeconds);
+    alertFast_->setValue(d->fastSeconds);
+    alertVolume_->setValue(d->alertVolume);
     syncing_ = false;
 }
 
@@ -515,38 +828,18 @@ void OverlayPanel::refreshLive() {
     const std::vector<OverlayFrame> frames = stack()->frames(engine_.now());
     const OverlayDef* cur = current();
     OverlayFrame curFrame;
-    {
-        QSignalBlocker b(list_);
-        for (int r = 0; r < list_->count(); ++r) {
-            QListWidgetItem* it = list_->item(r);
-            const int id = it->data(Qt::UserRole).toInt();
-            for (const OverlayFrame& f : frames) {
-                if (f.def.id != id) continue;
-                const QString type = typeLabel(f.def.type);
-                const QString label = QString("%1%2%3%4").arg(f.on ? "● " : "", f.def.name,
-                                                              f.def.name.startsWith(type) ? QString() : "  ·  " + type,
-                                                              f.on ? "   ĐANG HIỆN" : "");
-                const Qt::CheckState cs = f.on ? Qt::Checked : Qt::Unchecked;
-                if (it->text() != label) it->setText(label);
-                if (it->checkState() != cs) it->setCheckState(cs);
-                it->setForeground(f.on ? QColor(colors::kProgram) : QColor(0xe6, 0xe8, 0xee));
-                if (cur && id == cur->id) curFrame = f;
-            }
+    for (int r = 0; r < list_->count(); ++r) {
+        QListWidgetItem* it = list_->item(r);
+        const int id = it->data(Qt::UserRole).toInt();
+        auto* w = static_cast<OverlayRow*>(list_->itemWidget(it));
+        for (const OverlayFrame& f : frames) {
+            if (f.def.id != id) continue;
+            if (w) w->update(f, cur && id == cur->id, locked_);
+            if (cur && id == cur->id) curFrame = f;
         }
     }
     const bool has = cur != nullptr;
-    toggle_->setEnabled(has);
-    toggle_->setText(has && curFrame.on ? "ẨN khỏi Program" : "HIỆN lên Program");
-    toggle_->setStyleSheet(has && curFrame.on ? "background:#8a1c1c;color:white;font-weight:bold" : QString());
-    if (has && cur->type == OverlayType::Countdown) {
-        clock_->setText(formatCountdown(curFrame.secondsLeft, cur->seconds >= 3600));
-        startBtn_->setEnabled(!curFrame.running && curFrame.secondsLeft > 0);
-        pauseBtn_->setEnabled(curFrame.running);
-    }
-    const int row = list_->currentRow(), n = list_->count();
-    upBtn_->setEnabled(!locked_ && row > 0);
-    downBtn_->setEnabled(!locked_ && row >= 0 && row < n - 1);
-    delBtn_->setEnabled(!locked_ && has);
+    liveWarn_->setVisible(has && curFrame.on);
 
     QString warning;
     if (has && cur->type == OverlayType::Logo && !QFileInfo::exists(cur->image))
@@ -558,22 +851,64 @@ void OverlayPanel::refreshLive() {
     warn_->setText(warning);
     warn_->setVisible(!warning.isEmpty());
 
+    const Channel& c = *project_.channels[size_t(ch_)];
+    form_->setRowVisible(alertNote_, has && cur->type == OverlayType::Countdown && cur->alert &&
+                                         (c.mute.load() || c.volume.load() <= 0 || c.ftbAmount.load() >= 1.0f));
     if (preview_->isVisible()) {
-        const Channel& c = *project_.channels[size_t(ch_)];
-        preview_->show(cur, curFrame.secondsLeft, c.size, engine_.monitor(ch_).preview);
+        OverlayDef shown;
+        if (has) { shown = *cur; if (curFrame.alerting) shown.color = kAlertColor; }
+        preview_->show(has ? &shown : nullptr, curFrame.secondsLeft, c.size, engine_.monitor(ch_).preview);
     }
 }
 
 void OverlayPanel::setLocked(bool on) {
     locked_ = on;
-    for (QPushButton* b : addBtn_) b->setEnabled(!on);
+    list_->setReorderEnabled(!on);
+    for (QPushButton* b : addBtn_) {
+        ui::setWhy(b, on ? text::lockedWhy() : QString());
+        b->setEnabled(!on);
+    }
     syncProps();
     refreshLive();
 }
 
+// ---------------- live ----------------
+
 void OverlayPanel::setOn(int id, bool on) {
     stack()->setOn(id, on, engine_.now());
     refreshLive();
+}
+
+void OverlayPanel::toggleClock(int id) {
+    OverlayFrame f;
+    if (!stack()->frame(id, engine_.now(), f)) return;
+    if (f.running) stack()->countdownPause(id, engine_.now());
+    else stack()->countdownStart(id, engine_.now());
+    refreshLive();
+}
+
+void OverlayPanel::resetClock(int id) {
+    stack()->countdownReset(id);
+    refreshLive();
+}
+
+void OverlayPanel::hideAll() {
+    const double now = engine_.now();
+    for (const OverlayDef& d : stack()->defs()) stack()->setOn(d.id, false, now);
+    refreshLive();
+}
+
+void OverlayPanel::testAlert() {
+    const OverlayDef* d = current();
+    if (!d || d->type != OverlayType::Countdown) return;
+    AudioMixer& m = engine_.audio();
+    const int id = kTestToneId - ch_;
+    const float volume = float(d->alertVolume) / 100.0f;
+    m.stopTones(ch_, id);
+    m.playTone(ch_, id, ToneKind::Tick, volume, 0.05);
+    m.playTone(ch_, id, ToneKind::Fast, volume, 0.7);
+    m.playTone(ch_, id, ToneKind::Fast, volume, 1.2);
+    m.playTone(ch_, id, ToneKind::Bell, volume, 1.7);
 }
 
 // ---------------- sua ----------------
@@ -600,6 +935,11 @@ void OverlayPanel::editCurrent(const std::function<void(OverlayDef&)>& mutate, c
         refreshLive();
         return;
     }
+}
+
+void OverlayPanel::place(OverlayPlace where) {
+    const QSize canvas = project_.channels[size_t(ch_)]->size;
+    editCurrent([where, canvas](OverlayDef& d) { d.rect = placedRect(d.rect, where, canvas); }, text::ovUndoPlace());
 }
 
 void OverlayPanel::applyDefs(int ch, const std::vector<OverlayDef>& defs) {
@@ -646,14 +986,20 @@ void OverlayPanel::pickColor(QColor OverlayDef::*field, const QString& title) {
     editCurrent([field, c](OverlayDef& e) { e.*field = c; }, "Đổi màu lớp phủ");
 }
 
-void OverlayPanel::removeCurrent() {
-    const int id = currentId(), row = list_->currentRow();
+void OverlayPanel::removeCurrent() { removeId(currentId()); }
+
+void OverlayPanel::removeId(int id) {
     if (id < 0 || locked_) return;
+    int row = -1;
+    for (int r = 0; r < list_->count(); ++r)
+        if (list_->item(r)->data(Qt::UserRole).toInt() == id) row = r;
+    if (row < 0) return;
+    const int keep = currentId();
     std::vector<OverlayDef> after = defs_;
     after.erase(std::remove_if(after.begin(), after.end(), [id](const OverlayDef& d) { return d.id == id; }), after.end());
-    editDefs(std::move(after), "Xoá lớp phủ");
-    reload(-1);
-    if (list_->count() > 0) list_->setCurrentRow(std::min(row, list_->count() - 1));
+    editDefs(std::move(after), text::ovUndoDelete());
+    reload(keep == id ? -1 : keep);
+    if (keep == id && list_->count() > 0) list_->setCurrentRow(std::min(row, list_->count() - 1));
 }
 
 void OverlayPanel::moveCurrent(int dir) {
@@ -665,10 +1011,20 @@ void OverlayPanel::moveCurrent(int dir) {
         const int j = i + dir;
         if (j < 0 || j >= int(after.size())) return;
         std::swap(after[size_t(i)], after[size_t(j)]);
-        editDefs(std::move(after), "Đổi thứ tự lớp phủ");
+        editDefs(std::move(after), text::ovUndoReorder());
         reload(id);
         return;
     }
+}
+
+void OverlayPanel::reorder(const std::vector<int>& rows, int before) {
+    if (locked_ || rows.empty()) return;
+    std::vector<OverlayDef> shown(defs_.rbegin(), defs_.rend());     // theo thu tu danh sach (tren cung truoc)
+    if (rows.front() < 0 || rows.back() >= int(shown.size())) return;
+    const int keep = shown[size_t(rows.front())].id;
+    shown = movedRows(shown, rows, before);
+    editDefs(std::vector<OverlayDef>(shown.rbegin(), shown.rend()), text::ovUndoReorder());
+    reload(keep);
 }
 
 } // namespace lc

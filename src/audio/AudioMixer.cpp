@@ -11,7 +11,9 @@
 namespace lc {
 
 bool AudioPlan::sameAs(const AudioPlan& o) const {
-    if (channels != o.channels || entries.size() != o.entries.size()) return false;
+    if (channels != o.channels || entries.size() != o.entries.size() || channelGain.size() != o.channelGain.size()) return false;
+    for (size_t i = 0; i < channelGain.size(); ++i)
+        if (std::abs(channelGain[i] - o.channelGain[i]) > 1e-4f) return false;
     for (size_t i = 0; i < entries.size(); ++i) {
         const auto &a = entries[i], &b = o.entries[i];
         if (a.src != b.src || a.channel != b.channel || std::abs(a.gain - b.gain) > 1e-4f) return false;
@@ -56,8 +58,69 @@ void AudioMixer::adoptPlan() {
     plan_ = std::move(p);
 }
 
+namespace {
+constexpr int kToneReleaseFrames = kAudioRate / 200;        // 5 ms
+constexpr size_t kMaxVoices = 64;
+constexpr float kToneLevel = 0.6f;                          // chua cho cho tieng chuong trinh
+}
+
+void AudioMixer::playTone(int channel, int id, ToneKind kind, float volume, double delaySeconds) {
+    std::lock_guard lk(toneMu_);
+    if (toneCmds_.size() >= 256) toneCmds_.erase(toneCmds_.begin());
+    toneCmds_.push_back({false, channel, id, kind, std::clamp(volume, 0.0f, 1.0f), int(std::max(0.0, delaySeconds) * kAudioRate)});
+    toneDirty_ = true;
+}
+
+void AudioMixer::stopTones(int channel, int id) {
+    std::lock_guard lk(toneMu_);
+    if (toneCmds_.size() >= 256) toneCmds_.erase(toneCmds_.begin());
+    toneCmds_.push_back({true, channel, id, ToneKind::Tick, 0.0f, 0});
+    toneDirty_ = true;
+}
+
+void AudioMixer::adoptTones() {
+    if (!toneDirty_.load(std::memory_order_acquire)) return;
+    std::lock_guard lk(toneMu_);
+    for (const ToneCmd& c : toneCmds_) {
+        if (!c.stop) {
+            if (voices_.size() >= kMaxVoices) voices_.erase(voices_.begin());
+            voices_.push_back({c.channel, c.id, c.kind, c.volume, -c.delay, -1, -1.0f});
+            continue;
+        }
+        for (Voice& v : voices_)
+            if (v.channel == c.channel && v.id == c.id && v.release < 0) v.release = v.pos < 0 ? 0 : kToneReleaseFrames;
+    }
+    toneCmds_.clear();
+    toneDirty_ = false;
+}
+
+// Cong tieng tu tong hop vao bus cua Channel; he so bus (am luong/mute/FTB) doi dan trong khoi.
+void AudioMixer::mixTones(int channels, int frames) {
+    for (Voice& v : voices_) {
+        const float target = plan_ && v.channel >= 0 && size_t(v.channel) < plan_->channelGain.size() ? plan_->channelGain[size_t(v.channel)] : 1.0f;
+        const float from = v.gain < 0 ? target : v.gain;
+        v.gain = target;
+        float* bus = v.channel >= 0 && v.channel < channels ? bus_[size_t(v.channel)].data() : nullptr;
+        const int len = toneFrames(v.kind);
+        for (int i = 0; i < frames; ++i) {
+            if (v.release == 0 || v.pos >= len) break;
+            float env = 1.0f;
+            if (v.release > 0) env = float(v.release--) / float(kToneReleaseFrames);
+            if (bus && v.pos >= 0) {
+                const float g = from + (target - from) * float(i + 1) / float(frames);
+                const float s = toneSample(v.kind, v.pos) * v.volume * kToneLevel * env * g;
+                bus[i * 2] += s;
+                bus[i * 2 + 1] += s;
+            }
+            ++v.pos;
+        }
+    }
+    std::erase_if(voices_, [](const Voice& v) { return v.release == 0 || v.pos >= toneFrames(v.kind); });
+}
+
 void AudioMixer::renderBlock(float* out, int frames) {
     adoptPlan();
+    adoptTones();
     int done = 0;
     while (done < frames) {
         const int n = std::min(frames - done, kMixBlock * 4);
@@ -115,6 +178,7 @@ void AudioMixer::renderBlock(float* out, int frames) {
             }
             prev_.assign(now.begin(), now.end());
         }
+        if (!voices_.empty()) mixTones(nch, n);       // tieng nhac: di cung bus (ca NDI ra, meter, master)
         // 2b) tap bus (NDI ra): chi khi co tap nao
         if (tapCount_.load(std::memory_order_relaxed) > 0) {
             std::lock_guard lk(tapMu_);
@@ -208,6 +272,12 @@ void AudioMixer::releasePlan() {
     dirty_ = false;
     plan_.reset();
     prev_.clear();
+    {
+        std::lock_guard lk(toneMu_);
+        toneCmds_.clear();
+    }
+    toneDirty_ = false;
+    voices_.clear();
 }
 
 void AudioMixer::threadMain() {

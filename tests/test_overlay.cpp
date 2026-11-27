@@ -2,12 +2,14 @@
 // (doc lai diem anh voi `now` tu dat), luu/mo project, va giao dien + engine that (Hoan tac, Khoa van hanh).
 #include "InspectorPanel.h"
 #include "MainWindow.h"
+#include "DragList.h"
 #include "OverlayPanel.h"
 #include "core/Channel.h"
 #include "core/Project.h"
 #include "media/StaticSources.h"
 #include "render/Compositor.h"
 #include "render/OverlayRaster.h"
+#include "drag.h"
 #include <QApplication>
 #include <QDockWidget>
 #include <QDoubleSpinBox>
@@ -509,6 +511,10 @@ static void testUi(const QString& tmp) {
     };
     CHECK(waitFor([&] { return nearC(monitorAt(0, 50, 50), 255, 0, 0); }, 5000), "Engine chay, Program = Scene do");
 
+    // nut / dong ho cua tung dong trong danh sach
+    auto part = [&](int id, const char* name) { QWidget* r = ov->row(id); return r ? r->findChild<QPushButton*>(name) : nullptr; };
+    auto clockOf = [&](int id) { QWidget* r = ov->row(id); return r ? r->findChild<QLabel*>("ovClock") : nullptr; };
+    auto isRed = [&](int id) { QWidget* r = ov->row(id); return r && r->property("on").toBool(); };
     btn("ovAddTitle")->click();
     const int id = ov->currentId();
     CHECK(id > 0 && stack.defs().size() == 1 && !stack.isOn(id) && list->count() == 1, "Them tieu de: vao danh sach, trang thai TAT");
@@ -516,13 +522,15 @@ static void testUi(const QString& tmp) {
     pump(300);
     CHECK(nearC(monitorAt(0, 5, 5), 255, 0, 0), "Them/sua lop phu khong dua gi len Program");
 
-    btn("ovToggle")->click();
-    CHECK(stack.isOn(id) && btn("ovToggle")->text().startsWith("ẨN") && list->item(0)->checkState() == Qt::Checked, "Nut HIEN bat lop phu");
+    CHECK(!btn("ovToggle") && !btn("ovUp") && !btn("ovDown") && !btn("ovDelete"), "khong con nut Len / Xuong / Xoa / HIEN to");
+    CHECK(part(id, "ovEye") && part(id, "ovDel") && !isRed(id), "moi dong co mat hien/an va thung rac; chua hien thi khong do");
+    part(id, "ovEye")->click();
+    CHECK(stack.isOn(id) && isRed(id) && ov->findChild<QLabel*>("ovLiveWarn")->isVisibleTo(ov), "mat hien lop phu: dong nen do, canh bao sua la len man");
     CHECK(waitFor([&] { return nearC(monitorAt(0, 5, 5), 0, 0, 255); }, 3000), "Program co lop phu");
     CHECK(nearC(monitorAt(1, 5, 5), 255, 0, 0), "Kenh 2 khong bi anh huong");
     const int steps = undo->count();
-    list->item(0)->setCheckState(Qt::Unchecked);
-    CHECK(!stack.isOn(id) && undo->count() == steps, "Bo tick = an; hien/an khong vao ngan xep Hoan tac");
+    part(id, "ovEye")->click();
+    CHECK(!stack.isOn(id) && undo->count() == steps && !isRed(id), "bam mat lan nua = an; hien/an khong vao ngan xep Hoan tac");
 
     auto* text = ov->findChild<QPlainTextEdit*>("ovText");
     const int base = undo->index();
@@ -543,18 +551,38 @@ static void testUi(const QString& tmp) {
 
     ov->setOn(id, true);
     ov->selectId(id);
-    btn("ovDelete")->click();
-    CHECK(stack.empty(), "Xoa lop phu dang hien");
+    part(id, "ovDel")->click();
+    pump(50);
+    CHECK(stack.empty(), "Xoa lop phu dang hien (thung rac)");
     undo->undo();
     CHECK(stack.defs().size() == 1 && !stack.isOn(id), "Hoan tac xoa: khong tu len hinh lai");
 
     btn("ovAddCountdown")->click();
     const int cd = ov->currentId();
-    auto* clock = ov->findChild<QLabel*>("ovClock");
-    CHECK(cd != id && clock->text() == "05:00" && stack.defs().back().id == cd, "Them dem nguoc 05:00, nam tren cung");
-    btn("ovDown")->click();
-    CHECK(stack.defs().front().id == cd, "Doi thu tu");
+    CHECK(cd != id && clockOf(cd) && clockOf(cd)->text() == "05:00" && stack.defs().back().id == cd && list->item(0)->data(Qt::UserRole).toInt() == cd,
+          "Them dem nguoc 05:00, nam tren cung");
+    for (QDockWidget* d : w.findChildren<QDockWidget*>("dockOverlay")) { d->show(); d->raise(); }
+    pump(300);
+    testdrag::dragRow(list, 0, 2);
+    CHECK(stack.defs().front().id == cd, "keo dong xuong duoi: doi thu tu");
     undo->undo();
+    CHECK(stack.defs().back().id == cd, "hoan tac doi thu tu");
+    // keo ra ngoai danh sach = huy, KHONG xoa
+    testdrag::drag(list->viewport(), list->visualItemRect(list->item(0)).center(), QPoint(-400, -300));
+    CHECK(stack.defs().size() == 2 && stack.defs().back().id == cd, "keo ra ngoai khong xoa, khong doi thu tu");
+    // phim Delete xoa muc dang chon, hoan tac duoc
+    ov->selectId(cd);
+    QKeyEvent del(QEvent::KeyPress, Qt::Key_Delete, Qt::NoModifier);
+    QApplication::sendEvent(list, &del);
+    pump(50);
+    CHECK(stack.defs().size() == 1 && stack.defs()[0].id == id, "phim Delete xoa lop phu dang chon");
+    undo->undo();
+    CHECK(stack.defs().size() == 2 && !stack.isOn(cd), "Hoan tac phim Delete");
+    ov->selectId(cd);
+    QKeyEvent delElsewhere(QEvent::KeyPress, Qt::Key_Delete, Qt::NoModifier);
+    QApplication::sendEvent(ov->findChild<QWidget*>("ovBold"), &delElsewhere);
+    pump(50);
+    CHECK(stack.defs().size() == 2, "phim Delete o o tick / cho khac trong dock KHONG xoa lop phu");
     ov->selectId(cd);
 
     // ---- phim tat: Enter/Space trong o nhap cua dock khong duoc thanh CUT/TAKE ----
@@ -568,24 +596,27 @@ static void testUi(const QString& tmp) {
     // ---- khoa van hanh ----
     w.setLocked(true);
     const auto lockedDefs = stack.defs();
-    CHECK(!btn("ovAddTitle")->isEnabled() && !btn("ovDelete")->isEnabled() && !ov->findChild<QWidget*>("ovProps")->isEnabled() &&
-              btn("ovToggle")->isEnabled() && btn("ovStart")->isEnabled() && list->isEnabled(),
-          "Khoa: vo hieu them/xoa/sua; giu hien/an va dong ho");
+    CHECK(!btn("ovAddTitle")->isEnabled() && !part(cd, "ovDel")->isEnabled() && !ov->findChild<QWidget*>("ovProps")->isEnabled() &&
+              part(cd, "ovEye")->isEnabled() && part(cd, "ovPlay")->isEnabled() && list->isEnabled() && !ov->list()->reorderEnabled(),
+          "Khoa: vo hieu them/xoa/keo/sua; giu hien/an va dong ho");
+    testdrag::dragRow(list, 0, 2);
+    QApplication::sendEvent(list, &del);
+    CHECK(stack.defs() == lockedDefs, "Khoa: keo va phim Delete bi chan");
     CHECK(ov->addOverlay(OverlayType::Ticker) == -1, "Khoa: khong them duoc ke ca goi lenh");
     ov->editCurrent([](OverlayDef& d) { d.seconds = 5; }, "x");
     ov->removeCurrent();
     ov->moveCurrent(-1);
     CHECK(stack.defs() == lockedDefs, "Khoa: lenh sua bi chan");
-    btn("ovToggle")->click();
+    part(cd, "ovEye")->click();
     CHECK(stack.isOn(cd), "Khoa: van hien duoc lop phu");
-    btn("ovStart")->click();
-    CHECK(waitFor([&] { return clock->text() != "05:00"; }, 4000), "Khoa: dong ho chay duoc");
-    btn("ovPause")->click();
-    const QString paused = clock->text();
+    part(cd, "ovPlay")->click();
+    CHECK(waitFor([&] { return clockOf(cd)->text() != "05:00"; }, 4000), "Khoa: dong ho chay duoc");
+    part(cd, "ovPlay")->click();
+    const QString paused = clockOf(cd)->text();
     pump(1200);
-    CHECK(clock->text() == paused, "Khoa: tam dung duoc");
-    btn("ovReset")->click();
-    CHECK(clock->text() == "05:00", "Khoa: dat lai duoc");
+    CHECK(clockOf(cd)->text() == paused, "Khoa: tam dung duoc");
+    part(cd, "ovReset")->click();
+    CHECK(clockOf(cd)->text() == "05:00", "Khoa: dat lai duoc");
     w.setLocked(false);
     CHECK(btn("ovAddTitle")->isEnabled() && ov->findChild<QWidget*>("ovProps")->isEnabled(), "Mo khoa: sua lai duoc");
 
@@ -617,6 +648,7 @@ static void testUi(const QString& tmp) {
     const QString shots = qEnvironmentVariable("LUMACAST_TEST_SHOTS");
     if (!shots.isEmpty()) {
         while (!stack.empty()) { ov->selectId(stack.defs().back().id); ov->removeCurrent(); }
+        w.applyLayout("big");
         const int a = ov->addOverlay(OverlayType::Title);
         ov->editCurrent([](OverlayDef& d) { d.text = QStringLiteral("Lễ Tổng Kết: Nguyễn Thị Ánh Tuyết"); d.fontSize = 15; d.outlineWidth = 1; d.rect = QRectF(0.02, 0.62, 0.96, 0.2); }, "x");
         const int b = ov->addOverlay(OverlayType::Ticker);
@@ -624,7 +656,8 @@ static void testUi(const QString& tmp) {
         const int c = ov->addOverlay(OverlayType::Countdown);
         ov->editCurrent([](OverlayDef& d) { d.text = QStringLiteral("Bắt đầu sau"); d.fontSize = 16; d.rect = QRectF(0.2, 0.05, 0.6, 0.18); }, "x");
         for (int i : {a, b, c}) ov->setOn(i, true);
-        for (QDockWidget* d : w.findChildren<QDockWidget*>("dockOverlay")) d->raise();
+        ov->editCurrent([](OverlayDef& d) { d.alert = true; d.seconds = 9; }, "x");
+        ov->toggleClock(c);
         w.resize(1500, 1000);
         pump(3500);
         w.grab().save(shots + "/window.png");

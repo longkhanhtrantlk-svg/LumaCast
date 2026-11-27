@@ -449,7 +449,7 @@ int main(int argc, char** argv) {
         CHECK(waitFor([&] { return ch->preview == 0; }), "khoa: chon Scene (Preview) van chay");
         {
             QToolButton* blk = nullptr; QToolButton* frz = nullptr; QToolButton* pat = nullptr;
-            for (auto* b : w.findChildren<QToolButton*>()) { if (b->text() == "Đen" && !blk) blk = b; if (b->text() == "Dừng" && !frz) frz = b; if (b->text() == "Mẫu" && !pat) pat = b; }
+            blk = w.findChild<QToolButton*>("outBlack0"); frz = w.findChild<QToolButton*>("outFreeze0"); pat = w.findChild<QToolButton*>("outPattern0");
             CHECK(blk && frz && pat && blk->isEnabled() && frz->isEnabled() && pat->isEnabled(), "khoa: Den/Dung/Mau tung Output con bat");
             blk->click();
             CHECK(waitFor([&] { return engine.output(0)->black.load(); }), "khoa: Den Output 1 van chay");

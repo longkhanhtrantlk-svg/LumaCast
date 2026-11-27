@@ -50,9 +50,16 @@ struct OverlayDef {
     double speed = 150.0;                // chu chay: px/giay (sang trai)
     int seconds = 300;                   // dem nguoc: thoi luong
     QString image;                       // logo: duong dan tuyet doi
+    // Tieng nhac cua dem nguoc (tu tong hop, di qua bus tieng cua Channel). Mac dinh TAT.
+    bool alert = false;
+    int alertSeconds = 10;               // con bay nhieu giay thi bat dau nhac, moi giay mot tieng
+    int fastSeconds = 5;                 // con bay nhieu giay thi nhac cao hon va gap hon (2 tieng/giay); 0 = khong
+    int alertVolume = 80;                // %
 
     bool operator==(const OverlayDef&) const = default;
 };
+
+inline constexpr int kMaxAlertSeconds = 3600;
 
 // Mac dinh theo loai cho nut "Them" (chua co id).
 OverlayDef defaultOverlay(OverlayType type);
@@ -69,7 +76,14 @@ struct OverlayFrame {
     double onSeconds = 0.0;         // da hien bao lau (chu chay cuon theo day, khong theo so khung)
     int secondsLeft = 0;            // dem nguoc, lam tron len
     bool running = false;           // dem nguoc dang chay
+    double remaining = 0.0;         // dem nguoc: so giay con lai (khong lam tron)
+    bool finished = false;          // dem nguoc da chay het (00:00), chua Dat lai
+    bool alerting = false;          // dang nhac (co bat tieng nhac, dang hien, dang chay trong khoang nhac hoac da het gio): so doi do
 };
+
+// Dinh nghia dung de VE: dang nhac thi chu doi sang do.
+inline const QColor kAlertColor{255, 59, 48};
+OverlayDef overlayShownDef(const OverlayFrame& f);
 
 // Cac lop phu cua mot Channel: dinh nghia + trang thai LIVE (bat/tat, dong ho). An toan giua cac thread (UI goi truc tiep, render doc moi khung);
 // moi thao tac chi giu mutex trong thoi gian rat ngan. `now` = RenderEngine::now() (giay).

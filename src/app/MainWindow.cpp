@@ -3,12 +3,17 @@
 #include "live/Ndi.h"
 #include "core/Features.h"
 #include "AudioPanel.h"
+#include "DockChrome.h"
 #include "InspectorPanel.h"
 #include "MappingWindow.h"
 #include "LiveDialogs.h"
 #include "LockButton.h"
 #include "MonitorWidget.h"
+#include "NowShowing.h"
 #include "OverlayPanel.h"
+#include "PreviewMonitor.h"
+#include "Text.h"
+#include "Ui.h"
 #include "MultiviewWindow.h"
 #include "ParamEditor.h"
 #include "PlaylistPanel.h"
@@ -38,6 +43,7 @@
 #include <QDropEvent>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QAbstractSpinBox>
 #include <QKeyEvent>
@@ -144,11 +150,9 @@ bool sameFile(const QString& a, const QString& b) {
 }
 } // namespace
 
-// Tang so nay MOI KHI them/bot/doi cho dock mac dinh.
-static constexpr int kLayoutVersion = 3;
-
 MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList pluginDirs)
     : project_(project), engine_(engine), sup_(engine), pm_(engine.registry(), std::move(pluginDirs)) {
+    ui::installHints();                             // nut mo noi ly do
     pm_.rescan();                                   // nap Effect/Transition dung san + plug-in truoc khi dung giao dien
     for (const auto& c : project_.channels) {
         std::vector<QString> names;
@@ -166,6 +170,14 @@ MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList plugi
     lockLabel_ = new QLabel;
     lockLabel_->setObjectName("lockLabel");
     statusBar()->addPermanentWidget(lockLabel_);
+    statusReopen_ = new QPushButton(text::outClosedStatus());
+    statusReopen_->setObjectName("statusReopen");
+    statusReopen_->setToolTip(text::outClosedStatusTip());
+    statusReopen_->setStyleSheet("background:#8a1c1c;color:white;font-weight:bold;padding:0 8px");
+    statusReopen_->setFocusPolicy(Qt::NoFocus);
+    statusReopen_->setVisible(false);
+    statusBar()->insertPermanentWidget(0, statusReopen_);        // "permanent": thong bao tam thoi khong che mat nut
+    connect(statusReopen_, &QPushButton::clicked, this, [this] { reopenOutputs(); });
     connect(ctl_, &ControlService::statusChanged, this, [this] { updateControlStatus(); });
     buildMenus();
     // Keo tha file tu Explorer. Loc o muc ung dung de moi widget trong cua so (ke ca o nhap so, von tu nhan tha) xu ly nhu nhau;
@@ -173,15 +185,13 @@ MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList plugi
     setAcceptDrops(true);
     for (QDockWidget* d : findChildren<QDockWidget*>()) d->setAcceptDrops(true);
     qApp->installEventFilter(this);
-    defaultState_ = saveState(kLayoutVersion);
     QSettings st = appSettings();
     if (st.contains("geometry")) restoreGeometry(st.value("geometry").toByteArray());
     else resize(1500, 900);
     // khong de cua so lon hon man hinh (vd. 1920x1080 phong 125% chi con 1536x816 diem logic)
     if (const QScreen* sc = screen(); sc && !isMaximized() && !isFullScreen())
         resize(size().boundedTo(sc->availableGeometry().size() - QSize(2, 34)));
-    // bo cuc luu boi ban co bo dock khac (phien ban khac) bi bo qua: ap lai se lam vo cac tab va dock de len nhau
-    if (st.contains("state")) restoreState(st.value("state").toByteArray(), kLayoutVersion);
+    initLayout();
     updateTitle();
 
     connect(&fastTimer_, &QTimer::timeout, this, [this] { refresh(); });
@@ -217,6 +227,8 @@ void MainWindow::updateUndoActions() {
 void MainWindow::setLocked(bool on) {
     const bool changed = on != locked_;
     locked_ = on;
+    ui::setLockedState(on);                       // truoc khi vo hieu cac nut: de tooltip noi dung ly do
+    lockDocks(on);                                // khoa luon viec keo khung
     lockBtn_->setLocked(on);
     inspector_->setLocked(on);
     if (mapping_) mapping_->setLocked(on);
@@ -236,6 +248,8 @@ void MainWindow::setLocked(bool on) {
     screenBtn_->setEnabled(!on);
     inputAct_->setEnabled(!on);
     updateUndoActions();
+    updateLayoutActions();
+    refreshPreviewEditing();
     lockLabel_->setText(on ? "🔒 KHOÁ VẬN HÀNH" : "🔓 Mở khoá");
     lockLabel_->setStyleSheet(on ? "color:white;background:#8a1c1c;font-weight:bold;padding:0 8px" : "color:#8a90a2");
     updateTitle();
@@ -308,6 +322,14 @@ void MainWindow::buildUi() {
         chanCombo_->addItem(QString("Kênh %1: %2").arg(i + 1).arg(project_.channels[i]->name));
     top->addWidget(chanCombo_);
     top->addStretch();
+    layoutBtn_ = new QToolButton;                        // hien ten bo cuc dang dung; menu doi bo cuc
+    layoutBtn_->setObjectName("layoutButton");
+    layoutBtn_->setIcon(glyphIcon(Glyph::Layout));
+    layoutBtn_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    layoutBtn_->setPopupMode(QToolButton::InstantPopup);
+    layoutBtn_->setFocusPolicy(Qt::NoFocus);
+    layoutBtn_->setToolTip(text::layoutButtonTip());
+    top->addWidget(layoutBtn_);
     lockBtn_ = new LockButton;
     top->addWidget(lockBtn_);
     connect(lockBtn_, &LockButton::lockRequested, this, [this] { setLocked(true); });
@@ -315,26 +337,74 @@ void MainWindow::buildUi() {
     chanCombo_->setVisible(project_.channels.size() > 1);
     v->addLayout(top);
 
+    // moi man mot cot: duoi Preview la nut chon nhanh khung hinh, duoi Program la dai "Dang hien" (cung chieu cao de hai man deu)
     auto* mon = new QHBoxLayout;
-    preview_ = new MonitorWidget("PREVIEW", QColor(colors::kPreview), false);
+    preview_ = new PreviewMonitor(QColor(colors::kPreview));
     program_ = new MonitorWidget("PROGRAM", QColor(colors::kProgram), true);
-    mon->addWidget(preview_, 1);
-    mon->addWidget(program_, 1);
+    auto* pvCol = new QVBoxLayout;
+    pvCol->setSpacing(3);
+    pvCol->addWidget(preview_, 1);
+    auto* fitHost = new QWidget;
+    fitHost->setFixedHeight(NowShowing::kHeight);
+    auto* fits = new QHBoxLayout(fitHost);
+    fits->setContentsMargins(0, 0, 0, 0);
+    fits->setSpacing(4);
+    const struct { Glyph g; const char* name; QString tip; LayerFit fit; } fitDefs[3] = {
+        {Glyph::Fit, "pvFit", text::pvFit(), LayerFit::Fit}, {Glyph::Fill, "pvFill", text::pvFill(), LayerFit::Fill},
+        {Glyph::Stretch, "pvStretch", text::pvStretch(), LayerFit::Stretch}};
+    for (int i = 0; i < 3; ++i) {
+        fitBtn_[i] = ui::iconButton(fitDefs[i].g, fitDefs[i].name, fitDefs[i].tip);
+        ui::setWhy(fitBtn_[i], text::pvNoLayerWhy());
+        fits->addWidget(fitBtn_[i]);
+        connect(fitBtn_[i], &QPushButton::clicked, this, [this, fit = fitDefs[i].fit] { applyPreviewFit(fit); });
+    }
+    auto* hint = new QLabel(text::pvDragHint());
+    hint->setStyleSheet("color:#8a90a2");
+    hint->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    hint->setToolTip(text::pvDragHint());
+    fits->addWidget(hint, 1);
+    pvCol->addWidget(fitHost);
+    auto* pgCol = new QVBoxLayout;
+    pgCol->setSpacing(3);
+    pgCol->addWidget(program_, 1);
+    nowShowing_ = new NowShowing;
+    pgCol->addWidget(nowShowing_);
+    mon->addLayout(pvCol, 1);
+    mon->addLayout(pgCol, 1);
     v->addLayout(mon, 1);
+    preview_->onPick = [this](int layer) {
+        if (!locked_) inspector_->selectLayer(previewSceneIndex(), layer);
+    };
+    preview_->onDrag = [this](int layer, const QRectF& rect, int gesture) {
+        inspector_->setLayerRect(previewSceneIndex(), layer, rect, text::pvUndoDrag(), 8000000 + gesture % 1000000);
+    };
+    nowShowing_->onHide = [this](int id) {
+        project_.channels[size_t(channelIdx())]->overlays.setOn(id, false, engine_.now());
+        overlayPanel_->refreshLive();
+        refresh();
+    };
+    nowShowing_->onHideAll = [this] {
+        auto& stack = project_.channels[size_t(channelIdx())]->overlays;
+        const double now = engine_.now();
+        for (const OverlayDef& d : stack.defs()) stack.setOn(d.id, false, now);
+        overlayPanel_->refreshLive();
+        refresh();
+    };
 
     auto* bar = new QHBoxLayout;
     auto* cutB = new QPushButton("CUT");
     cutB->setObjectName("cut");
     auto* takeB = new QPushButton("TAKE");
     takeB->setObjectName("take");
+    cutBtn_ = cutB;
+    takeBtn_ = takeB;
     transCombo_ = new QComboBox;
     transCombo_->setObjectName("transCombo");
     easingCombo_ = new QComboBox;
     easingCombo_->setObjectName("easingCombo");
     for (auto e : {Easing::EaseInOut, Easing::Linear, Easing::EaseIn, Easing::EaseOut}) easingCombo_->addItem(easingName(e), int(e));
     easingCombo_->setToolTip("Đường cong tốc độ của hiệu ứng (T-bar kéo tay luôn tuyến tính)");
-    paramsBtn_ = new QPushButton("Tham số…");
-    paramsBtn_->setObjectName("transParams");
+    paramsBtn_ = ui::iconButton(Glyph::Params, "transParams", text::transParams());
     stingerCombo_ = new QComboBox;
     stingerCombo_->setObjectName("stingerCombo");
     stingerCombo_->setToolTip("Video có kênh alpha chạy đè lên lúc chuyển cảnh");
@@ -346,6 +416,7 @@ void MainWindow::buildUi() {
     cutSpin_->setPrefix("cắt tại ");
     cutSpin_->setToolTip("Thời điểm (tỉ lệ 0–1 của video stinger) đổi cảnh phía dưới");
     durSpin_ = new QDoubleSpinBox;
+    durSpin_->setObjectName("transDuration");
     durSpin_->setRange(0.1, 10);
     durSpin_->setSingleStep(0.1);
     durSpin_->setDecimals(1);
@@ -363,11 +434,9 @@ void MainWindow::buildUi() {
     blackAll_ = new QPushButton("BLACK ALL");
     blackAll_->setObjectName("blackAll");
     blackAll_->setCheckable(true);
-    blackAll_->setToolTip("Đặt đen TẤT CẢ output (bấm lại để trả hình)");
     ftb_ = new QPushButton("FTB");
     ftb_->setObjectName("ftb");
     ftb_->setCheckable(true);
-    ftb_->setToolTip("Fade-To-Black: làm mờ dần Program của kênh đang chọn về đen (bấm lại để trở lại)");
     for (QWidget* w : std::initializer_list<QWidget*>{cutB, takeB, autoBtn_, transCombo_, paramsBtn_, stingerCombo_, cutSpin_, easingCombo_, durSpin_}) bar->addWidget(w);
     bar->addSpacing(12);
     bar->addWidget(new QLabel("T-bar"));
@@ -414,39 +483,30 @@ void MainWindow::buildDocks() {
     outDock->setObjectName("dockOutputs");
     auto* outW = new QWidget;
     auto* ov = new QVBoxLayout(outW);
-    screenBtn_ = new QToolButton;
-    screenBtn_->setObjectName("screenSetupBtn");
-    screenBtn_->setIcon(glyphIcon(Glyph::Screen));
-    screenBtn_->setIconSize(QSize(18, 18));
-    screenBtn_->setFocusPolicy(Qt::NoFocus);
-    screenBtn_->setToolTip("Thiết lập màn hình và khung hình: thêm/xoá Output, chọn màn, vùng LED, video wall");
+    ov->setContentsMargins(6, 4, 6, 4);
+    screenBtn_ = ui::iconToolButton(Glyph::Screen, "screenSetupBtn", text::outScreenSetup());
     connect(screenBtn_, &QToolButton::clicked, this, [this] { showScreenSetup(); });
     auto* setupRow = new QHBoxLayout;
     setupRow->addWidget(screenBtn_);
+    auto* allPattern = ui::iconButton(Glyph::PatternAll, "allPattern", text::outPatternAll());
+    allPattern->setCheckable(true);
+    setupRow->addWidget(allPattern);
     setupRow->addStretch();
     ov->addLayout(setupRow);
     outRowsLayout_ = new QVBoxLayout;
     ov->addLayout(outRowsLayout_);
     for (int i = 0; i < engine_.outputCount(); ++i) addOutputRow(i);
-    auto* allPattern = new QPushButton("Mẫu thử tất cả Output");
-    allPattern->setObjectName("allPattern");
-    allPattern->setCheckable(true);
-    ov->addWidget(allPattern);
     connect(allPattern, &QPushButton::clicked, this, [this](bool on) {
         for (int i = 0; i < engine_.outputCount(); ++i) engine_.output(i)->testPattern = on;
     });
     ov->addStretch();
     outDock->setWidget(scrollable(outW));
-    addDockWidget(Qt::RightDockWidgetArea, outDock);
 
     // Am thanh (M5a)
     auto* audDock = new QDockWidget("Âm thanh", this);
     audDock->setObjectName("dockAudio");
     audioPanel_ = new AudioPanel(project_, engine_);
     audDock->setWidget(scrollable(audioPanel_));
-    addDockWidget(Qt::RightDockWidgetArea, audDock);
-    tabifyDockWidget(outDock, audDock);                   // Outputs | Am thanh chung mot cho
-    outDock->raise();
 
     // Inspector
     auto* inspDock = new QDockWidget("Inspector", this);
@@ -454,7 +514,6 @@ void MainWindow::buildDocks() {
     inspector_ = new InspectorPanel(project_, engine_, &undo_);
     inspDock->setWidget(scrollable(inspector_));
     connect(inspector_, &InspectorPanel::mappingRequested, this, [this] { showMapping(); });
-    addDockWidget(Qt::RightDockWidgetArea, inspDock);
 
     // Scenes: danh sach o anh thu nho duoi man hinh (nhap media, camera, keo tha; phat/tieng/doi ten/xoa tren tung o)
     auto* scenesDock = new QDockWidget("Scenes", this);
@@ -462,7 +521,6 @@ void MainWindow::buildDocks() {
     scenes_ = new ScenePanel(project_, engine_);
     sceneList_ = scenes_->list();
     scenesDock->setWidget(scenes_);
-    addDockWidget(Qt::BottomDockWidgetArea, scenesDock);
     scenes_->renameScene = [this](const std::shared_ptr<Scene>& s, const QString& n) { renameScene(s, n); };
     scenes_->deleteScene = [this](const std::shared_ptr<Scene>& s) { deleteScene(s); };
     scenes_->setSceneLoop = [this](const std::shared_ptr<Scene>& s, bool on) {
@@ -497,8 +555,6 @@ void MainWindow::buildDocks() {
         timeline_->setEnabled(false);
         tlDock->setWindowTitle("Timeline (không có trong gói)");
     }
-    addDockWidget(Qt::BottomDockWidgetArea, tlDock);
-    tabifyDockWidget(scenesDock, tlDock);
 
     // Playlist / slide anh tu chuyen (tab canh Scenes)
     auto* plDock = new QDockWidget("Playlist", this);
@@ -508,9 +564,6 @@ void MainWindow::buildDocks() {
     playlist_->importFile = [this](const QString& path) { return importMedia(path); };
     playlist_->showMessage = [this](const QString& m) { showMessage(m); };
     plDock->setWidget(playlist_);
-    addDockWidget(Qt::BottomDockWidgetArea, plDock);
-    tabifyDockWidget(tlDock, plDock);
-    scenesDock->raise();
     connect(timeline_, &TimelineWidget::playheadChanged, this, [this] { inspector_->refreshProps(); });
 
     // Plug-in Manager
@@ -523,28 +576,24 @@ void MainWindow::buildDocks() {
     pluginList_->setWordWrap(true);
     pv->addWidget(pluginList_);
     auto* prow = new QHBoxLayout;
-    auto* rescanB = new QPushButton("Quét lại");
-    rescanB->setObjectName("pluginRescan");
-    auto* openB = new QPushButton("Mở thư mục plug-in");
+    auto* rescanB = ui::iconButton(Glyph::Refresh, "pluginRescan", text::pluginRescan());
+    auto* openB = ui::iconButton(Glyph::Folder, "pluginFolder", text::pluginFolder());
     prow->addWidget(rescanB);
     prow->addWidget(openB);
+    prow->addStretch();
     pv->addLayout(prow);
     auto* hint = new QLabel("Tự nạp lại khi bạn sửa file shader. Xem docs/PLUGIN-SDK.md để viết plug-in.");
     hint->setWordWrap(true);
     pv->addWidget(hint);
     plugDock->setWidget(pw);
     pluginPanel_ = pw;
-    tabifyDockWidget(inspDock, plugDock);
 
     // Lop phu chu / logo (SRC-08), theo Channel dang chon
     auto* ovDock = new QDockWidget("Overlay", this);
     ovDock->setObjectName("dockOverlay");
     overlayPanel_ = new OverlayPanel(project_, engine_, &undo_);
     ovDock->setWidget(overlayPanel_);
-    addDockWidget(Qt::RightDockWidgetArea, ovDock);
-    tabifyDockWidget(plugDock, ovDock);
     connect(chanCombo_, &QComboBox::currentIndexChanged, this, [this] { overlayPanel_->setChannel(channelIdx()); });
-    inspDock->raise();
     connect(rescanB, &QPushButton::clicked, this, [this] { pm_.rescan(); });
     connect(openB, &QPushButton::clicked, this, [this] {
         const QString dir = pm_.dirs().isEmpty() ? QString() : pm_.dirs().last();
@@ -564,10 +613,13 @@ void MainWindow::buildDocks() {
     rebuildPluginList();
     pm_.watch(true);
 
+    // hai cot canh nhau, gop tab, keo ca nhom
+    setDockOptions(QMainWindow::AnimatedDocks | QMainWindow::AllowNestedDocks | QMainWindow::AllowTabbedDocks | QMainWindow::GroupedDragging);
+    setDockNestingEnabled(true);
     setCorner(Qt::BottomRightCorner, Qt::RightDockWidgetArea);
-    resizeDocks({inspDock}, {390}, Qt::Horizontal);
-    resizeDocks({outDock, inspDock}, {190, 520}, Qt::Vertical);
-    resizeDocks({scenesDock}, {330}, Qt::Vertical);       // du cao cho 6 lan keyframe cua Timeline
+    chrome_ = new DockChrome(this);                      // ten khung tren dau (kieu tab), khong lap dong ten
+    arrangeDocks("prepare");                             // restoreState() can cac dock da nam trong cua so
+    chrome_->adopt();
     rebuildSceneList();
 }
 
@@ -576,31 +628,33 @@ void MainWindow::addOutputRow(int i) {
     const OutputConfig& c = sink->config();
     OutRow r;
     r.box = new QWidget;
-    auto* row = new QHBoxLayout(r.box);
-    row->setContentsMargins(0, 0, 0, 0);
+    auto* row = new QGridLayout(r.box);                 // thong tin o tren, nut o duoi: vua cot hep ~220
+    row->setContentsMargins(0, 0, 0, 2);
+    row->setHorizontalSpacing(3);
+    row->setVerticalSpacing(1);
+    row->setColumnStretch(1, 1);
     r.dot = new QLabel("●");
     r.info = new QLabel(QString("<b>%1</b><br><small>%2x%3 · kênh %4</small>")
                             .arg(c.name).arg(c.size.width()).arg(c.size.height()).arg(c.channel + 1));
-    r.black = new QToolButton;
-    r.black->setText("Đen");
+    r.info->setWordWrap(true);
+    r.info->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    r.info->setMinimumWidth(60);
+    r.black = ui::iconToolButton(Glyph::Black, QString("outBlack%1").arg(i).toUtf8().constData(), text::outBlack());
     r.black->setCheckable(true);
-    r.freeze = new QToolButton;
-    r.freeze->setText("Dừng");
+    r.freeze = ui::iconToolButton(Glyph::Freeze, QString("outFreeze%1").arg(i).toUtf8().constData(), text::outFreeze());
     r.freeze->setCheckable(true);
-    r.freeze->setToolTip("Dừng hình: giữ nguyên khung hình cuối trên màn hình này");
-    r.pattern = new QToolButton;
-    r.pattern->setText("Mẫu");
+    r.pattern = ui::iconToolButton(Glyph::Pattern, QString("outPattern%1").arg(i).toUtf8().constData(), text::outPattern());
     r.pattern->setCheckable(true);
-    r.pattern->setToolTip("Mẫu thử: hiện lưới, thanh màu, thước điểm ảnh và toạ độ 4 góc đúng độ phân giải thật của màn hình này");
-    row->addWidget(r.dot);
-    row->addWidget(r.info, 1);
+    row->addWidget(r.dot, 0, 0);
+    row->addWidget(r.info, 0, 1, 1, 4);
+    auto* alerts = new QHBoxLayout;
     r.reopen = new QToolButton;
     r.reopen->setText("Mở lại");
     r.reopen->setObjectName(QString("reopenOutput%1").arg(i));
     r.reopen->setToolTip("Cửa sổ Output này đã bị đóng: bấm để hiện lại đúng chỗ");
     r.reopen->setStyleSheet("background:#8a1c1c;color:white;font-weight:bold");
     r.reopen->setVisible(false);
-    row->addWidget(r.reopen);
+    alerts->addWidget(r.reopen);
     r.warn = new QToolButton;
     r.warn->setText("⚠");
     r.warn->setObjectName(QString("outputWarn%1").arg(i));
@@ -608,10 +662,12 @@ void MainWindow::addOutputRow(int i) {
     r.warn->setFocusPolicy(Qt::NoFocus);
     r.warn->setVisible(false);
     connect(r.warn, &QToolButton::clicked, this, [this] { showScreenSetup(); });
-    row->addWidget(r.warn);
-    row->addWidget(r.black);
-    row->addWidget(r.freeze);
-    row->addWidget(r.pattern);
+    alerts->addWidget(r.warn);
+    alerts->addStretch();
+    row->addLayout(alerts, 1, 1);
+    row->addWidget(r.black, 1, 2);
+    row->addWidget(r.freeze, 1, 3);
+    row->addWidget(r.pattern, 1, 4);
     outRowsLayout_->addWidget(r.box);
     connect(r.black, &QToolButton::toggled, this, [sink](bool on) { sink->black = on; });
     connect(r.freeze, &QToolButton::toggled, this, [sink](bool on) { sink->freeze = on; });
@@ -631,6 +687,72 @@ void MainWindow::rebuildOutputRows() {
     }
     outRows_.clear();
     for (int i = 0; i < engine_.outputCount(); ++i) addOutputRow(i);
+    if (binder_) updateKeyHints();
+}
+
+void MainWindow::reopenOutputs() {
+    bool failed = false;
+    for (int i = 0; i < engine_.outputCount(); ++i)
+        if (auto* w = dynamic_cast<OutputWindow*>(engine_.output(i)); w && !w->isVisible() && w->canShow())
+            failed = !w->applyScreen() || failed;
+    if (failed) showMessage("Không mở lại được: màn hình của Output này không còn");
+}
+
+// ---------------- Preview: keo hinh ----------------
+
+int MainWindow::previewSceneIndex() const {
+    const Channel& ch = *project_.channels[size_t(channelIdx())];
+    const int pv = ch.preview;
+    if (pv < 0 || pv >= int(ch.scenes.size())) return -1;
+    const auto it = std::find(project_.scenes.begin(), project_.scenes.end(), ch.scenes[size_t(pv)]);
+    return it == project_.scenes.end() ? -1 : int(it - project_.scenes.begin());
+}
+
+// Layer ma Fit/Fill/Stretch tac dong: layer dang chon o Inspector neu no dang xem dung Scene o Preview, khong thi layer tren cung.
+int MainWindow::previewTargetLayer(int si) const {
+    const std::vector<Layer>* layers = inspector_->layersOf(si);
+    if (!layers) return -1;
+    if (inspector_->currentSceneIndex() == si) {
+        const int li = inspector_->currentLayerIndex();
+        if (li >= 0 && li < int(layers->size())) return li;
+    }
+    for (int li = int(layers->size()) - 1; li >= 0; --li)
+        if ((*layers)[size_t(li)].visible && (*layers)[size_t(li)].source) return li;
+    return -1;
+}
+
+void MainWindow::refreshPreviewEditing() {
+    if (!inspector_) return;
+    const int si = previewSceneIndex();
+    const std::vector<Layer>* layers = inspector_->layersOf(si);
+    std::vector<PreviewMonitor::Box> boxes;
+    std::shared_ptr<Scene> scene;
+    bool onAir = false;
+    if (layers) {
+        scene = project_.scenes[size_t(si)];
+        const double t = double(scene->clock.time);
+        for (int li = 0; li < int(layers->size()); ++li) {
+            const Layer& l = (*layers)[size_t(li)];
+            if (l.visible && l.source) boxes.push_back({li, evalLayer(l, t).rect});
+        }
+        onAir = sceneOnAir(scene.get());                  // ca khi dang chuyen canh (TAKE / T-bar / playlist)
+    }
+    const bool editable = !locked_ && !boxes.empty();
+    preview_->setBoxes(scene.get(), std::move(boxes), inspector_->currentSceneIndex() == si ? inspector_->currentLayerIndex() : -1, onAir, editable);
+    for (QPushButton* b : fitBtn_) {
+        ui::setWhy(b, locked_ ? text::lockedWhy() : text::pvNoLayerWhy());
+        b->setEnabled(editable);
+    }
+}
+
+void MainWindow::applyPreviewFit(LayerFit fit) {
+    const int si = previewSceneIndex(), li = previewTargetLayer(si);
+    if (locked_ || li < 0) return;
+    inspector_->selectLayer(si, li);
+    if (sceneOnAir(project_.scenes[size_t(si)].get())) showMessage(text::pvOnAir());
+    const char* name = fit == LayerFit::Fit ? "Fit" : fit == LayerFit::Fill ? "Fill" : "Stretch";
+    inspector_->setLayerRect(si, li, QRectF(0, 0, 1, 1), text::pvUndoFit().arg(name), -1, int(fit));
+    refreshPreviewEditing();
 }
 
 // ---------------- thiet lap man hinh ----------------
@@ -815,10 +937,8 @@ void MainWindow::buildMenus() {
     view->addSeparator();
     view->addAction("Mapping trực quan…", QKeySequence(Qt::CTRL | Qt::Key_M), this, [this] { showMapping(); });
     view->addAction("Multiview…", this, [this] { showMultiview(); })->setObjectName("multiviewAction");
-    view->addAction("Đặt lại bố cục", this, [this] {
-        restoreState(defaultState_, kLayoutVersion);
-        for (QDockWidget* d : findChildren<QDockWidget*>()) d->show();
-    });
+    view->addSeparator();
+    buildLayoutMenu(view);
 
     auto* settings = menuBar()->addMenu("&Cài đặt");
     settingsAct_ = settings->addAction("Cài đặt vận hành…", this, [this] { openSettings(); });
@@ -975,6 +1095,8 @@ void MainWindow::refresh() {
     program_->setOnAir(ch.ftbAmount < 1.0f);
     scenes_->setMarks(pg, pv);
     scenes_->refresh();
+    nowShowing_->refresh(ch.overlays.frames(engine_.now()));
+    refreshPreviewEditing();
     if (!ch.manualActive() && tbar_->value() != 0 && !tbar_->isSliderDown() &&
         QDateTime::currentMSecsSinceEpoch() - tbarMovedMs_ > 400) {      // T-bar da hoan tat/huy -> ve 0
         QSignalBlocker bt(tbar_);
@@ -1035,6 +1157,14 @@ void MainWindow::refreshSlow() {
         r.reopen->setVisible(win && !win->isVisible() && win->canShow());
     }
     inspector_->updateEffectNote();
+    // Output bi dong trong khi khung Outputs dang an (vd. bo cuc "Chuan bi"): van co cho de mo lai
+    bool closed = false;
+    for (int i = 0; i < engine_.outputCount(); ++i)
+        if (auto* w = dynamic_cast<OutputWindow*>(engine_.output(i))) closed = closed || (!w->isVisible() && w->canShow());
+    auto* outDock = findChild<QDockWidget*>("dockOutputs");
+    statusReopen_->setVisible(closed && outDock && (outDock->isHidden() || outDock->visibleRegion().isEmpty()));
+    updateLayoutLabel();
+    chrome_->refresh();                      // luoi an toan: nguoi dung vua keo khung bang chuot
     const bool stalled = engine_.stalled();
     if (stalled != lastStalled_) {
         lastStalled_ = stalled;
@@ -1148,7 +1278,8 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* ev) {
     // chi cua so chinh va dock tach roi cua no (khong gom hop thoai)
     auto* w = qobject_cast<QWidget*>(obj);
     QWidget* top = w ? w->window() : nullptr;
-    if (!top || !(top == this || (qobject_cast<QDockWidget*>(top) && top->parentWidget() == this)))
+    // dock tach roi, hoac nhom dock tach roi (keo ca nhom), deu co cha la cua so chinh
+    if (!top || !(top == this || (top->parentWidget() == this && (qobject_cast<QDockWidget*>(top) || top->inherits("QDockWidgetGroupWindow")))))
         return QMainWindow::eventFilter(obj, ev);
     auto* de = static_cast<QDropEvent*>(ev);
     const QStringList files = draggedFiles(de->mimeData());
@@ -1619,7 +1750,7 @@ void MainWindow::closeEvent(QCloseEvent* e) {
     }
     QSettings st = appSettings();
     st.setValue("geometry", saveGeometry());
-    st.setValue("state", saveState(kLayoutVersion));
+    saveLayout(st);
     e->accept();
     // cua so output khong tu thoat; dung exit() vi quit() se thu dong chung truoc (chung chi an di nen quit() bi huy)
     QMetaObject::invokeMethod(qApp, [] { QCoreApplication::exit(0); }, Qt::QueuedConnection);

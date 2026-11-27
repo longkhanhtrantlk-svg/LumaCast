@@ -43,6 +43,8 @@ QString reservedReason(const QKeySequence& k) {
         for (const QKeySequence& s : QKeySequence::keyBindings(standard))
             if (s == k) return "Phím này thuộc menu (Mở / Lưu / Hoàn tác / Làm lại / Thoát)";
     if (mods == Qt::ControlModifier && key == Qt::Key_M) return "Ctrl+M mở cửa sổ Mapping trực quan";
+    if (mods == Qt::ControlModifier && (key == Qt::Key_F1 || key == Qt::Key_F2 || key == Qt::Key_F3)) return "Ctrl+F1 / F2 / F3 đổi bố cục khung";
+    if (mods == Qt::NoModifier && key == Qt::Key_F9) return "F9 ẩn / hiện cột phải";
     if (mods == Qt::NoModifier && key == Qt::Key_F11) return "F11 phóng toàn màn hình Multiview";
     if (mods == Qt::AltModifier && (key == Qt::Key_F || key == Qt::Key_E || key == Qt::Key_V || key == Qt::Key_C || key == Qt::Key_H || key == Qt::Key_F4))
         return "Phím này mở menu hoặc đóng cửa sổ";

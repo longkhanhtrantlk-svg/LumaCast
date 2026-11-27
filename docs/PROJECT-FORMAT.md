@@ -133,6 +133,10 @@ Thứ tự mảng = thứ tự vẽ (phần tử cuối nằm trên cùng). Tố
 | `outlineWidth` | số 0–50 | 0 | px; 0 = không viền |
 | `speed` | số 1–5000 | 150 | `ticker`: px/giây |
 | `seconds` | số 1–359999 | 300 | `countdown`: thời lượng. Trạng thái đang chạy không lưu |
+| `alert` | bool | false | `countdown`: bật tiếng nhắc (chỉ ghi khi `true`) |
+| `alertSeconds` | số 1–3600 | 10 | còn bấy nhiêu giây thì bắt đầu nhắc, mỗi giây một tiếng (chỉ ghi khi khác mặc định, như hai trường dưới) |
+| `fastSeconds` | số 0–`alertSeconds` | 5 | còn bấy nhiêu giây thì tiếng cao hơn, hai tiếng/giây; 0 = không |
+| `alertVolume` | số 0–100 | 80 | âm lượng tiếng nhắc (%) |
 | `image` | chuỗi | rỗng | `logo`: đường dẫn tương đối; thiếu file **không** làm lỗi nạp |
 
 ### 2.4 `outputs[]`

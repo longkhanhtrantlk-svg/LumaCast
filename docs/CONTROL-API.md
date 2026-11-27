@@ -33,6 +33,9 @@ Thân yêu cầu (POST) là một **đối tượng JSON** hoặc rỗng (rỗng
 | `POST /api/channels/{n}/cut` | — | CUT: Program ↔ Preview |
 | `POST /api/channels/{n}/take` | `{"type":"fade","duration":1.0,"easing":"easeinout"}` | TAKE. Tất cả trường tuỳ chọn |
 | `POST /api/channels/{n}/ftb` | `{"on":true,"duration":1.0}` | Fade-To-Black. Bỏ `on` = đảo trạng thái |
+| `POST /api/channels/{n}/playlist/play` | `{"item":2}` | Chạy playlist của kênh (đang tạm dừng: tiếp tục). `item` (từ 1, tuỳ chọn): chạy từ mục đó. Lệnh **live** |
+| `POST /api/channels/{n}/playlist/pause` · `stop` | — | Tạm dừng / Dừng (Program giữ nguyên). Lệnh **live** |
+| `POST /api/channels/{n}/playlist/next` · `prev` | — | Mục sau / mục trước (409 `playlist_stopped` nếu đang dừng). Lệnh **live** |
 | `POST /api/channels/{n}/mute` | `{"on":true}` | **Tắt tiếng** Channel n (hình không đổi). Bỏ `on` = đảo. Lệnh **live** |
 | `POST /api/channels/{n}/volume` | `{"volume":0.8}` hoặc `{"db":-6}` | Âm lượng Channel: tuyến tính 0–2 (1 = nguyên gốc) hoặc dB −60…+6. Ngoài khoảng/sai kiểu → 400, không đổi. Lệnh **live** |
 | `GET /api/audio` | — | Thiết bị đang phát, `underruns`, `clippedBlocks`, meter peak/RMS [trái, phải] của từng Channel và master (không nằm trong `/api/state`/SSE vì đổi liên tục) |
@@ -61,6 +64,7 @@ Thân yêu cầu (POST) là một **đối tượng JSON** hoặc rỗng (rỗng
 | 405 | `method_not_allowed` | Sai phương thức (kèm `Allow`) |
 | 408 | `request_timeout` | Gửi yêu cầu quá chậm/dở dang (> 5 s) |
 | 409 | `transition_in_progress`, `no_preview` | Kênh đang chuyển cảnh / chưa có Scene ở Preview |
+| 409 | `playlist_empty`, `playlist_stopped` | Playlist chưa có mục / đang dừng (`item_not_found` là 404) |
 | 413 / 414 / 431 | `body_too_large`, `uri_too_long`, `header_too_large`, `too_many_headers` | Vượt giới hạn kích thước |
 | 423 | `locked` | **Khoá vận hành** đang bật và lệnh là lệnh *sửa cấu hình* |
 | 501 / 505 | `not_implemented`, `bad_version` | `Transfer-Encoding`, không phải HTTP/1.0–1.1 |
@@ -83,6 +87,8 @@ Thân yêu cầu (POST) là một **đối tượng JSON** hoặc rỗng (rỗng
 **M5b:** `outputs[]` có thêm `kind` (`screen`/`ndi`) và với Output NDI một khối `ndi: {name, sending, connections, status}`; `sources` liệt kê **chỉ nguồn trực tiếp** (NDI/camera): `{index (1-based theo Media Pool), name, kind, state (connecting|live|lost|unavailable), status, width, height, fps, reconnects}`; nguồn NDI thêm `audio: {fillMs, driftPpm, resyncs}` (độ đầy ring âm thanh, độ lệch đồng hồ ước lượng, số lần mất đồng bộ) — dùng khi thử T-NDI-IN.
 
 `program`/`preview` là `null` khi chưa có Scene. `health`: `ok`, `no_screen` (mất màn), `hidden`, `wrong_screen`.
+
+`channels[].playlist`: `{"state":"stopped|playing|paused","items":3,"item":2,"name":"logo","remaining":7}` — `item` (từ 1) là mục đang phát hoặc `null`; `remaining` là số giây còn lại (làm tròn lên), chỉ có khi đang phát/tạm dừng. CUT/TAKE gửi qua API làm playlist đang chạy **tạm dừng** (như bấm tại máy); trong lúc playlist đang chuyển cảnh, `take` trả 409 `transition_in_progress`, còn `preview` vẫn nhận.
 
 ### Nguồn trực tiếp (M5b)
 | Phương thức | Đường dẫn | Mô tả |
@@ -127,6 +133,8 @@ UDP, OSC 1.0: thông điệp đơn hoặc bundle (lồng tối đa 4 cấp; time
 | `/lumacast/channel/{n}/ftb` | tuỳ chọn `int`/`T`/`F` | `…/ftb` |
 | `/lumacast/channel/{n}/mute` | tuỳ chọn `int`/`T`/`F` (1/T tắt tiếng, 0/F bật, bỏ = đảo) | `…/mute` |
 | `/lumacast/channel/{n}/volume` | `float`/`int` 0–2 | `…/volume` |
+| `/lumacast/playlist/{n}/play` | tuỳ chọn `int` mục (từ 1) | `…/channels/{n}/playlist/play` |
+| `/lumacast/playlist/{n}/pause` · `stop` · `next` · `prev` | — | `…/channels/{n}/playlist/…` |
 | `/lumacast/output/{i}/black` · `freeze` · `pattern` | tuỳ chọn `int`/`T`/`F` (1/T bật, 0/F tắt, bỏ = đảo) | `…/outputs/{i}/…` |
 | `/lumacast/blackall` | tuỳ chọn như trên | `/api/black-all` |
 | `/lumacast/scene/{n}/play` · `pause` · `stop` | — | `…/scenes/{n}/…` |
@@ -139,6 +147,10 @@ Gói hỏng, địa chỉ lạ, chỉ số sai đều **bị bỏ qua** (không 
 ## 4. Khoá vận hành (UI-07) và API
 
 Khi **Khoá vận hành** bật, API vẫn nhận mọi lệnh *live* (CUT/TAKE/FTB/Đen/Dừng/Mẫu/chọn Scene/phát-tua timeline/**tắt tiếng và âm lượng Channel**). Lệnh *sửa cấu hình* (nếu có) bị từ chối `423 locked` và ghi log. **Hiện chưa có endpoint sửa cấu hình nào** nên khoá chưa chặn gì ở API; cơ chế đã được cài và có test (`ControlApi::addRoute(..., edit=true, ...)`) để các endpoint sửa sau này mặc định tuân theo khoá. API **không thể mở khoá** (mở khoá cần người thao tác tại máy).
+
+## 4b. MIDI
+
+Đầu vào MIDI (Windows, `winmm`) cấu hình ở *Cài đặt → Phím tắt và MIDI*, mặc định tắt. Mỗi nút (Note On, CC vượt lên từ dưới 64, hoặc Program Change) được "học" cho một lệnh: CUT, TAKE, FTB, BLACK ALL, chọn Preview 1–9, Đen/Dừng/Mẫu từng Output. Lệnh đi qua cùng `ControlApi` với HTTP/OSC nên cùng quy tắc: chọn Preview không đổi Program, bị từ chối khi đang chuyển cảnh hoặc chỉ số sai (ghi log), vẫn chạy khi Khoá vận hành, **không khoá/mở khoá được**. Khác HTTP/OSC: không ghi số kênh mà dùng **kênh đang chọn** trên giao diện, và TAKE dùng **hiệu ứng, easing, thời lượng đang chọn** (kể cả Stinger).
 
 ## 5. Bảo mật
 

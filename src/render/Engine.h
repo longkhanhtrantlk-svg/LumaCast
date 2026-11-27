@@ -58,6 +58,11 @@ public:
     // Anh monitor (cap nhat ~15 lan/giay) cua Program/Preview cua mot Channel.
     struct MonitorFrame { QImage program, preview; };
     MonitorFrame monitor(int channel) const;
+    // Anh thu nho tung Scene cua MOT Channel cho Multiview (UI-06). -1 = tat (mac dinh): render thread khong lam them gi.
+    // Moi khung ve toi da mot Scene, SAU khi da dua hinh ra Output; anh theo thu tu Channel::scenes, rong = chua ve xong.
+    struct SceneThumbFrame { int channel = -1; std::vector<QImage> images; };
+    void setSceneThumbChannel(int channel) { sceneThumbChannel_ = channel; }
+    SceneThumbFrame sceneThumbs() const;
     // Render thread (goi trong post): chep cau hinh Output hien tai ve Project de luu file.
     void syncOutputsToProject();
     // Mixer am thanh (M5a). Engine dung ke hoach tron moi khung (render thread); thiet bi do ben ngoai mo bang audio().start(id).
@@ -69,6 +74,8 @@ protected:
     void run() override;
 
 private:
+    void rewindVideoGoingOnAir();                   // render thread, dau moi khung: video VUA len Program phat lai tu dau
+    std::vector<const Source*> onAir_;              // nguon dang o Program o khung truoc
     Project& project_;
     std::vector<std::unique_ptr<OutputSink>> sinks_;      // chi them (khong xoa) khi dang chay; sinksMu_ bao ve vector (con tro Output ben vung cho den stopEngine)
     mutable std::mutex sinksMu_;
@@ -93,6 +100,8 @@ private:
     std::atomic<int> stallMs_{2000};
     mutable std::mutex monitorMutex_;
     std::vector<MonitorFrame> monitors_;
+    SceneThumbFrame sceneThumbs_;                      // monitorMutex_
+    std::atomic<int> sceneThumbChannel_{-1};
     qint64 t0_ = 0;
 };
 

@@ -16,6 +16,8 @@ Mã nguồn tham chiếu: `src/core/Project.cpp` (`saveProject`, `loadProject`).
 
 **Không đổi ở M5c:** vẫn `version` 1, không thêm trường. Cài đặt điều khiển ngoài (cổng, LAN, token), Khoá vận hành, tuỳ chọn tự khởi động và "project gần nhất" là **cài đặt theo máy/phiên** (`QSettings`), cố ý **không** lưu vào file project để mở project trên máy khác không mang theo token hay mở cổng mạng.
 
+**Thêm cho overlay (SRC-08; tuỳ chọn, `version` vẫn 1):** `overlays[]` trong `channels[]` (mục 2.3a). Không có overlay thì không ghi ra, nên project cũ mở và lưu lại không đổi. Bản LumaCast cũ mở project có overlay sẽ bỏ qua chúng (và mất khi lưu lại).
+
 ## 2. Cấu trúc
 
 ```json
@@ -107,6 +109,30 @@ Chưa lưu trong project: Transition đang chọn (kiểu, tham số, easing, St
 | `volume` | số | 1 | âm lượng bus của Channel (0–2; UI 0–150 %); ép vào 0–2 |
 | `mute` | bool | false | tắt tiếng Channel (hình không đổi). Trạng thái mute/âm lượng được lưu cùng project; bật project lên là đúng như lúc lưu |
 
+### 2.3a `channels[].overlays[]`
+Thứ tự mảng = thứ tự vẽ (phần tử cuối nằm trên cùng). Tối đa 32 mục. `type` lạ hoặc phần tử không phải đối tượng bị bỏ; giá trị ngoài khoảng bị kẹp.
+
+| Trường | Kiểu | Mặc định | Ghi chú |
+|---|---|---|---|
+| `id` | số nguyên > 0 | tự đánh | duy nhất trong Channel; thiếu/trùng được đánh lại |
+| `type` | chuỗi | — | `title` · `ticker` · `countdown` · `logo` |
+| `name` | chuỗi | theo loại | |
+| `x`, `y`, `w`, `h` | số | theo loại | hộp, chuẩn hoá theo canvas Channel, gốc trên-trái |
+| `opacity` | số 0–1 | 1 | |
+| `fade` | số 0–10 | 0.3 | giây hiện/ẩn; 0 = cắt ngay |
+| `align` | chuỗi | `center` | `left` · `center` · `right` (chữ chạy không dùng) |
+| `background` | `#AARRGGBB` | trong suốt | nền của cả hộp |
+| `on` | bool | false | đang hiện lúc lưu (chỉ ghi khi `true`) |
+| `text` | chuỗi ≤ 2000 | rỗng | `title`/`ticker`: nội dung; `countdown`: chữ trước đồng hồ |
+| `font` | chuỗi | (mặc định hệ thống) | tên họ font |
+| `fontSize` | số 4–2000 | theo loại | px theo canvas Channel |
+| `bold`, `italic` | bool | false | |
+| `color`, `outlineColor` | `#AARRGGBB` | trắng, đen | |
+| `outlineWidth` | số 0–50 | 0 | px; 0 = không viền |
+| `speed` | số 1–5000 | 150 | `ticker`: px/giây |
+| `seconds` | số 1–359999 | 300 | `countdown`: thời lượng. Trạng thái đang chạy không lưu |
+| `image` | chuỗi | rỗng | `logo`: đường dẫn tương đối; thiếu file **không** làm lỗi nạp |
+
 ### 2.4 `outputs[]`
 | Trường | Kiểu | Mặc định | Ghi chú |
 |---|---|---|---|
@@ -124,8 +150,22 @@ Chưa lưu trong project: Transition đang chọn (kiểu, tham số, easing, St
 | `crop` | `[x, y, w, h]` | `[0,0,1,1]` | vùng của Channel, chuẩn hoá, gốc trên-trái; `w`,`h` phải > 0 |
 | `calibration` | đối tượng | mặc định = không đổi | xem dưới |
 
+**Bù khe video wall** (OUT-04) không có trường riêng (`version` vẫn 1, bản LumaCast cũ mở được và hiện đúng): `width`/`height` của Channel và Scene bằng `cột × ô + (cột − 1) × khe` (tương tự theo chiều cao), và `crop` của ô cột `c` là `[c·(ô+khe)/canvas, …, ô/canvas, …]`. Khi mở, giao diện suy lại khe từ các giá trị này.
+
 `calibration`: `brightness` (1), `contrast` (1), `gamma` (1), `gain` = `[r, g, b]` (mỗi giá trị 1).
 Công thức: `out = pow(clamp(((c − 0.5)·contrast + 0.5)·brightness·gain, 0, 1), 1/gamma)`.
+
+### 2.5 `channels[].playlist`
+Tuỳ chọn, thêm cho playlist/slide tự chuyển (CHN-10), `version` vẫn 1. Playlist chưa dùng (không có mục, cài đặt mặc định) **không được ghi ra**; project cũ mở bình thường. Trạng thái đang chạy không lưu: mở project thì playlist luôn dừng.
+
+| Trường | Kiểu | Mặc định | Ghi chú |
+|---|---|---|---|
+| `items[]` | mảng | (rỗng) | theo thứ tự phát: `{ "scene": chỉ số vào scenes[] của gốc, "seconds": số }`. `seconds` vắng/≤ 0 = tự động (video: hết thì chuyển; còn lại: `imageSeconds`), khác 0 thì ép vào 0,5–3600. Chỉ số Scene sai → bỏ mục đó (ghi log), **không** làm lỗi nạp |
+| `loop` | bool | true | lặp lại khi hết danh sách |
+| `imageSeconds` | số | 8 | thời lượng cho mục tự động không có video (0,5–3600) |
+| `transition` | chuỗi | `fade` | `cut` · `fade` · `dip` · `wipeleft` · `wiperight` · `wipeup` · `wipedown` · `plugin`; giá trị lạ → `fade` |
+| `transitionPlugin` | chuỗi | — | id Transition khi `transition` = `plugin` |
+| `transitionSeconds` | số | 1 | 0,1–10 |
 
 ## 3. Quy tắc kiểm tra khi nạp
 Nạp thất bại (trả thông báo lỗi, không crash) nếu: JSON hỏng · `app` sai · `version` ≠ 1 · `fps` ngoài 1–240 ·

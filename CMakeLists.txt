@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGL Network)
+find_package(Qt6 QUIET COMPONENTS Test)      # chi cho test Multiview (go phim that qua he phim tat cua Qt)
 # FFmpeg: Linux/macOS dung pkg-config; Windows dung vcpkg (`vcpkg install ffmpeg:x64-windows`, ban LGPL, lien ket dong).
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
@@ -57,14 +58,19 @@ endif()
 
 add_library(lumacast_core STATIC
   src/core/Channel.cpp
+  src/core/Overlay.h src/core/Overlay.cpp
+  src/render/OverlayRaster.h src/render/OverlayRaster.cpp
+  src/render/OverlayCache.h src/render/OverlayCache.cpp
   src/core/Project.cpp
   src/core/Animation.cpp
   src/core/Scene.cpp
   src/core/Log.cpp
+  src/core/Playlist.h src/core/Playlist.cpp
   src/core/Features.h src/core/Features.cpp
   src/core/Startup.h src/core/Startup.cpp
   src/render/GlHelpers.cpp
   src/render/Compositor.cpp
+  src/render/SceneThumbs.h src/render/SceneThumbs.cpp
   src/render/Engine.h
   src/render/Engine.cpp
   src/render/OutputWindow.cpp
@@ -100,6 +106,8 @@ add_library(lumacast_core STATIC
   src/control/ControlApi.h src/control/ControlApi.cpp
   src/control/ControlPage.h src/control/ControlPage.cpp
   src/control/ControlService.h src/control/ControlService.cpp
+  src/control/LiveActions.h src/control/LiveActions.cpp
+  src/control/Midi.h src/control/Midi.cpp src/control/MidiWinmm.cpp
 )
 target_include_directories(lumacast_core PUBLIC src)
 if(NOT LUMACAST_ENABLE_NDI)
@@ -115,14 +123,22 @@ add_library(lumacast_ui STATIC
   src/app/Theme.cpp
   src/app/AboutInfo.h src/app/AboutInfo.cpp
   src/app/MonitorWidget.h src/app/MonitorWidget.cpp
+  src/app/OverlayPanel.h src/app/OverlayPanel.cpp
+  src/app/MultiviewWindow.h src/app/MultiviewWindow.cpp
   src/app/InspectorPanel.h src/app/InspectorPanel.cpp
+  src/app/MappingWindow.h src/app/MappingWindow.cpp
   src/app/ParamEditor.h src/app/ParamEditor.cpp
   src/app/TimelineWidget.h src/app/TimelineWidget.cpp
   src/app/LockButton.h src/app/LockButton.cpp
+  src/app/InspectorWall.cpp
   src/app/AudioPanel.h src/app/AudioPanel.cpp
   src/app/LiveDialogs.h src/app/LiveDialogs.cpp
   src/app/SettingsDialog.h src/app/SettingsDialog.cpp
+  src/app/PlaylistPanel.h src/app/PlaylistPanel.cpp
   src/app/MainWindow.h src/app/MainWindow.cpp
+  src/app/MainWindowInput.cpp
+  src/app/Shortcuts.h src/app/Shortcuts.cpp
+  src/app/InputDialog.h src/app/InputDialog.cpp
 )
 target_include_directories(lumacast_ui PUBLIC src src/app)
 target_link_libraries(lumacast_ui PUBLIC lumacast_core Qt6::Widgets)
@@ -139,13 +155,33 @@ target_link_libraries(lumacast_tests PRIVATE lumacast_core)
 enable_testing()
 add_test(NAME render COMMAND lumacast_tests)
 
+# Bu khe video wall (OUT-04)
+add_executable(lumacast_wall_tests tests/test_wall.cpp)
+target_link_libraries(lumacast_wall_tests PRIVATE lumacast_ui)
+target_compile_definitions(lumacast_wall_tests PRIVATE LUMACAST_EXE="$<TARGET_FILE:lumacast>")
+add_dependencies(lumacast_wall_tests lumacast)
+add_test(NAME wall COMMAND lumacast_wall_tests)
+
 add_executable(lumacast_ui_tests tests/test_ui.cpp)
 target_link_libraries(lumacast_ui_tests PRIVATE lumacast_ui)
 add_test(NAME ui COMMAND lumacast_ui_tests)
 
+# SRC-08: lop phu chu / logo
+add_executable(lumacast_overlay_tests tests/test_overlay.cpp)
+target_link_libraries(lumacast_overlay_tests PRIVATE lumacast_ui)
+add_test(NAME overlay COMMAND lumacast_overlay_tests)
+
 add_executable(lumacast_m3c_tests tests/test_m3c.cpp)
 target_link_libraries(lumacast_m3c_tests PRIVATE lumacast_ui)
 add_test(NAME reliability COMMAND lumacast_m3c_tests)
+
+if(TARGET Qt6::Test)
+  add_executable(lumacast_multiview_tests tests/test_multiview.cpp)
+  target_link_libraries(lumacast_multiview_tests PRIVATE lumacast_ui Qt6::Test)
+  add_test(NAME multiview COMMAND lumacast_multiview_tests)
+else()
+  message(WARNING "Khong co Qt6 Test - bo qua test Multiview")
+endif()
 
 add_executable(lumacast_effects_tests tests/test_effects.cpp)
 target_link_libraries(lumacast_effects_tests PRIVATE lumacast_core)
@@ -156,15 +192,41 @@ add_executable(lumacast_anim_tests tests/test_anim.cpp)
 target_link_libraries(lumacast_anim_tests PRIVATE lumacast_core)
 add_test(NAME animation COMMAND lumacast_anim_tests)
 
+# Playlist / slide anh tu chuyen (CHN-10)
+add_executable(lumacast_playlist_tests tests/test_playlist.cpp)
+target_link_libraries(lumacast_playlist_tests PRIVATE lumacast_ui)
+add_test(NAME playlist COMMAND lumacast_playlist_tests)
+
 add_executable(lumacast_control_tests tests/test_control.cpp)
 target_link_libraries(lumacast_control_tests PRIVATE lumacast_ui)
 add_test(NAME control COMMAND lumacast_control_tests)
+
+# Phim tat tu dat (UI-07) va MIDI (CTL-01, backend gia)
+find_package(Qt6 REQUIRED COMPONENTS Test)                  # QTest::keyClick: bom phim qua dung duong QShortcut (chi cho test)
+add_executable(lumacast_input_tests tests/test_input.cpp)
+target_link_libraries(lumacast_input_tests PRIVATE lumacast_ui Qt6::Test)
+add_test(NAME input COMMAND lumacast_input_tests)
 
 add_executable(lumacast_m5c_tests tests/test_m5c.cpp)
 target_link_libraries(lumacast_m5c_tests PRIVATE lumacast_ui)
 target_compile_definitions(lumacast_m5c_tests PRIVATE LUMACAST_EXE="$<TARGET_FILE:lumacast>")
 add_dependencies(lumacast_m5c_tests lumacast)
 add_test(NAME ops COMMAND lumacast_m5c_tests)
+
+# An toan khi dang dien (Enter, video phat tu dau, dong Output, thieu file)
+add_executable(lumacast_safety_tests tests/test_safety.cpp)
+target_link_libraries(lumacast_safety_tests PRIVATE lumacast_ui)
+add_test(NAME safety COMMAND lumacast_safety_tests)
+
+# Bo cuc cua so chinh: vua man hinh nho, khung khong de len nhau
+add_executable(lumacast_layout_tests tests/test_layout.cpp)
+target_link_libraries(lumacast_layout_tests PRIVATE lumacast_ui)
+add_test(NAME layout COMMAND lumacast_layout_tests)
+
+# Mapping truc quan
+add_executable(lumacast_mapping_tests tests/test_mapping.cpp)
+target_link_libraries(lumacast_mapping_tests PRIVATE lumacast_ui)
+add_test(NAME mapping COMMAND lumacast_mapping_tests)
 
 add_executable(lumacast_audio_tests tests/test_audio.cpp)
 target_link_libraries(lumacast_audio_tests PRIVATE lumacast_core)

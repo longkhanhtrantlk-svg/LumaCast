@@ -10,6 +10,7 @@ class QDoubleSpinBox;
 class QGroupBox;
 class QLabel;
 class QListWidget;
+class QSpinBox;
 class QUndoStack;
 
 namespace lc {
@@ -31,6 +32,13 @@ public:
     void applyLayers(int sceneIdx, const std::vector<Layer>& layers);
     void applyOutput(int outIdx, const OutputConfig& cfg);
 
+    // --- Dung chung voi cua so Mapping truc quan (MappingWindow) ---
+    static constexpr int kMappingMergeBase = 900000000;            // lenh Output co mergeId >= moc nay tu bien mat neu ket qua = ban dau
+    int outputCount() const { return int(outCache_.size()); }
+    const OutputConfig& outputConfig(int outIdx) const { return outCache_[outIdx]; }
+    // Doi vung cat cua Output (co Hoan tac, ton trong Khoa van hanh). Cung mergeId >= 0 lien tiep = mot buoc.
+    void setOutputCrop(int outIdx, const QRectF& crop, const QString& text, int mergeId);
+
     QListWidget* layerList() const { return layerList_; }       // cho test
     QUndoStack* undoStack() const { return undo_; }
     // Khoa van hanh: vo hieu ca panel VA chan moi chinh sua bang lenh (defence in depth).
@@ -49,12 +57,25 @@ public:
 
 signals:
     void layerDataChanged();       // moi khi du lieu/lua chon layer doi (de Timeline ve lai)
+    void outputConfigChanged(int outIdx);                          // sua / Hoan tac / Lam lai cau hinh Output
+    void mappingRequested();                                       // nut "Mapping truc quan..." o tab Output
 
 public:
 
     // Danh sach Effect co the them + ghi chu loi: goi khi kho Effect/plug-in thay doi.
     void refreshEffectCatalog();
     void updateEffectNote();
+
+    // --- Bu khe video wall (OUT-04, InspectorWall.cpp) ---
+    struct WallState {                                             // du de ap dung / hoan tac mot lan doi khe
+        QSize canvas;
+        std::vector<std::pair<std::shared_ptr<Scene>, QSize>> scenes;
+        std::vector<std::pair<int, QRectF>> crops;                 // chi so Output -> crop
+    };
+    void applyWall(int channel, const WallState& state);           // goi boi Undo/Redo
+    // Doi khe cua wall tren Channel (co Hoan tac, ton trong Khoa van hanh, khong doi Program/Preview). Canvas va
+    // cac Scene cung co canvas doi co theo; Output giu 1:1. Cung axis (0 = ngang, 1 = doc) lien tiep = mot buoc.
+    void setWallGap(int channel, QSize gap, int axis);
 
 private:
     QWidget* buildSceneTab();
@@ -105,6 +126,18 @@ private:
     QComboBox* fxAddCombo_ = nullptr;
     QGroupBox* fxParamBox_ = nullptr;
     ParamEditor* fxParams_ = nullptr;
+
+    // bu khe video wall (tab Output)
+    struct WallW {
+        int channel = 0;
+        QGroupBox* box = nullptr;
+        QSpinBox* gap[2] = {};
+        QLabel* info = nullptr;
+    };
+    void addWallBoxes(QVBoxLayout* root);
+    void syncWallBoxes();
+    std::vector<WallW> wallW_;
+    std::vector<QSize> canvasCache_;                  // theo project_.channels
 };
 
 } // namespace lc

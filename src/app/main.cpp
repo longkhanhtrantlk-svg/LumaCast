@@ -41,6 +41,16 @@ static bool parseDims(const QString& s, int& a, int& b) {
     return a > 0 && b > 0;
 }
 
+// "XxY" hoac "N" (ca hai chieu); 0..kMaxWallGap
+static bool parseGap(const QString& s, QSize& gap) {
+    static const QRegularExpression re(R"(^(\d{1,5})(?:x(\d{1,5}))?$)");
+    const auto m = re.match(s);
+    if (!m.hasMatch()) return false;
+    const int x = m.captured(1).toInt(), y = m.captured(2).isEmpty() ? x : m.captured(2).toInt();
+    gap = QSize(x, y);
+    return x <= kMaxWallGap && y <= kMaxWallGap;
+}
+
 int main(int argc, char** argv) {
     QSurfaceFormat fmt;
     fmt.setVersion(3, 3);
@@ -69,6 +79,7 @@ int main(int argc, char** argv) {
     cli.addOption({{"m", "media"}, "File video/anh de tao Scene. Lap lai duoc.", "file"});
     cli.addOption({"wall", "Video wall CxR: chia 1 kenh rong cho C*R output (dung cung --cell).", "CxR"});
     cli.addOption({"cell", "Kich thuoc moi o cua --wall, mac dinh 1920x1080.", "WxH", "1920x1080"});
+    cli.addOption({"gap", "Bu khe giua cac man cua --wall, diem anh NGANGxDOC (mot so = ca hai). Canvas rong them phan khe.", "XxY", "0x0"});
     cli.addOption({"fullscreen", "Output chay toan man hinh (moi output mot man hinh)."});
     cli.addOption({"scale", "fit | fill | stretch | pixel (mac dinh fit).", "mode", "fit"});
     cli.addOption({"fps", "Nhip master (mac dinh 60).", "n", "60"});
@@ -80,6 +91,11 @@ int main(int argc, char** argv) {
     cli.process(app);
 
     if (cli.isSet("benchmark")) return runBenchmarkCli(cli.value("benchmark"), cli.value("bench-json"));
+    QSize gap(0, 0);
+    if (cli.isSet("gap") && (!cli.isSet("wall") || cli.isSet("project") || !parseGap(cli.value("gap"), gap))) {
+        qCritical().noquote() << QString("--gap khong hop le: dung cung --wall (khong dung voi --project), dang XxY, 0..%1").arg(kMaxWallGap);
+        return 2;
+    }
     Project proj;
     QSettings cfg = appSettings();
     {   // M6: tuy chon giai ma video (uu tien: dong lenh > bien moi truong > cai dat "video/hwdec")
@@ -140,8 +156,12 @@ int main(int argc, char** argv) {
                 qCritical() << "--wall/--cell khong hop le (dung CxR, WxH)";
                 return 2;
             }
-            proj.outputs = makeWall(0, cols, rows, QSize(cw, ch), 0, cli.isSet("fullscreen"));
-            canvas = QSize(cols * cw, rows * ch);
+            proj.outputs = makeWall(0, cols, rows, QSize(cw, ch), 0, cli.isSet("fullscreen"), gap);
+            canvas = wallCanvas(cols, rows, QSize(cw, ch), gap);
+            if (!gap.isNull() && (canvas.width() > kMaxWallCanvas || canvas.height() > kMaxWallCanvas)) {
+                qCritical().noquote() << QString("--gap: canvas %1x%2 vuot qua %3 diem anh").arg(canvas.width()).arg(canvas.height()).arg(kMaxWallCanvas);
+                return 2;
+            }
         } else {
             QStringList specs = cli.values("output");
             if (specs.isEmpty()) specs << "1280x720";

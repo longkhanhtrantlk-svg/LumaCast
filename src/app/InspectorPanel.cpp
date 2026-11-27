@@ -61,6 +61,8 @@ public:
     bool mergeWith(const QUndoCommand* other) override {
         if (other->id() != id() || id() < 0) return false;
         after_ = static_cast<const OutputCmd*>(other)->after_;
+        // keo trong Mapping roi tra ve cho cu (hoac Esc): khong de lai buoc Hoan tac rong
+        if (mergeId_ >= InspectorPanel::kMappingMergeBase && before_.crop == after_.crop) setObsolete(true);
         return true;
     }
 private:
@@ -97,6 +99,15 @@ void InspectorPanel::editOutput(int i, OutputConfig after, const QString& text, 
     outCache_[i] = after;
     pushOutput(i);
     undo_->push(new OutputCmd(this, i, before, after, text, mergeId));
+    emit outputConfigChanged(i);
+}
+
+void InspectorPanel::setOutputCrop(int i, const QRectF& crop, const QString& text, int mergeId) {
+    if (locked_ || i < 0 || i >= int(outCache_.size()) || crop.width() <= 0 || crop.height() <= 0) return;
+    OutputConfig after = outCache_[i];
+    after.crop = crop;
+    editOutput(i, after, text, mergeId);
+    syncOutputWidgets(i);
 }
 
 void InspectorPanel::applyLayers(int si, const std::vector<Layer>& layers) {
@@ -111,6 +122,7 @@ void InspectorPanel::applyOutput(int i, const OutputConfig& cfg) {
     outCache_[i] = cfg;
     pushOutput(i);
     syncOutputWidgets(i);
+    emit outputConfigChanged(i);
 }
 
 // ---------------- Scene / Layer ----------------
@@ -553,6 +565,7 @@ void InspectorPanel::pushOutput(int i) {
     OutputSink* sink = engine_.output(i);
     OutputConfig cfg = outCache_[i];
     engine_.post([sink, cfg](double) { sink->mutableConfig() = cfg; });
+    syncWallBoxes();                                     // sua crop co the lam wall khop / lech luoi
 }
 
 namespace {
@@ -578,6 +591,11 @@ QWidget* InspectorPanel::buildOutputTab() {
     auto* host = new QWidget;
     auto* root = new QVBoxLayout(host);
     outW_.resize(engine_.outputCount());
+    auto* mapBtn = new QPushButton("Mapping trực quan…  (Ctrl+M)");
+    mapBtn->setObjectName("openMapping");
+    mapBtn->setToolTip("Kéo thả vùng cắt của từng Output trên hình Channel");
+    connect(mapBtn, &QPushButton::clicked, this, [this] { emit mappingRequested(); });
+    root->addWidget(mapBtn);
     for (int i = 0; i < engine_.outputCount(); ++i) {
         const OutputConfig& c = outCache_[i];
         OutW& w = outW_[i];
@@ -626,6 +644,7 @@ QWidget* InspectorPanel::buildOutputTab() {
         syncOutputWidgets(i);
         root->addWidget(box);
     }
+    addWallBoxes(root);                                  // chen len dau tab
     root->addStretch();
     auto* sa = new QScrollArea;
     sa->setWidgetResizable(true);

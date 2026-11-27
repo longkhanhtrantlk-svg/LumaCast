@@ -1,8 +1,10 @@
 #pragma once
+#include "core/Overlay.h"
 #include "core/Scene.h"
 #include "core/Transition.h"
 #include "render/EffectRegistry.h"
 #include "render/GlHelpers.h"
+#include "render/OverlayCache.h"
 #include <QImage>
 #include <QOpenGLShaderProgram>
 #include <map>
@@ -34,6 +36,9 @@ public:
     // Ve mot nguon (co alpha) de len toan bo dst: dung cho Stinger.
     void drawOverlay(Source& src, RenderTarget& dst);
 
+    // Lop phu cua mot Channel (SRC-08) de len dst; `canvas` = kich thuoc Channel. Goi moi khung ke ca khi moi lop dang tat (de dung san anh).
+    void renderOverlays(const OverlayStack& stack, QSize canvas, double now, RenderTarget& dst);
+    const OverlayCache& overlayCache() const { return overlays_; }
     // Ngu canh cho Effect: kho dang ky, ho FBO tam, dong ho (uTime). Engine dat truoc moi khung hinh.
     void setEffectContext(EffectRegistry* reg, TargetPool* pool) { registry_ = reg; pool_ = pool; }
     void setTime(double seconds) { time_ = seconds; }
@@ -63,6 +68,7 @@ private:
     Timing timing_;
     std::map<int, AsyncReadback> readers_;
     int transDepth_ = 0;
+    OverlayCache overlays_;
 };
 
 } // namespace lc

@@ -31,7 +31,7 @@ void main() {
 static const char* kFragBlit = R"(#version 330 core
 uniform sampler2D uTex;
 uniform float uOpacity;
-uniform int uBlendMode;      // 0 thuong | 1 add/screen (nhan alpha truoc) | 2 multiply
+uniform int uBlendMode;      // 0 thuong | 1 add/screen (nhan alpha truoc) | 2 multiply | 3 nguon nhan san alpha
 in vec2 vUv;
 out vec4 o;
 void main() {
@@ -39,6 +39,7 @@ void main() {
     float a = c.a * uOpacity;
     if (uBlendMode == 1) o = vec4(c.rgb * a, a);
     else if (uBlendMode == 2) o = vec4(mix(vec3(1.0), c.rgb, a), a);
+    else if (uBlendMode == 3) o = c * uOpacity;      // texture da nhan san alpha (lop phu)
     else o = vec4(c.rgb, a);
 })";
 
@@ -114,6 +115,7 @@ bool Compositor::init() {
 void Compositor::shutdown() {
     for (auto& r : readers_) r.second.release(gl_);
     readers_.clear();
+    overlays_.release();
     fxCache_.clear();
     blit_.reset();
     out_.reset();
@@ -372,6 +374,66 @@ void Compositor::drawOverlay(Source& src, RenderTarget& dst) {
     gl_.glActiveTexture(GL_TEXTURE0);
     gl_.glBindTexture(GL_TEXTURE_2D, tex.id);
     drawQuad(*blit_, QVector4D(0, 0, 1, 1), QVector4D(0, 1, 1, 0), float(tex.rotation));
+    gl_.glDisable(GL_BLEND);
+}
+
+void Compositor::renderOverlays(const OverlayStack& stack, QSize canvas, double now, RenderTarget& dst) {
+    const std::vector<OverlayFrame> frames = stack.frames(now);
+    if (frames.empty()) return;
+    overlays_.beginFrame(gl_);
+    const QSize target(dst.w, dst.h);
+    const double W = dst.w, H = dst.h;
+    const double k = canvas.height() > 0 ? H / canvas.height() : 1.0;       // px canvas -> px dich
+    for (const OverlayFrame& f : frames) {
+        const OverlayRasterKey key = overlayRasterKey(f.def, f.secondsLeft, canvas, target);
+        const OverlayCache::Entry* e = overlays_.request(&stack, f.def.id, target, key);      // ke ca dang tat: dung san
+        const float alpha = f.def.opacity * f.level;
+        if (alpha <= 0.0f) continue;
+
+        // hop cua lop phu, lam tron ve diem anh de chu dung yen khong bi nhoe
+        const double bx = std::round(f.def.rect.x() * W), by = std::round(f.def.rect.y() * H);
+        const double bw = std::max(1.0, std::round(f.def.rect.width() * W)), bh = key.box.height();
+        gl_.glBindFramebuffer(GL_FRAMEBUFFER, dst.fbo);
+        gl_.glViewport(0, 0, dst.w, dst.h);
+        gl_.glEnable(GL_BLEND);
+        gl_.glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        gl_.glEnable(GL_SCISSOR_TEST);                                       // chu chay khong tran ra ngoai hop
+        gl_.glScissor(int(bx), int(H - by - bh), int(bw), int(bh));
+        auto clipRect = [&](double x, double y, double w, double h) {
+            return QVector4D(float((x + w / 2) / W * 2 - 1), float(1 - (y + h / 2) / H * 2), float(w / W), float(h / H));
+        };
+        if (f.def.background.alpha() > 0) {
+            const QColor& bg = f.def.background;
+            const float a = float(bg.alphaF()) * alpha;
+            solid_->bind();
+            solid_->setUniformValue("uColor", QVector4D(float(bg.redF()) * a, float(bg.greenF()) * a, float(bg.blueF()) * a, a));
+            drawQuad(*solid_, clipRect(bx, by, bw, bh), QVector4D(0, 0, 1, 1), 0);
+        }
+        if (!e || e->size.isEmpty()) continue;
+        const double ew = e->size.width(), eh = e->size.height();
+        double sx = 1, sy = 1;                                               // = 1 khi anh dung dung kich thuoc dich
+        if (f.def.type == OverlayType::Ticker) sx = sy = bh / eh;
+        else if (f.def.type == OverlayType::Logo) sx = sy = std::min(bw / ew, bh / eh);
+        else { sx = bw / ew; sy = bh / eh; }
+        const double cw = ew * sx, ch = eh * sy;
+        double x = bx + overlayContentX(f.def.type, f.def.align, bw, cw, f.onSeconds, f.def.speed * k);
+        const double y = by + std::round((bh - ch) / 2);
+        if (f.def.type == OverlayType::Logo) x = std::round(x);
+        blit_->bind();
+        blit_->setUniformValue("uTex", 0);
+        blit_->setUniformValue("uBlendMode", 3);
+        blit_->setUniformValue("uOpacity", alpha);
+        gl_.glActiveTexture(GL_TEXTURE0);
+        for (const auto& tile : e->tiles) {
+            const double tw = tile->w() * sx;
+            if (x < bx + bw && x + tw > bx) {
+                gl_.glBindTexture(GL_TEXTURE_2D, tile->id());
+                drawQuad(*blit_, clipRect(x, y, tw, ch), QVector4D(0, 1, 1, 0), 0);
+            }
+            x += tw;
+        }
+    }
+    gl_.glDisable(GL_SCISSOR_TEST);
     gl_.glDisable(GL_BLEND);
 }
 

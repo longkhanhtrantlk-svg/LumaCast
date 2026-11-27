@@ -12,6 +12,7 @@ public:
     explicit LockButton(QWidget* parent = nullptr);
     bool isLocked() const { return locked_; }
     void setLocked(bool on);
+    void setShortcutText(const QString& key);       // phim khoa hien trong goi y (rong = khong co)
     int holdMs() const { return holdMs_; }
     void setHoldMs(int ms) { holdMs_ = ms; }
     bool holding() const { return timer_.isActive(); }
@@ -30,6 +31,7 @@ private:
     void startHold();
     void cancelHold();
     bool locked_ = false;
+    QString shortcut_ = "Ctrl+L";
     int holdMs_ = 1000;
     QTimer timer_;
 };

@@ -2,6 +2,7 @@
 #include <QFileInfo>
 #include <QImageReader>
 #include <QFontMetrics>
+#include <QGuiApplication>
 #include <QPainter>
 
 namespace lc {
@@ -95,6 +96,24 @@ std::shared_ptr<ImageSource> ImageSource::fromFile(const QString& path) {
     if (img.isNull()) return nullptr;
     return std::make_shared<ImageSource>(img, QFileInfo(path).fileName());
 }
+
+static QImage missingImage(const QString& name) {
+    QImage img(1280, 720, QImage::Format_RGBA8888);
+    img.fill(QColor(60, 16, 16));
+    if (!qobject_cast<QGuiApplication*>(QCoreApplication::instance())) return img;     // khong co font: chi nen mau
+    QPainter p(&img);
+    QFont f = p.font();
+    f.setPixelSize(56);
+    f.setBold(true);
+    p.setFont(f);
+    p.setPen(Qt::white);
+    p.drawText(img.rect().adjusted(40, 40, -40, -40), Qt::AlignCenter | Qt::TextWrapAnywhere, "THIẾU FILE\n" + name);
+    return img;
+}
+
+MissingSource::MissingSource(const QString& path)
+    : ImageSource(missingImage(QFileInfo(path).fileName()), QFileInfo(path).fileName()),
+      error_("Thiếu hoặc không đọc được file: " + QFileInfo(path).fileName()) {}
 
 TexRef ImageSource::acquire(GL& gl) {
     if (!uploaded_ && !img_.isNull()) {

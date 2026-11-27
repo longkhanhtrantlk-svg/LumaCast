@@ -143,7 +143,7 @@ CmdResult ControlApi::setPreview(int channel, int scene) {
     const auto& list = chScenes_[channel - 1];
     if (scene < 1 || scene > int(list.size()))
         return CmdResult::error(404, "scene_not_found", QString("Không có Scene %1 (kênh %2 có %3 Scene)").arg(scene).arg(channel).arg(list.size()));
-    if (c->inTransition()) return CmdResult::error(409, "transition_in_progress", "Kênh đang chuyển cảnh");
+    if (c->inTransition() && !c->autoTransition()) return CmdResult::error(409, "transition_in_progress", "Kênh đang chuyển cảnh");
     const int idx = scene - 1;
     engine_.post([c, idx](double) { c->setPreview(idx); });       // chi Preview; Program khong bao gio doi
     return CmdResult::success({{"channel", channel}, {"preview", scene}});
@@ -204,6 +204,13 @@ CmdResult ControlApi::take(int channel, const QJsonObject& o) {
         spec.pluginId = id;
         if (o.contains("params") && o["params"].isObject()) spec.params = o["params"].toObject().toVariantMap();
     }
+    return takeWith(channel, spec);
+}
+
+CmdResult ControlApi::takeWith(int channel, const TransitionSpec& spec) {
+    CmdResult err;
+    auto c = chan(channel, err);
+    if (!c) return err;
     if (c->preview < 0) return CmdResult::error(409, "no_preview", "Kênh chưa có Scene ở Preview");
     if (c->inTransition()) return CmdResult::error(409, "transition_in_progress", "Kênh đang chuyển cảnh");
     engine_.post([c, spec](double now) { c->startTransition(spec, now); });
@@ -299,6 +306,32 @@ CmdResult ControlApi::sceneTransport(int scene, Transport t, double seconds) {
     return CmdResult::success({{"scene", scene}});
 }
 
+CmdResult ControlApi::playlistControl(int channel, PlaylistAct act, int item) {
+    CmdResult err;
+    auto c = chan(channel, err);
+    if (!c) return err;
+    const auto& items = c->playlist.data.items;             // chi UI thread sua danh sach
+    if (items.empty()) return CmdResult::error(409, "playlist_empty", "Kênh chưa có mục nào trong playlist");
+    int id = 0;
+    if (item != 0) {
+        if (item < 1 || item > int(items.size()))
+            return CmdResult::error(404, "item_not_found", QString("Playlist có %1 mục").arg(items.size()));
+        id = items[size_t(item - 1)].id;
+    }
+    if ((act == PlaylistAct::Next || act == PlaylistAct::Prev) && c->playlist.state() == Playlist::State::Stopped)
+        return CmdResult::error(409, "playlist_stopped", "Playlist đang dừng");
+    engine_.post([c, act, id](double now) {
+        switch (act) {
+        case PlaylistAct::Play: c->playlist.play(*c, now, id); break;
+        case PlaylistAct::Pause: c->playlist.pause(now); break;
+        case PlaylistAct::Stop: c->playlist.stop(); break;
+        case PlaylistAct::Next: c->playlist.next(*c, now); break;
+        case PlaylistAct::Prev: c->playlist.prev(*c, now); break;
+        }
+    });
+    return CmdResult::success({{"channel", channel}});
+}
+
 CmdResult ControlApi::liveSources() {
     QJsonArray arr;
     for (size_t i = 0; i < sources_.size(); ++i) {
@@ -377,6 +410,20 @@ QJsonObject ControlApi::state() {
         QJsonArray names;
         for (const auto& s : list) names.append(s->name);
         o["scenes"] = names;
+        {
+            const Playlist& pl = c.playlist;
+            const Playlist::State st = pl.state();
+            QJsonObject po;
+            po["state"] = st == Playlist::State::Playing ? "playing" : st == Playlist::State::Paused ? "paused" : "stopped";
+            po["items"] = int(pl.data.items.size());
+            po["item"] = QJsonValue();
+            const int cur = pl.currentId();
+            for (size_t k = 0; k < pl.data.items.size(); ++k)
+                if (cur && pl.data.items[k].id == cur) { po["item"] = int(k + 1); po["name"] = pl.data.items[k].scene->name; }
+            const double left = pl.remaining();
+            if (left >= 0) po["remaining"] = std::ceil(left);          // giay nguyen: SSE khong day lien tuc
+            o["playlist"] = po;
+        }
         chs.append(o);
     }
     root["channels"] = chs;
@@ -473,6 +520,20 @@ void ControlApi::buildDefaultRoutes() {
         if (!b["volume"].isDouble()) return CmdResult::error(400, "bad_request", "Cần trường số 'volume' (0–2) hoặc 'db'");
         return audioVolume(n, b["volume"].toDouble());
     });
+    for (const auto& [name, act] : {std::pair<const char*, PlaylistAct>{"play", PlaylistAct::Play}, {"pause", PlaylistAct::Pause},
+                                    {"stop", PlaylistAct::Stop}, {"next", PlaylistAct::Next}, {"prev", PlaylistAct::Prev}})
+        addRoute("POST", QString("/api/channels/{n}/playlist/") + name, false, [this, idx, act = act](const QStringList& p, const QJsonObject& b) {
+            int n; CmdResult e;
+            if (!idx(p[0], n, e)) return e;
+            int item = 0;
+            if (act == PlaylistAct::Play && b.contains("item")) {
+                const double v = b["item"].toDouble(0.5);
+                if (!b["item"].isDouble() || v != std::floor(v) || v < 1 || v > 1e6)
+                    return CmdResult::error(400, "bad_request", "'item' phải là số nguyên từ 1");
+                item = int(v);
+            }
+            return playlistControl(n, act, item);
+        });
     addRoute("GET", "/api/sources", false, [this](const QStringList&, const QJsonObject&) { return liveSources(); });
     addRoute("POST", "/api/sources/{n}/reconnect", true, [this, idx](const QStringList& p, const QJsonObject&) {
         int n; CmdResult e;
@@ -664,6 +725,16 @@ CmdResult ControlApi::handleOsc(const OscMessage& m) {
             }
             return take(n, o);
         }
+    } else if (a[1] == "playlist") {
+        if (act == "play") {
+            int item = 0;
+            if (!m.args.isEmpty() && (!argInt(0, item) || item < 1)) return bad("play nhận số mục (từ 1) hoặc không tham số");
+            return playlistControl(n, PlaylistAct::Play, item);
+        }
+        if (act == "pause") return playlistControl(n, PlaylistAct::Pause);
+        if (act == "stop") return playlistControl(n, PlaylistAct::Stop);
+        if (act == "next") return playlistControl(n, PlaylistAct::Next);
+        if (act == "prev") return playlistControl(n, PlaylistAct::Prev);
     } else if (a[1] == "output") {
         const OutFlag f = act == "black" ? OutFlag::Black : act == "freeze" ? OutFlag::Freeze : OutFlag::Pattern;
         if (act == "black" || act == "freeze" || act == "pattern") {

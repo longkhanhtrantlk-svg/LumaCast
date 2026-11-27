@@ -2,6 +2,7 @@
 #include "control/HttpServer.h"
 #include "control/Osc.h"
 #include "core/Project.h"
+#include "core/Transition.h"
 #include "render/Engine.h"
 #include "render/OutputSupervisor.h"
 #include <QElapsedTimer>
@@ -54,6 +55,7 @@ public:
     CmdResult setPreview(int channel, int scene);
     CmdResult cut(int channel);
     CmdResult take(int channel, const QJsonObject& opts);
+    CmdResult takeWith(int channel, const TransitionSpec& spec);              // TAKE voi hieu ung da dung san (MIDI: hieu ung dang chon)
     CmdResult ftb(int channel, std::optional<bool> on, double seconds = 1.0);
     // Am thanh (M5a): tat tieng / am luong Channel la lenh LIVE (van chay khi khoa van hanh), qua post() nhu moi lenh khac.
     CmdResult audioMute(int channel, std::optional<bool> on);                // vang = bat/tat qua lai
@@ -64,6 +66,9 @@ public:
     CmdResult blackAll(std::optional<bool> on);
     enum class Transport { Play, Pause, Stop, Seek };
     CmdResult sceneTransport(int scene, Transport t, double seconds = 0);
+    // Playlist cua Channel (CHN-10): lenh LIVE (van chay khi khoa van hanh). item (1-based) chi dung voi Play; 0 = chay/tiep tuc.
+    enum class PlaylistAct { Play, Pause, Stop, Next, Prev };
+    CmdResult playlistControl(int channel, PlaylistAct act, int item = 0);
     // Nguon truc tiep (NDI/camera, M5b): danh sach + trang thai; noi lai thu cong la lenh SUA (423 khi khoa van hanh). Chi so 1-based theo Media Pool.
     CmdResult liveSources();
     CmdResult reconnectSource(int index);

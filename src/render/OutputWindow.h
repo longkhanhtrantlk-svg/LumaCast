@@ -22,6 +22,7 @@ public:
     OutputHealth health() const;
 protected:
     void keyPressEvent(QKeyEvent* e) override;   // Esc thoat fullscreen cua so thu nghiem
+    bool event(QEvent* e) override;              // nut X / Alt+F4 chi AN cua so (khong huy be mat render dang dung)
 private:
     OutputConfig cfg_;             // render thread co the sua qua mutableConfig()
     const OutputConfig ident_;     // dinh danh man hinh, bat bien -> UI thread doc an toan

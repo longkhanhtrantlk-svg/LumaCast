@@ -10,6 +10,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPoint>
 #include <QSaveFile>
 #include <algorithm>
 #include <cmath>
@@ -62,7 +63,75 @@ const SourceDef* Project::findSource(const Source* s) const {
 
 // ---------- wall ----------
 
-std::vector<OutputConfig> makeWall(int channel, int cols, int rows, QSize cell, int firstScreen, bool fullscreen) {
+QSize wallCanvas(int cols, int rows, QSize cell, QSize gap) {
+    return QSize(cols * cell.width() + (cols - 1) * gap.width(), rows * cell.height() + (rows - 1) * gap.height());
+}
+
+QRectF wallCrop(int col, int row, int cols, int rows, QSize cell, QSize gap) {
+    const QSize canvas = wallCanvas(cols, rows, cell, gap);
+    return QRectF(double(col) * (cell.width() + gap.width()) / canvas.width(),
+                  double(row) * (cell.height() + gap.height()) / canvas.height(),
+                  double(cell.width()) / canvas.width(), double(cell.height()) / canvas.height());
+}
+
+QSize WallLayout::maxGap() const {
+    auto axis = [](int n, int cellPx) { return n < 2 ? 0 : std::clamp((kMaxWallCanvas - n * cellPx) / (n - 1), 0, kMaxWallGap); };
+    return QSize(axis(cols, cell.width()), axis(rows, cell.height()));
+}
+
+bool detectWall(const std::vector<OutputConfig>& outputs, int channel, QSize canvas, WallLayout& out) {
+    constexpr double eps = 0.01;                                  // diem anh
+    const int W = canvas.width(), H = canvas.height();
+    std::vector<int> members;
+    for (size_t i = 0; i < outputs.size(); ++i) {
+        const OutputConfig& o = outputs[i];
+        if (o.channel != channel || o.kind != OutputKind::Screen || o.crop == QRectF(0, 0, 1, 1)) continue;
+        members.push_back(int(i));
+    }
+    if (members.size() < 2 || W <= 0 || H <= 0) return false;
+    const QRectF first = outputs[size_t(members[0])].crop;
+    const int cw = int(std::lround(first.width() * W)), ch = int(std::lround(first.height() * H));
+    if (cw < 1 || ch < 1 || cw > W || ch > H) return false;
+
+    // Moi o phai dung kich thuoc; goc o phai la boi so nguyen cua buoc (o + khe). Buoc = goc duong nho nhat.
+    int stepX = 0, stepY = 0;
+    std::vector<QPoint> origin;
+    for (int i : members) {
+        const OutputConfig& o = outputs[size_t(i)];
+        const double x = o.crop.x() * W, y = o.crop.y() * H;
+        const int ix = int(std::lround(x)), iy = int(std::lround(y));
+        if (std::abs(x - ix) > eps || std::abs(y - iy) > eps || std::abs(o.crop.width() * W - cw) > eps ||
+            std::abs(o.crop.height() * H - ch) > eps || ix < 0 || iy < 0)
+            return false;
+        if (o.rotation % 180 != 0 || o.size != outputs[size_t(members[0])].size) return false;
+        if (ix > 0 && (stepX == 0 || ix < stepX)) stepX = ix;
+        if (iy > 0 && (stepY == 0 || iy < stepY)) stepY = iy;
+        origin.push_back({ix, iy});
+    }
+    const int gx = stepX > 0 ? stepX - cw : 0, gy = stepY > 0 ? stepY - ch : 0;
+    if (gx < 0 || gy < 0) return false;                           // cac o chong len nhau
+
+    WallLayout w;
+    w.cell = QSize(cw, ch);
+    w.gap = QSize(gx, gy);
+    for (size_t k = 0; k < members.size(); ++k) {
+        if ((stepX > 0 && origin[k].x() % stepX != 0) || (stepY > 0 && origin[k].y() % stepY != 0)) return false;
+        const int col = stepX > 0 ? origin[k].x() / stepX : 0, row = stepY > 0 ? origin[k].y() / stepY : 0;
+        w.cells.push_back({members[k], col, row});
+        w.cols = std::max(w.cols, col + 1);
+        w.rows = std::max(w.rows, row + 1);
+    }
+    // Du o, khong trung o, va canvas vua khit luoi.
+    if (size_t(w.cols) * size_t(w.rows) != w.cells.size()) return false;
+    for (size_t a = 0; a < w.cells.size(); ++a)
+        for (size_t b = a + 1; b < w.cells.size(); ++b)
+            if (w.cells[a].col == w.cells[b].col && w.cells[a].row == w.cells[b].row) return false;
+    if (wallCanvas(w.cols, w.rows, w.cell, w.gap) != canvas) return false;
+    out = std::move(w);
+    return true;
+}
+
+std::vector<OutputConfig> makeWall(int channel, int cols, int rows, QSize cell, int firstScreen, bool fullscreen, QSize gap) {
     std::vector<OutputConfig> v;
     for (int r = 0; r < rows; ++r)
         for (int c = 0; c < cols; ++c) {
@@ -73,7 +142,7 @@ std::vector<OutputConfig> makeWall(int channel, int cols, int rows, QSize cell, 
             o.fullscreen = fullscreen;
             o.screenIndex = firstScreen + int(v.size());
             o.scale = ScaleMode::Stretch;
-            o.crop = QRectF(double(c) / cols, double(r) / rows, 1.0 / cols, 1.0 / rows);
+            o.crop = wallCrop(c, r, cols, rows, cell, gap);
             v.push_back(o);
         }
     return v;
@@ -217,10 +286,12 @@ bool saveProject(const Project& p, const QString& path, QString* err) {
         for (const auto& s : c->scenes)
             for (size_t i = 0; i < p.scenes.size(); ++i) if (p.scenes[i] == s) idx.append(int(i));
         o["scenes"] = idx;
+        if (!c->playlist.data.isDefault()) o["playlist"] = playlistToJson(c->playlist.data, p.scenes);   // tuy chon, khong tang version
         o["program"] = c->program.load();
         o["preview"] = c->preview.load();
         if (std::abs(c->volume.load() - 1.0f) > 1e-4f) o["volume"] = double(c->volume.load());
         if (c->mute.load()) o["mute"] = true;
+        if (!c->overlays.empty()) o["overlays"] = overlaysToJson(c->overlays, base);     // SRC-08 (tuy chon, khong tang version)
         chans.append(o);
     }
     root["channels"] = chans;
@@ -299,7 +370,14 @@ bool loadProject(Project& out, const QString& path, QString* err) {
             if (d.size.width() < 0 || d.size.height() < 0 || d.size.width() > 16384 || d.size.height() > 16384) d.size = QSize(0, 0);
         }
         QString e;
-        if (!p.addSource(d, &e)) return fail(QString("Nguon '%1': %2").arg(d.id, e));
+        if (!p.addSource(d, &e)) {
+            if (d.type != "video" && d.type != "image") return fail(QString("Nguon '%1': %2").arg(d.id, e));
+            // Thieu / hong file media: giu cho bang mot hinh bao loi. Giu nguyen mo ta (path) nen luu lai khong mat tham chieu,
+            // chep file ve cho cu roi mo lai project la chay.
+            d.source = std::make_shared<MissingSource>(d.path);
+            p.addSource(d);
+            p.loadWarnings << QString("Thiếu hoặc không đọc được file: %1").arg(QDir::toNativeSeparators(d.path));
+        }
     }
 
     for (const QJsonValue& v : root["scenes"].toArray()) {
@@ -388,9 +466,11 @@ bool loadProject(Project& out, const QString& path, QString* err) {
             c->volume = std::isfinite(vol) ? float(std::clamp(vol, 0.0, 2.0)) : 1.0f;
             c->mute = o["mute"].toBool(false);
         }
+        overlaysFromJson(c->overlays, o["overlays"].toArray(), base);
         const int pg = o["program"].toInt(0), pv = o["preview"].toInt(1);
         c->program = (pg >= 0 && pg < n) ? pg : (n > 0 ? 0 : -1);
         c->preview = (pv >= 0 && pv < n && pv != c->program) ? pv : (n > 1 ? (c->program == 0 ? 1 : 0) : -1);
+        if (o.contains("playlist")) c->playlist.data = playlistFromJson(o["playlist"].toObject(), p.scenes);
         p.channels.push_back(c);
     }
     if (p.channels.empty()) return fail("Project khong co Channel nao");

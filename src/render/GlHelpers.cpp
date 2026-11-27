@@ -21,15 +21,22 @@ static void setupTex(GL& gl) {
 }
 
 void TargetPool::beginFrame() {
+    ++frame_;
+    std::erase_if(targets_, [this](const std::unique_ptr<RenderTarget>& t) {
+        if (frame_ - t->lastUsed <= kKeepFrames) return false;
+        gl_.glDeleteFramebuffers(1, &t->fbo);
+        gl_.glDeleteTextures(1, &t->tex);
+        return true;
+    });
     for (auto& t : targets_) t->busy = false;
 }
 
 RenderTarget* TargetPool::acquire(int w, int h) {
     for (auto& t : targets_)
-        if (!t->busy && t->w == w && t->h == h) { t->busy = true; return t.get(); }
+        if (!t->busy && t->w == w && t->h == h) { t->busy = true; t->lastUsed = frame_; return t.get(); }
 
     auto t = std::make_unique<RenderTarget>();
-    t->w = w; t->h = h; t->busy = true;
+    t->w = w; t->h = h; t->busy = true; t->lastUsed = frame_;
     gl_.glGenTextures(1, &t->tex);
     gl_.glBindTexture(GL_TEXTURE_2D, t->tex);
     gl_.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);

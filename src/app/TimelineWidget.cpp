@@ -344,12 +344,13 @@ TimelineWidget::TimelineWidget(InspectorPanel& inspector, RenderEngine& engine, 
     loopChk_->setObjectName("tlLoop");
     restartChk_ = new QCheckBox("Phát lại khi lên Program");
     restartChk_->setObjectName("tlRestart");
-    restartChk_->setToolTip("Mỗi lần Scene lên Program (hoặc bắt đầu chuyển vào), đồng hồ chạy lại từ 0.");
+    restartChk_->setToolTip("Mỗi lần Scene lên Program (hoặc bắt đầu chuyển vào), hoạt hoạ và video phát lại từ đầu "
+                            "(ở Preview video vẫn chạy).\nBỏ chọn: video của Scene này chạy tiếp, không tua về đầu.");
     for (QWidget* w : std::initializer_list<QWidget*>{stopBtn_, playBtn_, timeLabel_, durSpin_, loopChk_, restartChk_}) bar->addWidget(w);
     warnLabel_ = new QLabel;
     warnLabel_->setObjectName("tlWarn");
     warnLabel_->setStyleSheet("color:#e0a526;font-weight:bold");
-    bar->addWidget(warnLabel_);
+    warnLabel_->setWordWrap(true);                      // canh bao dai o DONG RIENG: khong ep cua so phai rong them
     bar->addStretch();
     zoomOut_ = new QPushButton("−");
     zoomOut_->setObjectName("tlZoomOut");
@@ -365,6 +366,7 @@ TimelineWidget::TimelineWidget(InspectorPanel& inspector, RenderEngine& engine, 
     for (QPushButton* b : {zoomOut_, zoomIn_}) b->setFixedWidth(30);
     for (QWidget* w : std::initializer_list<QWidget*>{zoomOut_, zoomLabel_, zoomIn_, zoomFitBtn_}) bar->addWidget(w);
     v->addLayout(bar);
+    v->addWidget(warnLabel_);
     view_ = new TrackView(this);
     view_->setObjectName("trackView");
     v->addWidget(view_);

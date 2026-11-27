@@ -264,7 +264,13 @@ int main(int argc, char** argv) {
 
     // ================= P0-3: chay that lumacast voi/khong project gan nhat (tien trinh con) =================
     {
-        auto runApp = [&](const QString& cfgHome, const QStringList& args, int keepMs) {
+        auto readLog = [&](const QString& home) {
+            QFile f(home + "/config/logs/lumacast.log");
+            return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString();
+        };
+        // Chay lumacast that va CHO DUNG SU KIEN trong log (toc do khoi dong tuy may: thong bao sau window.show() co the mat > 4 s).
+        // true = log dat `ready` va tien trinh con song sau it nhat minMs; false = tien trinh tu thoat hoac qua han 30 s.
+        auto runApp = [&](const QString& cfgHome, const QStringList& args, int minMs, const std::function<bool(const QString&)>& ready) {
             QProcess pr;
             QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
             env.insert("LUMACAST_CONFIG_DIR", cfgHome + "/config");           // cau hinh + log rieng; khong dung vao registry/cau hinh that
@@ -272,16 +278,17 @@ int main(int argc, char** argv) {
             pr.start(LUMACAST_EXE, args);
             pr.waitForStarted(5000);
             QElapsedTimer t; t.start();
-            while (t.elapsed() < keepMs && pr.state() != QProcess::NotRunning) { QThread::msleep(50); }
-            const bool alive = pr.state() != QProcess::NotRunning;
+            bool ok = false;
+            while (!ok && t.elapsed() < 30000 && pr.state() != QProcess::NotRunning) {
+                pr.waitForFinished(50);          // khong chi ngu: o day khong co vong lap su kien, QProcess chi biet tien trinh da thoat qua ham nay
+                ok = pr.state() != QProcess::NotRunning && t.elapsed() >= minMs && ready(readLog(cfgHome));
+            }
             pr.kill();
             pr.waitForFinished(5000);
-            return alive;
+            return ok;
         };
-        auto readLog = [&](const QString& home) {
-            QFile f(home + "/config/logs/lumacast.log");
-            return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString();
-        };
+        // "Engine bat dau" ghi SAU quyet dinh tu mo project, nen khi da co dong nay thi viec VANG dong "Tu mo lai" moi co y nghia.
+        auto engineUp = [](const QString& log) { return log.contains("Engine bat dau"); };
         auto writeCfg = [&](const QString& home, const QString& lastPath) {
             QDir().mkpath(home + "/config/LumaCast");
             QSettings c(home + "/config/LumaCast/LumaCast.ini", QSettings::IniFormat);
@@ -307,17 +314,17 @@ int main(int argc, char** argv) {
 
         const QString h1 = dir.filePath("home1");
         writeCfg(h1, pj);
-        const bool alive1 = runApp(h1, {}, 3500);
-        CHECK(alive1 && readLog(h1).contains("Tự mở lại project gần nhất"), "chay khong tham so: tu mo lai project gan nhat (log), tien trinh song");
+        const bool alive1 = runApp(h1, {}, 3500, [&](const QString& log) { return engineUp(log) && log.contains("Tự mở lại project gần nhất"); });
+        CHECK(alive1, "chay khong tham so: tu mo lai project gan nhat (log), tien trinh song");
 
         const QString h2 = dir.filePath("home2");
         writeCfg(h2, dir.filePath("khong_ton_tai.json"));
-        const bool alive2 = runApp(h2, {}, 3500);
-        CHECK(alive2 && readLog(h2).contains("Không tìm thấy project gần nhất"), "project gan nhat bi mat: chay binh thuong kem thong bao, KHONG crash");
+        const bool alive2 = runApp(h2, {}, 3500, [&](const QString& log) { return engineUp(log) && log.contains("Không tìm thấy project gần nhất"); });
+        CHECK(alive2, "project gan nhat bi mat: chay binh thuong kem thong bao, KHONG crash");
 
         const QString h3 = dir.filePath("home3");
         writeCfg(h3, pj);
-        const bool alive3 = runApp(h3, {"-o", "320x180"}, 3000);
+        const bool alive3 = runApp(h3, {"-o", "320x180"}, 3000, engineUp);
         CHECK(alive3 && !readLog(h3).contains("Tự mở lại project gần nhất"), "co -o tren dong lenh: khong tu mo project gan nhat");
 
         const QString h4 = dir.filePath("home4");
@@ -327,14 +334,18 @@ int main(int argc, char** argv) {
             c.setValue(kKeyReopenLast, false);
             c.sync();
         }
-        const bool alive4 = runApp(h4, {}, 3000);
+        const bool alive4 = runApp(h4, {}, 3000, engineUp);
         CHECK(alive4 && !readLog(h4).contains("Tự mở lại project gần nhất"), "tuy chon tu mo bi tat: khong tu mo");
 
         const QString h5 = dir.filePath("home5");
         QFile bad(dir.filePath("hong.json")); bad.open(QIODevice::WriteOnly); bad.write("{ khong phai json"); bad.close();
         writeCfg(h5, dir.filePath("hong.json"));
-        const bool alive5 = runApp(h5, {}, 3500);
-        CHECK(alive5 && readLog(h5).contains("Không mở lại được project gần nhất"), "project gan nhat bi hong: chay binh thuong kem thong bao, KHONG thoat");
+        // Thong bao ghi hai lan: luc nap that bai, va lai sau window.show() -> cho lan hai de chac cua so da len ma khong thoat.
+        const bool alive5 = runApp(h5, {}, 3500, [&](const QString& log) { return engineUp(log) && log.count("Không mở lại được project gần nhất") >= 2; });
+        CHECK(alive5, "project gan nhat bi hong: chay binh thuong kem thong bao, KHONG thoat");
+
+        // Doi chung: lumacast tu thoat (tham so sai) phai bi phat hien, neu khong cac kiem tra "con song" o tren la vo nghia.
+        CHECK(!runApp(dir.filePath("home6"), {"-o", "sai"}, 3000, [](const QString&) { return true; }), "doi chung: tien trinh tu thoat thi khong tinh la con song");
     }
 
     // ================= P0-4: khoa van hanh (UI-07) =================

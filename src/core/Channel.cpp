@@ -4,19 +4,47 @@
 namespace lc {
 
 void Channel::setPreview(int idx) {
-    if (active_ || idx < 0 || idx >= int(scenes.size())) return;
+    if ((active_ && !autoTransition()) || idx < 0 || idx >= int(scenes.size())) return;   // playlist chuyen: Preview khong lien quan
     preview = idx;
 }
 
 void Channel::finish() {
-    const int p = program, v = preview;
-    program = v;
-    preview = p;
+    if (const Scene* a = auto_.load()) {             // playlist: chi doi Program, Preview giu nguyen
+        const int i = indexOf(a);
+        if (i >= 0) program = i;
+        auto_ = nullptr;
+    } else {
+        const int p = program, v = preview;
+        program = v;
+        preview = p;
+    }
     active_ = false;
     manual_ = false;
 }
 
+bool Channel::startAuto(const Scene* target, const TransitionSpec& spec, double now) {
+    const int i = indexOf(target);
+    if (active_ || i < 0) return false;
+    if (spec.type == TransitionType::Cut || spec.duration <= 0 || !sceneAt(program)) {
+        enterScene(scenes[size_t(i)].get(), now);
+        program = i;
+        return true;
+    }
+    spec_ = spec;
+    start_ = now;
+    auto_ = target;
+    active_ = true;
+    enterScene(scenes[size_t(i)].get(), now);
+    return true;
+}
+
+void Channel::advance(double now) {
+    if (active_ && !manual_ && (now - start_) / spec_.duration >= 1.0) finish();
+    playlist.tick(*this, now);
+}
+
 void Channel::setManual(const TransitionSpec& spec, float t) {
+    if (t > 0.0f) ++ops_;
     if (active_ && !manual_) return;                          // dang chay transition tu dong
     if (!sceneAt(preview) || !sceneAt(program)) return;
     if (t <= 0.0f) { active_ = false; manual_ = false; return; }   // keo ve 0 = huy
@@ -30,10 +58,12 @@ void Channel::setManual(const TransitionSpec& spec, float t) {
 }
 
 void Channel::cut(double now) {
-    if (sceneAt(preview)) { enterScene(sceneAt(preview), now); finish(); }
+    ++ops_;
+    if (sceneAt(preview)) { abortAuto(); enterScene(sceneAt(preview), now); finish(); }
 }
 
 void Channel::startTransition(const TransitionSpec& spec, double now) {
+    ++ops_;
     if (active_ || !sceneAt(preview)) return;
     if (spec.type == TransitionType::Cut || spec.duration <= 0 || !sceneAt(program)) { cut(now); return; }
     spec_ = spec;
@@ -49,7 +79,7 @@ void Channel::startTransition(const TransitionSpec& spec, double now) {
 void Channel::audioWeights(double now, std::vector<float>& w, std::shared_ptr<Source>& stinger) const {
     w.assign(scenes.size(), 0.0f);
     stinger.reset();
-    const int pg = program, pv = preview;
+    const int pg = program, pv = incomingIndex();
     auto set = [&](int i, float v) { if (i >= 0 && i < int(w.size())) w[size_t(i)] += v; };
     if (!active_ || !sceneAt(pv)) { set(pg, 1.0f); return; }
     double t = manual_ ? double(manualT_) : (now - start_) / std::max(1e-6, spec_.duration);
@@ -70,7 +100,9 @@ void Channel::audioWeights(double now, std::vector<float>& w, std::shared_ptr<So
 }
 
 RenderTarget* Channel::render(Compositor& comp, TargetPool& pool, double now) {
+    advance(now);
     RenderTarget* out = renderProgram(comp, pool, now);
+    if (!overlays.empty()) comp.renderOverlays(overlays, size, now, *out);    // truoc FTB: FTB che ca lop phu
     float a = ftbAmount;
     if (ftbLast_ >= 0) {
         const float step = float((now - ftbLast_) / std::max(0.05, ftbDuration_));
@@ -93,19 +125,19 @@ RenderTarget* Channel::renderPreview(Compositor& comp, TargetPool& pool) {
 }
 
 RenderTarget* Channel::renderProgram(Compositor& comp, TargetPool& pool, double now) {
-    if (active_) {
+    if (active_ && sceneAt(incomingIndex())) {
         double t = manual_ ? double(manualT_) : (now - start_) / spec_.duration;
         if (!manual_ && t >= 1.0) finish();
         else if (spec_.type == TransitionType::Stinger) {
             // Cat canh cung (khong pha tron) o cutPoint, video stinger (co alpha) chay de len tren
-            Scene* s = t < spec_.cutPoint ? sceneAt(program) : sceneAt(preview);
+            Scene* s = t < spec_.cutPoint ? sceneAt(program) : sceneAt(incomingIndex());
             RenderTarget* tg = pool.acquire(s->size.width(), s->size.height());
             comp.renderScene(*s, *tg);
             comp.drawOverlay(*spec_.stinger, *tg);
             return tg;
         } else {
             Scene* a = sceneAt(program);
-            Scene* b = sceneAt(preview);
+            Scene* b = sceneAt(incomingIndex());
             RenderTarget* ta = pool.acquire(a->size.width(), a->size.height());
             comp.renderScene(*a, *ta);
             RenderTarget* tb = pool.acquire(b->size.width(), b->size.height());

@@ -16,8 +16,13 @@ void LockButton::setLocked(bool on) {
     cancelHold();
     setText(on ? "🔒 ĐANG KHOÁ — giữ 1 giây để mở" : "🔓 Khoá vận hành");
     setToolTip(on ? "Mọi điều khiển SỬA đang bị khoá; điều khiển live vẫn hoạt động.\nGiữ nút này khoảng 1 giây để mở khoá."
-                  : "Khoá các điều khiển sửa (Inspector, Timeline, Nhập media, Plug-in, Hoàn tác…) khi đang On Air.\nCUT/TAKE/FTB/Đen/chọn Scene… vẫn dùng được. (Ctrl+L)");
+                  : "Khoá các điều khiển sửa (Inspector, Timeline, Nhập media, Plug-in, Hoàn tác…) khi đang On Air.\nCUT/TAKE/FTB/Đen/chọn Scene… vẫn dùng được." + (shortcut_.isEmpty() ? QString() : " (" + shortcut_ + ")"));
     setStyleSheet(on ? "QPushButton{background:#8a1c1c;color:white;font-weight:bold;border:1px solid #ff6b6b}" : QString());
+}
+
+void LockButton::setShortcutText(const QString& key) {
+    shortcut_ = key;
+    if (!locked_) setLocked(false);
 }
 
 void LockButton::startHold() { if (!timer_.isActive()) { setDown(true); timer_.start(holdMs_); } }

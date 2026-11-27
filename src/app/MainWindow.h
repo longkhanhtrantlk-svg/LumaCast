@@ -1,5 +1,7 @@
 #pragma once
+#include "Shortcuts.h"
 #include "control/ControlService.h"
+#include "control/Midi.h"
 #include "render/Engine.h"
 #include "render/OutputSupervisor.h"
 #include "render/PluginManager.h"
@@ -25,11 +27,15 @@ class QVBoxLayout;
 
 namespace lc {
 
+class PlaylistPanel;
 class AudioPanel;
 class InspectorPanel;
 class LockButton;
+class MappingWindow;
 class TimelineWidget;
 class MonitorWidget;
+class OverlayPanel;
+class MultiviewWindow;
 
 // Cua so chinh kieu "live production": Preview/Program, thanh chuyen, Scene list, Media Pool,
 // Outputs (Black/Freeze/trang thai), Inspector. Moi thao tac di qua RenderEngine::post().
@@ -65,12 +71,22 @@ public:
     QString autosavePath() const;
     InspectorPanel* inspector() const { return inspector_; }
     AudioPanel* audioPanel() const { return audioPanel_; }
+    OverlayPanel* overlayPanel() const { return overlayPanel_; }
     TimelineWidget* timeline() const { return timeline_; }
+    void showMapping();                                            // cua so Mapping truc quan (tao khi can)
+    MappingWindow* mappingWindow() const { return mapping_; }
     QUndoStack* undoStack() { return &undo_; }
     ControlService& control() { return *ctl_; }
     ControlApi& controlApi() { return *ctlApi_; }
+    PlaylistPanel* playlistPanel() const { return playlist_; }
     void showStartupNotice(const QString& msg);    // thong bao khong chan (thanh trang thai) khi tu mo project that bai/thieu file
     void openSettings();
+    // Phim tat tu dat (UI-07) va MIDI (CTL-01): xem MainWindowInput.cpp
+    void openInputDialog();
+    MidiService& midi() { return *midi_; }
+    const KeyMap& keyMap() const { return binder_->map(); }
+    void applyKeys(const KeyMap& keys);            // doi phim tat dang chay (khong luu)
+    void showMultiview();                          // UI-06: cua so luoi Preview/Program/Scene (tao khi mo lan dau)
     // UI-07: Khoa van hanh (theo phien, khong luu vao project). Khoa = vo hieu moi dieu khien SUA, giu dieu khien live.
     void setLocked(bool on);
     bool isLocked() const { return locked_; }                           // hop thoai Cai dat van hanh (dieu khien ngoai...)
@@ -80,7 +96,8 @@ protected:
     bool eventFilter(QObject* obj, QEvent* ev) override;   // keo tha file anh/video vao cua so
 
 private:
-    struct OutRow { QLabel* dot; QLabel* info; QToolButton* black; QToolButton* freeze; QToolButton* pattern; uint64_t lastPresented = 0; };
+    struct OutRow { QLabel* dot; QLabel* info; QToolButton* black; QToolButton* freeze; QToolButton* pattern; uint64_t lastPresented = 0;
+                    QToolButton* reopen = nullptr; };       // hien khi cua so Output bi dong
 
     void buildUi();
     void buildMenus();
@@ -107,6 +124,7 @@ private:
     void addRecent(const QString& path);
     void rebuildRecentMenu();
     void updateTitle();
+    void showLoadWarnings();
     void showMessage(const QString& msg);
 
     Project& project_;
@@ -116,7 +134,9 @@ private:
     QUndoStack undo_;                  // phai khai bao truoc inspector_
     InspectorPanel* inspector_ = nullptr;
     AudioPanel* audioPanel_ = nullptr;
+    OverlayPanel* overlayPanel_ = nullptr;
     TimelineWidget* timeline_ = nullptr;
+    MappingWindow* mapping_ = nullptr;
     MonitorWidget* preview_ = nullptr;
     MonitorWidget* program_ = nullptr;
     QComboBox* chanCombo_ = nullptr;
@@ -152,6 +172,7 @@ private:
     ControlApi* ctlApi_ = nullptr;
     ControlService* ctl_ = nullptr;
     QLabel* ctlLabel_ = nullptr;
+    PlaylistPanel* playlist_ = nullptr;
     QAction* settingsAct_ = nullptr;
     QAction *importAct_ = nullptr, *openAct_ = nullptr, *undoAct_ = nullptr, *redoAct_ = nullptr;
     QPushButton* importBtn_ = nullptr;
@@ -161,8 +182,15 @@ private:
     void updateUndoActions();
     void pushImport(std::shared_ptr<ImportEntry> e, const QString& text);
     void doUndo();
-    void importDroppedFiles(const QStringList& files);
+    void importDroppedFiles(const QStringList& files, bool toPlaylist);
+    std::shared_ptr<Scene> importForPlaylist(const QString& path);
     void updateControlStatus();
+    void setupInput(QMenu* settingsMenu);
+    void runKeyAction(const LiveAction& a);
+    MidiService* midi_ = nullptr;
+    ShortcutBinder* binder_ = nullptr;
+    QAction* inputAct_ = nullptr;
+    MultiviewWindow* multiview_ = nullptr;
 };
 
 } // namespace lc

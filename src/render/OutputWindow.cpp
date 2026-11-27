@@ -86,6 +86,15 @@ void OutputWindow::present(QOpenGLContext& ctx, Compositor& comp, RenderTarget* 
     ++presented;
 }
 
+bool OutputWindow::event(QEvent* e) {
+    if (e->type() == QEvent::Close) {
+        e->ignore();
+        hide();
+        return true;
+    }
+    return QWindow::event(e);
+}
+
 void OutputWindow::keyPressEvent(QKeyEvent* e) {
     if (e->key() == Qt::Key_Escape && cfg_.fullscreen) showNormal();
     else QWindow::keyPressEvent(e);

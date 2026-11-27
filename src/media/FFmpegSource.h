@@ -38,7 +38,9 @@ public:
     QImage snapshot(int maxWidth = 160) const override;
     double durationSeconds() const override { return duration_; }
     void restart() override;                    // seek ve 0; cho den khi co khung moi thi acquire() tra ve rong (khong hien khung cu)
-    QString error() const;     // rong neu khong loi
+    void rewind() override;                     // hien ngay khung dau da giu san roi phat tu dau
+    QString error() const override;     // rong neu khong loi
+    bool ready() const override { std::lock_guard lk(m_); return latest_ != nullptr; }
     AudioStream* audio() override { return hasAudio_ ? audio_.get() : nullptr; }
     bool hasAudio() const { return hasAudio_; }
     // Chan doan dong bo (test): moc "dong thoi gian lien tuc" (giay) cua khung hinh vua dua len, va do tre (ms) so voi dong ho dang theo.
@@ -74,6 +76,10 @@ private:
     int rotation_ = 0;
     std::atomic<double> duration_{0};
     std::atomic<bool> restartReq_{false};
+    std::atomic<bool> rewindReq_{false};
+    std::shared_ptr<Frame> first_;                       // khung dau tien cua file (giu san cho rewind); bao ve boi m_
+    bool rewindPending_ = false;                         // bao ve boi m_: dang cho tua -> khong cho khung giua de len
+    void publish(std::shared_ptr<Frame> out);            // thread giai ma: dua khung len latest_
     std::atomic<bool> waitFirst_{false};
     std::unique_ptr<AudioStream> audio_;
     std::atomic<bool> hasAudio_{false};

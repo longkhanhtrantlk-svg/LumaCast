@@ -15,18 +15,22 @@ struct RenderTarget {
     GLuint fbo = 0, tex = 0;
     int w = 0, h = 0;
     bool busy = false;
+    uint64_t lastUsed = 0;                   // khung cuoi cung duoc dung (TargetPool)
 };
 
 // Ho FBO: tai su dung theo (w,h) de khong cap phat moi khung hinh.
 class TargetPool {
 public:
+    static constexpr uint64_t kKeepFrames = 300;   // bo dem khong dung qua so khung nay bi giai phong (vd. canvas doi co)
     explicit TargetPool(GL& gl) : gl_(gl) {}
-    void beginFrame();                       // danh dau tat ca la ranh
+    void beginFrame();                       // danh dau tat ca la ranh (can context hien hanh)
     RenderTarget* acquire(int w, int h);     // hop le den het khung hinh
     void clear();                            // xoa tai nguyen GL (can context hien hanh)
+    size_t size() const { return targets_.size(); }
 private:
     GL& gl_;
     std::vector<std::unique_ptr<RenderTarget>> targets_;
+    uint64_t frame_ = 0;
 };
 
 // ---- Do thoi gian tung giai doan (M6) ----

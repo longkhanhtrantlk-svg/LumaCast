@@ -192,6 +192,22 @@ void FFmpegSource::restart() {
     audio_->holdUntilFlush();                  // im lang ngay (khong phat not am thanh cu) cho den khi thread giai ma seek + flush
 }
 
+void FFmpegSource::rewind() {
+    {
+        std::lock_guard lk(m_);
+        if (first_) latest_ = first_;          // chua co (video vua nhap): giu khung dang hien
+        rewindPending_ = true;
+    }
+    audio_->holdUntilFlush();                  // khong phat tiep tieng cua doan cu
+    rewindReq_ = true;
+}
+
+void FFmpegSource::publish(std::shared_ptr<Frame> out) {
+    std::lock_guard lk(m_);
+    if (!first_) first_ = out;
+    if (!rewindPending_) latest_ = std::move(out);
+}
+
 namespace {
 // get_format cua giai ma phan cung: chon dung dinh dang phan cung da xin (opaque tro toi AVPixelFormat); khong co -> de FFmpeg tu chon (phan mem).
 AVPixelFormat pickHwFormat(AVCodecContext* c, const AVPixelFormat* fmts) {
@@ -564,10 +580,7 @@ void FFmpegSource::run() {
                 }
                 qInfo().noquote() << QString("Video '%1': %2").arg(name_, decodeInfo());
             }
-            {
-                std::lock_guard lk(m_);
-                latest_ = std::move(out);
-            }
+            publish(std::move(out));
             presentedCont_ = last.cont;
             lateMs_ = (clk - last.cont) * 1000.0;
             return;
@@ -621,8 +634,7 @@ void FFmpegSource::run() {
         }
         if (ok) {
             out->seq = ++seq;
-            std::lock_guard lk(m_);
-            latest_ = std::move(out);
+            publish(std::move(out));
         }
         presentedCont_ = last.cont;
         lateMs_ = (clk - last.cont) * 1000.0;
@@ -630,7 +642,14 @@ void FFmpegSource::run() {
     };
 
     while (!stop_) {
-        if (restartReq_.exchange(false)) {                 // phat lai tu dau (Stinger)
+        const bool restarted = restartReq_.exchange(false);
+        const bool rewound = rewindReq_.exchange(false);
+        if (restarted || rewound) {                        // phat lai tu dau (Stinger, playlist, len Program)
+            {
+                std::lock_guard lk(m_);
+                if (restarted && waitFirst_) latest_.reset();   // bo khung cu co the vua dua len sau restart()
+                rewindPending_ = false;
+            }
             av_seek_frame(fmt, vs, 0, AVSEEK_FLAG_BACKWARD);
             avcodec_flush_buffers(cc);
             clearPending();

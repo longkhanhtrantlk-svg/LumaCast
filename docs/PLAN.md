@@ -97,7 +97,7 @@ Làm trên nhánh `m5-control`, tách từ `m4b` (PR xếp chồng; chưa merge 
 - [x] **P0-4** Khoá vận hành (UI-07): vô hiệu điều khiển sửa, giữ điều khiển live, mở khoá bằng giữ nút 1 s, hiện trên thanh trạng thái, theo phiên; API tôn trọng (có cơ chế `edit` → 423).
 - [x] **P1-5** Hoàn tác cho nhập media/tạo Scene từ Media Pool và thuộc tính Scene (PRJ-07, một phần).
 - [x] **P1-6** Timeline: zoom/cuộn ngang, chọn nhiều keyframe, kéo nhóm, sao chép/dán (SCN-07).
-- [ ] **Chưa làm / để đợt sau (cố ý loại khỏi đợt A):** **MIDI** (cần API Windows, không test được trên Linux), ~~NDI và camera~~ (đã làm ở M5b); chế độ Operator tối giản và Multiview (UI-06); đặt tham số Layer/Effect qua API; hoàn tác đổi tên/xoá Scene và thêm/xoá Output (chưa có giao diện); phím tắt tuỳ chỉnh.
+- [ ] **Chưa làm / để đợt sau (cố ý loại khỏi đợt A):** **MIDI** (cần API Windows, không test được trên Linux), ~~NDI và camera~~ (đã làm ở M5b); chế độ Operator tối giản và Multiview (UI-06); đặt tham số Layer/Effect qua API; hoàn tác đổi tên/xoá Scene và thêm/xoá Output (chưa có giao diện); phím tắt tuỳ chỉnh. *(MIDI và phím tắt tuỳ chỉnh đã làm sau đợt A, xem `SPEC.md` UI-07/CTL-01; MIDI chưa thử với thiết bị thật.)*
 - **Nghiệm thu:** điều khiển được từ điện thoại/Companion (✅ test socket thật trên Linux; **chưa thử điện thoại/Companion/LAN thật**); thao tác ngoài tuân theo cùng quy tắc an toàn như giao diện (✅ test: Preview không đổi Program, Đen đúng phạm vi, chỉ số sai → 404/400, khoá → 423).
 
 ### M6 — Hiệu năng và phát hành Windows · Kích cỡ: L · **phần mã xong, test Linux; còn thử trên Windows/GPU thật**

@@ -4,10 +4,14 @@
 #include "core/Features.h"
 #include "AudioPanel.h"
 #include "InspectorPanel.h"
+#include "MappingWindow.h"
 #include "LiveDialogs.h"
 #include "LockButton.h"
 #include "MonitorWidget.h"
+#include "OverlayPanel.h"
+#include "MultiviewWindow.h"
 #include "ParamEditor.h"
+#include "PlaylistPanel.h"
 #include "SettingsDialog.h"
 #include "core/AppSettings.h"
 #include "core/Startup.h"
@@ -32,7 +36,10 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QAbstractSpinBox>
+#include <QKeyEvent>
 #include <QLabel>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -40,7 +47,8 @@
 #include <QProcess>
 #include <QPushButton>
 #include <QSettings>
-#include <QShortcut>
+#include <QScreen>
+#include <QScrollArea>
 #include <QSlider>
 #include <QStandardPaths>
 #include <QStatusBar>
@@ -81,6 +89,9 @@ private:
 };
 } // namespace
 
+// Tang so nay MOI KHI them/bot/doi cho dock mac dinh.
+static constexpr int kLayoutVersion = 2;
+
 MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList pluginDirs)
     : project_(project), engine_(engine), sup_(engine), pm_(engine.registry(), std::move(pluginDirs)) {
     pm_.rescan();                                   // nap Effect/Transition dung san + plug-in truoc khi dung giao dien
@@ -107,11 +118,15 @@ MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList plugi
     setAcceptDrops(true);
     for (QDockWidget* d : findChildren<QDockWidget*>()) d->setAcceptDrops(true);
     qApp->installEventFilter(this);
-    defaultState_ = saveState();
+    defaultState_ = saveState(kLayoutVersion);
     QSettings st = appSettings();
     if (st.contains("geometry")) restoreGeometry(st.value("geometry").toByteArray());
     else resize(1500, 900);
-    if (st.contains("state")) restoreState(st.value("state").toByteArray());
+    // khong de cua so lon hon man hinh (vd. 1920x1080 phong 125% chi con 1536x816 diem logic)
+    if (const QScreen* sc = screen(); sc && !isMaximized() && !isFullScreen())
+        resize(size().boundedTo(sc->availableGeometry().size() - QSize(2, 34)));
+    // bo cuc luu boi ban co bo dock khac (phien ban khac) bi bo qua: ap lai se lam vo cac tab va dock de len nhau
+    if (st.contains("state")) restoreState(st.value("state").toByteArray(), kLayoutVersion);
     updateTitle();
 
     connect(&fastTimer_, &QTimer::timeout, this, [this] { refresh(); });
@@ -132,6 +147,7 @@ MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList plugi
     }
     updateControlStatus();
     setLocked(false);                                  // khoi dong luon mo khoa (khong luu giua cac phien)
+    showLoadWarnings();
 }
 
 void MainWindow::updateUndoActions() {
@@ -148,9 +164,12 @@ void MainWindow::setLocked(bool on) {
     locked_ = on;
     lockBtn_->setLocked(on);
     inspector_->setLocked(on);
+    if (mapping_) mapping_->setLocked(on);
     timeline_->setLocked(on);
+    playlist_->setLocked(on);
     pluginPanel_->setEnabled(!on);
     audioPanel_->setEditLocked(on);
+    overlayPanel_->setLocked(on);              // khoa: chi con hien/an va dong ho dem nguoc
     importBtn_->setEnabled(!on);
     importAct_->setEnabled(!on);
     for (QWidget* w : {static_cast<QWidget*>(addNdiBtn_), static_cast<QWidget*>(addCamBtn_)}) w->setEnabled(!on);
@@ -158,6 +177,7 @@ void MainWindow::setLocked(bool on) {
     openAct_->setEnabled(!on);
     recentMenu_->setEnabled(!on && !appSettings().value("recent").toStringList().isEmpty());
     settingsAct_->setEnabled(!on);
+    inputAct_->setEnabled(!on);
     updateUndoActions();
     lockLabel_->setText(on ? "🔒 KHOÁ VẬN HÀNH" : "🔓 Mở khoá");
     lockLabel_->setStyleSheet(on ? "color:white;background:#8a1c1c;font-weight:bold;padding:0 8px" : "color:#8a90a2");
@@ -172,7 +192,34 @@ void MainWindow::updateControlStatus() {
     QStringList parts;
     if (ctl_->httpRunning()) parts << QString("HTTP :%1%2").arg(ctl_->httpPort()).arg(ctl_->settings().httpLan ? " (LAN)" : "");
     if (ctl_->oscRunning()) parts << QString("OSC :%1%2").arg(ctl_->oscPort()).arg(ctl_->settings().oscLan ? " (LAN)" : "");
+    if (midi_ && midi_->config().enabled) parts << (midi_->connected() ? "MIDI: " + midi_->config().device : QString("MIDI: chưa nối"));
     ctlLabel_->setText(parts.isEmpty() ? QString() : "Điều khiển ngoài: " + parts.join(" · "));
+}
+
+void MainWindow::showMapping() {
+    if (!mapping_) {
+        mapping_ = new MappingWindow(project_, engine_, *inspector_, this);
+        mapping_->setLocked(locked_);
+        mapping_->showChannel(channelIdx());
+    }
+    mapping_->show();
+    mapping_->raise();
+    mapping_->activateWindow();
+}
+
+// Project mo duoc nhung thieu file: bao ro tung file, khong chan (khong dung hop thoai modal giua show).
+void MainWindow::showLoadWarnings() {
+    if (project_.loadWarnings.isEmpty()) return;
+    for (const QString& w : project_.loadWarnings) qWarning().noquote() << w;
+    auto* box = new QMessageBox(QMessageBox::Warning, "Thiếu file media",
+                                QString("Project đã mở nhưng %1 file không dùng được (đang hiện hình “THIẾU FILE”):\n\n%2\n\n"
+                                        "Chép file về đúng chỗ rồi mở lại project. Lưu project không làm mất tham chiếu.")
+                                    .arg(project_.loadWarnings.size()).arg(project_.loadWarnings.join("\n")),
+                                QMessageBox::Ok, this);
+    box->setObjectName("missingFiles");
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    box->setModal(false);
+    box->show();
 }
 
 void MainWindow::showStartupNotice(const QString& msg) { statusBar()->showMessage(msg, 30000); }
@@ -199,6 +246,7 @@ void MainWindow::buildUi() {
 
     auto* top = new QHBoxLayout;
     chanCombo_ = new QComboBox;
+    chanCombo_->setObjectName("chanCombo");
     for (size_t i = 0; i < project_.channels.size(); ++i)
         chanCombo_->addItem(QString("Kênh %1: %2").arg(i + 1).arg(project_.channels[i]->name));
     top->addWidget(chanCombo_);
@@ -207,7 +255,6 @@ void MainWindow::buildUi() {
     top->addWidget(lockBtn_);
     connect(lockBtn_, &LockButton::lockRequested, this, [this] { setLocked(true); });
     connect(lockBtn_, &LockButton::unlockConfirmed, this, [this] { setLocked(false); });
-    new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_L), this, [this] { if (!locked_) setLocked(true); });
     chanCombo_->setVisible(project_.channels.size() > 1);
     v->addLayout(top);
 
@@ -278,7 +325,7 @@ void MainWindow::buildUi() {
     connect(takeB, &QPushButton::clicked, this, [this] { take(); });
     connect(blackAll_, &QPushButton::clicked, this, [this](bool on) { setBlackAll(on); });
     connect(ftb_, &QPushButton::clicked, this, [this] { toggleFtb(); });
-    connect(chanCombo_, &QComboBox::currentIndexChanged, this, [this] { rebuildSceneList(); });
+    connect(chanCombo_, &QComboBox::currentIndexChanged, this, [this] { rebuildSceneList(); playlist_->setChannel(channelIdx()); });
     connect(transCombo_, &QComboBox::currentIndexChanged, this, [this] { onTransitionChanged(); });
     connect(stingerCombo_, &QComboBox::currentIndexChanged, this, [this] { onTransitionChanged(); });
     connect(paramsBtn_, &QPushButton::clicked, this, [this] { editTransitionParams(); });
@@ -291,18 +338,17 @@ void MainWindow::buildUi() {
         engine_.post([ch, spec, t](double) { ch->setManual(spec, t); });
     });
 
-    // Phim tat theo dac ta: Space = TAKE, Enter = CUT, B = BLACK ALL, 1-9 = chon Preview
-    new QShortcut(Qt::Key_Space, this, [this] { take(); });
-    new QShortcut(Qt::Key_Return, this, [this] { cut(); });
-    new QShortcut(Qt::Key_Enter, this, [this] { cut(); });
-    new QShortcut(Qt::Key_B, this, [this] { setBlackAll(!blackAll_->isChecked()); });
-    for (int i = 0; i < 9; ++i)
-        new QShortcut(QKeySequence(Qt::Key_1 + i), this, [this, i] {
-            if (i < sceneList_->count()) { sceneList_->setCurrentRow(i); emit sceneList_->itemClicked(sceneList_->item(i)); }
-        });
-
     statusLabel_ = new QLabel;
     statusBar()->addPermanentWidget(statusLabel_);
+}
+
+// Boc noi dung dock trong vung cuon: man hinh nho thi hien thanh cuon thay vi ep cac nut de len nhau / day cua so ra ngoai man.
+static QScrollArea* scrollable(QWidget* content) {
+    auto* sa = new QScrollArea;
+    sa->setWidgetResizable(true);
+    sa->setFrameShape(QFrame::NoFrame);
+    sa->setWidget(content);
+    return sa;
 }
 
 void MainWindow::buildDocks() {
@@ -313,6 +359,7 @@ void MainWindow::buildDocks() {
     sceneList_->setObjectName("sceneList");
     sceneList_->setTextElideMode(Qt::ElideMiddle);
     sceneList_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    sceneList_->setMinimumWidth(140);
     scenesDock->setWidget(sceneList_);
     addDockWidget(Qt::LeftDockWidgetArea, scenesDock);
     connect(sceneList_, &QListWidget::itemClicked, this, [this](QListWidgetItem* it) {
@@ -347,23 +394,25 @@ void MainWindow::buildDocks() {
         for (int i = 0; i < engine_.outputCount(); ++i) engine_.output(i)->testPattern = on;
     });
     ov->addStretch();
-    outDock->setWidget(outW);
+    outDock->setWidget(scrollable(outW));
     addDockWidget(Qt::RightDockWidgetArea, outDock);
 
     // Am thanh (M5a)
     auto* audDock = new QDockWidget("Âm thanh", this);
     audDock->setObjectName("dockAudio");
     audioPanel_ = new AudioPanel(project_, engine_);
-    audDock->setWidget(audioPanel_);
+    audDock->setWidget(scrollable(audioPanel_));
     addDockWidget(Qt::RightDockWidgetArea, audDock);
+    tabifyDockWidget(outDock, audDock);                   // Outputs | Am thanh chung mot cho
+    outDock->raise();
 
     // Inspector
     auto* inspDock = new QDockWidget("Inspector", this);
     inspDock->setObjectName("dockInspector");
     inspector_ = new InspectorPanel(project_, engine_, &undo_);
-    inspDock->setWidget(inspector_);
+    inspDock->setWidget(scrollable(inspector_));
+    connect(inspector_, &InspectorPanel::mappingRequested, this, [this] { showMapping(); });
     addDockWidget(Qt::RightDockWidgetArea, inspDock);
-    resizeDocks({inspDock}, {430}, Qt::Horizontal);
 
     // Media Pool
     auto* mediaDock = new QDockWidget("Media Pool", this);
@@ -421,13 +470,24 @@ void MainWindow::buildDocks() {
     auto* tlDock = new QDockWidget("Timeline", this);
     tlDock->setObjectName("dockTimeline");
     timeline_ = new TimelineWidget(*inspector_, engine_, project_);
-    tlDock->setWidget(timeline_);
+    tlDock->setWidget(scrollable(timeline_));
     if (!Entitlements::current().timeline) {                      // goi khong co timeline/keyframe: lam xam, giai thich
         timeline_->setEnabled(false);
         tlDock->setWindowTitle("Timeline (không có trong gói)");
     }
     addDockWidget(Qt::BottomDockWidgetArea, tlDock);
     tabifyDockWidget(mediaDock, tlDock);
+
+    // Playlist / slide anh tu chuyen (tab canh Media Pool)
+    auto* plDock = new QDockWidget("Playlist", this);
+    plDock->setObjectName("dockPlaylist");
+    playlist_ = new PlaylistPanel(project_, engine_, &undo_);
+    playlist_->mediaFilter = kMediaFilter;
+    playlist_->importFile = [this](const QString& path) { return importForPlaylist(path); };
+    playlist_->showMessage = [this](const QString& m) { showMessage(m); };
+    plDock->setWidget(playlist_);
+    addDockWidget(Qt::BottomDockWidgetArea, plDock);
+    tabifyDockWidget(tlDock, plDock);
     mediaDock->raise();
     connect(timeline_, &TimelineWidget::playheadChanged, this, [this] { inspector_->refreshProps(); });
 
@@ -453,6 +513,15 @@ void MainWindow::buildDocks() {
     plugDock->setWidget(pw);
     pluginPanel_ = pw;
     tabifyDockWidget(inspDock, plugDock);
+
+    // Lop phu chu / logo (SRC-08), theo Channel dang chon
+    auto* ovDock = new QDockWidget("Overlay", this);
+    ovDock->setObjectName("dockOverlay");
+    overlayPanel_ = new OverlayPanel(project_, engine_, &undo_);
+    ovDock->setWidget(overlayPanel_);
+    addDockWidget(Qt::RightDockWidgetArea, ovDock);
+    tabifyDockWidget(plugDock, ovDock);
+    connect(chanCombo_, &QComboBox::currentIndexChanged, this, [this] { overlayPanel_->setChannel(channelIdx()); });
     inspDock->raise();
     connect(rescanB, &QPushButton::clicked, this, [this] { pm_.rescan(); });
     connect(openB, &QPushButton::clicked, this, [this] {
@@ -467,12 +536,16 @@ void MainWindow::buildDocks() {
     connect(&pm_, &PluginManager::changed, this, [this] {
         rebuildPluginList();
         rebuildTransitionCombo();
+        playlist_->refreshTransitions();
         inspector_->refreshEffectCatalog();
     });
     rebuildPluginList();
     pm_.watch(true);
 
     setCorner(Qt::BottomRightCorner, Qt::RightDockWidgetArea);
+    resizeDocks({scenesDock, inspDock}, {170, 390}, Qt::Horizontal);
+    resizeDocks({outDock, inspDock}, {190, 520}, Qt::Vertical);
+    resizeDocks({mediaDock}, {330}, Qt::Vertical);        // du cao cho 6 lan keyframe cua Timeline
     rebuildSceneList();
     rebuildMediaList();
 }
@@ -498,6 +571,13 @@ void MainWindow::addOutputRow(int i) {
     r.pattern->setToolTip("Mẫu thử: hiện lưới, thanh màu, thước điểm ảnh và toạ độ 4 góc đúng độ phân giải thật của màn hình này");
     row->addWidget(r.dot);
     row->addWidget(r.info, 1);
+    r.reopen = new QToolButton;
+    r.reopen->setText("Mở lại");
+    r.reopen->setObjectName(QString("reopenOutput%1").arg(i));
+    r.reopen->setToolTip("Cửa sổ Output này đã bị đóng: bấm để hiện lại đúng chỗ");
+    r.reopen->setStyleSheet("background:#8a1c1c;color:white;font-weight:bold");
+    r.reopen->setVisible(false);
+    row->addWidget(r.reopen);
     row->addWidget(r.black);
     row->addWidget(r.freeze);
     row->addWidget(r.pattern);
@@ -505,6 +585,10 @@ void MainWindow::addOutputRow(int i) {
     connect(r.black, &QToolButton::toggled, this, [sink](bool on) { sink->black = on; });
     connect(r.freeze, &QToolButton::toggled, this, [sink](bool on) { sink->freeze = on; });
     connect(r.pattern, &QToolButton::toggled, this, [sink](bool on) { sink->testPattern = on; });
+    connect(r.reopen, &QToolButton::clicked, this, [this, sink] {
+        auto* w = dynamic_cast<OutputWindow*>(sink);
+        if (w && !w->applyScreen()) showMessage("Không mở lại được: màn hình của Output này không còn");
+    });
     outRows_.push_back(r);
 }
 
@@ -573,16 +657,35 @@ void MainWindow::buildMenus() {
     auto* view = menuBar()->addMenu("&View");
     for (QDockWidget* d : findChildren<QDockWidget*>()) view->addAction(d->toggleViewAction());
     view->addSeparator();
+    view->addAction("Mapping trực quan…", QKeySequence(Qt::CTRL | Qt::Key_M), this, [this] { showMapping(); });
+    view->addAction("Multiview…", this, [this] { showMultiview(); })->setObjectName("multiviewAction");
     view->addAction("Đặt lại bố cục", this, [this] {
-        restoreState(defaultState_);
+        restoreState(defaultState_, kLayoutVersion);
         for (QDockWidget* d : findChildren<QDockWidget*>()) d->show();
     });
 
     auto* settings = menuBar()->addMenu("&Cài đặt");
     settingsAct_ = settings->addAction("Cài đặt vận hành…", this, [this] { openSettings(); });
+    setupInput(settings);                                 // phim tat tu dat + MIDI (MainWindowInput.cpp)
 
     auto* help = menuBar()->addMenu("&Help");
     help->addAction("Giới thiệu", this, [this] { QMessageBox::about(this, "LumaCast", aboutHtml()); });
+}
+
+// Multiview chi chon Preview / Channel dang xem: khong co duong nao tu day len Program (ke ca khi AUTO dang bat).
+void MainWindow::showMultiview() {
+    if (!multiview_) {
+        multiview_ = new MultiviewWindow(project_, engine_, this);
+        connect(multiview_, &MultiviewWindow::channelPicked, this, [this](int c) { chanCombo_->setCurrentIndex(c); refresh(); });
+        connect(multiview_, &MultiviewWindow::scenePicked, this, [this](int idx) {
+            auto ch = project_.channels[channelIdx()];
+            engine_.post([ch, idx](double) { ch->setPreview(idx); });
+        });
+    }
+    multiview_->show();
+    multiview_->raise();
+    multiview_->activateWindow();
+    multiview_->refresh(channelIdx(), sceneNames_);
 }
 
 // ---------------- thao tac live ----------------
@@ -696,6 +799,7 @@ void MainWindow::toggleFtb() {
 
 void MainWindow::refresh() {
     audioPanel_->refreshMeters();
+    overlayPanel_->refreshLive();
     const int ci = channelIdx();
     const Channel& ch = *project_.channels[ci];
     const auto mf = engine_.monitor(ci);
@@ -726,6 +830,7 @@ void MainWindow::refresh() {
     bool allBlack = engine_.outputCount() > 0;
     for (int i = 0; i < engine_.outputCount(); ++i) allBlack = allBlack && engine_.output(i)->black;
     blackAll_->setChecked(allBlack);
+    if (multiview_ && multiview_->isVisible()) multiview_->refresh(ci, sceneNames_);
 }
 
 void MainWindow::refreshSlow() {
@@ -759,6 +864,8 @@ void MainWindow::refreshSlow() {
         r.black->setChecked(sink->black);
         r.freeze->setChecked(sink->freeze);
         r.pattern->setChecked(sink->testPattern);
+        auto* win = dynamic_cast<OutputWindow*>(sink);
+        r.reopen->setVisible(win && !win->isVisible() && win->canShow());
     }
     inspector_->updateEffectNote();
     const bool stalled = engine_.stalled();
@@ -818,6 +925,7 @@ void MainWindow::onProjectChanged() {
     inspector_->refreshFromProject();
     rebuildTransitionCombo();                              // danh sach nguon Stinger co the doi
     timeline_->refresh();
+    playlist_->refresh();
     ctlApi_->refreshProject();
 }
 
@@ -845,6 +953,15 @@ bool MainWindow::addMediaFile(const QString& path) {
 // Keo tha file = lenh "Nhap media" cho tung file (cung duong addMediaFile: cung khoa van hanh, hoan tac duoc, khong dung Program/Preview).
 bool MainWindow::eventFilter(QObject* obj, QEvent* ev) {
     const QEvent::Type t = ev->type();
+    // Enter trong o dang GO (so, chu) chi xac nhan gia tri, KHONG kich hoat phim tat CUT. Loc o muc ung dung nen moi o nhap,
+    // ke ca o them sau nay, deu theo mot quy tac. Ngoai o nhap, Enter van la CUT.
+    if (t == QEvent::ShortcutOverride) {
+        const int key = static_cast<QKeyEvent*>(ev)->key();
+        if ((key == Qt::Key_Return || key == Qt::Key_Enter) && (qobject_cast<QAbstractSpinBox*>(obj) || qobject_cast<QLineEdit*>(obj))) {
+            ev->accept();
+            return true;
+        }
+    }
     if (t != QEvent::DragEnter && t != QEvent::DragMove && t != QEvent::Drop) return QMainWindow::eventFilter(obj, ev);
     // chi cua so chinh va dock tach roi cua no (khong gom hop thoai)
     auto* w = qobject_cast<QWidget*>(obj);
@@ -863,20 +980,33 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* ev) {
     } else {
         de->setDropAction(Qt::CopyAction);
         de->accept();
-        if (t == QEvent::Drop) importDroppedFiles(files);
+        // Qt giao su kien tha cho widget nhan tha gan nhat (o day thuong la chinh dock), nen xet theo dock chua khung Playlist.
+        QWidget* plDock = playlist_->parentWidget();
+        if (t == QEvent::Drop) importDroppedFiles(files, w == plDock || plDock->isAncestorOf(w));
     }
     return true;
 }
 
-void MainWindow::importDroppedFiles(const QStringList& files) {
+std::shared_ptr<Scene> MainWindow::importForPlaylist(const QString& path) {
+    const size_t before = project_.scenes.size();
+    if (!addMediaFile(path) || project_.scenes.size() <= before) return nullptr;
+    return project_.scenes.back();
+}
+
+// toPlaylist: tha vao khung Playlist -> nhap roi them luon vao cuoi playlist.
+void MainWindow::importDroppedFiles(const QStringList& files, bool toPlaylist) {
     int added = 0;
     QStringList skipped;
+    std::vector<std::shared_ptr<Scene>> imported;
     for (const QString& f : files) {
         const QFileInfo fi(f);
         const QString ext = fi.suffix().toLower();
-        if (fi.isFile() && (kImageExt.contains(ext) || kVideoExt.contains(ext)) && addMediaFile(f)) ++added;
+        std::shared_ptr<Scene> scene;
+        if (fi.isFile() && (kImageExt.contains(ext) || kVideoExt.contains(ext))) scene = importForPlaylist(f);
+        if (scene) { ++added; imported.push_back(scene); }
         else skipped << (fi.fileName().isEmpty() ? f : fi.fileName());
     }
+    if (toPlaylist) playlist_->addScenes(imported);
     if (skipped.isEmpty()) {
         showMessage(QString("Đã nhập %1 file bằng kéo thả").arg(added));
         return;
@@ -1019,7 +1149,8 @@ bool MainWindow::importInUse(const ImportEntry& e) const {
         const int pg = c->program, pv = c->preview;
         const auto& sc = c->scenes;
         if (pg >= 0 && pg < int(sc.size()) && sc[pg] == e.scene) return true;
-        if (c->inTransition() && pv >= 0 && pv < int(sc.size()) && sc[pv] == e.scene) return true;
+        if (c->inTransition() && !c->autoTransition() && pv >= 0 && pv < int(sc.size()) && sc[pv] == e.scene) return true;
+        if (c->isIncoming(e.scene.get())) return true;
     }
     return false;
 }
@@ -1061,7 +1192,7 @@ void MainWindow::unapplyImport(const std::shared_ptr<ImportEntry>& e, const QUnd
             auto it = std::find(c->scenes.begin(), c->scenes.end(), e->scene);
             if (it == c->scenes.end()) continue;
             const int k = int(it - c->scenes.begin());
-            if (c->program == k || (c->inTransition() && c->preview == k)) { *busy = true; return; }
+            if (c->program == k || (c->inTransition() && !c->autoTransition() && c->preview == k) || c->isIncoming(e->scene.get())) { *busy = true; return; }
         }
         for (auto& c : project_.channels) {
             auto it = std::find(c->scenes.begin(), c->scenes.end(), e->scene);
@@ -1193,9 +1324,10 @@ void MainWindow::closeEvent(QCloseEvent* e) {
     }
     QSettings st = appSettings();
     st.setValue("geometry", saveGeometry());
-    st.setValue("state", saveState());
+    st.setValue("state", saveState(kLayoutVersion));
     e->accept();
-    QMetaObject::invokeMethod(qApp, &QCoreApplication::quit, Qt::QueuedConnection);   // cua so output khong tu thoat
+    // cua so output khong tu thoat; dung exit() vi quit() se thu dong chung truoc (chung chi an di nen quit() bi huy)
+    QMetaObject::invokeMethod(qApp, [] { QCoreApplication::exit(0); }, Qt::QueuedConnection);
 }
 
 } // namespace lc

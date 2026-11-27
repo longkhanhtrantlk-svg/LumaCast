@@ -287,7 +287,7 @@ Lõi (Source/Scene/Channel/Compositor) không phụ thuộc LED. Đích đến l
 
 **Hiệu chỉnh màu** ở shader cuối của Output: `out = pow(clamp(((c−0.5)·contrast+0.5)·brightness·gain), 1/gamma)`.
 
-**Video wall** = nhiều Output cùng một Channel, mỗi cái crop một ô của canvas (`makeWall`). Chưa bù khe/bezel.
+**Video wall** = nhiều Output cùng một Channel, mỗi cái crop một ô của canvas (`makeWall`). **Bù khe/bezel** (OUT-04): canvas = ô + khe, các crop chừa đúng phần khe nên không Output nào hiện nó và mỗi ô vẫn 1:1. Không lưu trường riêng: `detectWall` nhận lại lưới, ô và khe từ `crop` + kích thước canvas (nên project cũ cũng đặt khe được). Đổi khe lúc đang chạy (`InspectorWall.cpp`) đổi kích thước Channel, các Scene cùng cỡ và crop của mọi ô trong **một** lệnh render thread để không có khung hình lệch; `TargetPool` giải phóng bộ đệm cỡ cũ sau 300 khung không dùng.
 
 **Video xoay.** `FFmpegSource` đọc display matrix (luồng và khung hình) → `TexRef.rotation` (0/90/180/270 theo chiều kim đồng hồ); `Compositor` xoay layer trên GPU,
 Fit/Fill tính theo tỉ lệ sau xoay; ảnh theo EXIF khi nạp.

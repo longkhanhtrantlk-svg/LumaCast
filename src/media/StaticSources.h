@@ -23,6 +23,15 @@ private:
     bool uploaded_ = false;
 };
 
+// Thay cho file media khong mo duoc: hinh bao loi, error() khac rong (playlist bo qua muc nay).
+class MissingSource : public ImageSource {
+public:
+    explicit MissingSource(const QString& path);
+    QString error() const override { return error_; }
+private:
+    QString error_;
+};
+
 class ColorSource : public Source {
 public:
     ColorSource(QColor c, QString name) : color_(c), name_(std::move(name)) {}

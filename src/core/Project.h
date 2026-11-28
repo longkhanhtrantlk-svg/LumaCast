@@ -7,14 +7,14 @@ namespace lc {
 // Mo ta mot nguon de luu/mo project (id on dinh de Layer tham chieu).
 struct SourceDef {
     QString id;
-    QString type;               // "video" | "image" | "color" | "testpattern" | "ndi" | "camera"
+    QString type;               // "video" | "image" | "color" | "testpattern" | "ndi" | "camera" | "window"
     QString path;               // duong dan tuyet doi (video/image)
     QString label;
     QColor color{Qt::black};
     QSize size{1920, 1080};     // testpattern; camera: do phan giai yeu cau (0x0 = de thiet bi chon)
-    QString device;             // ndi: ten nguon NDI; camera: id thiet bi (Windows: symbolic link)
-    QString deviceName;         // camera: ten hien thi, de nhan ra lai khi id doi
-    QString url;                // ndi: dia chi nguon (tuy chon)
+    QString device;             // ndi: ten nguon NDI; camera: id thiet bi (Windows: symbolic link); window: ten file chay hoac kSlideShowTarget
+    QString deviceName;         // camera: ten hien thi, de nhan ra lai khi id doi; window: tieu de cua so
+    QString url;                // ndi: dia chi nguon (tuy chon); window: lop cua so
     double fps = 0;             // camera: fps yeu cau (0 = de thiet bi chon)
     std::shared_ptr<Source> source;
 };
@@ -28,6 +28,7 @@ struct Project {
     QString filePath;           // file project hien tai (rong = chua luu)
     QString audioDevice;        // id thiet bi am thanh ra mong muon (rong = mac dinh cua he thong); khong co tren may nay -> dung mac dinh
     QStringList loadWarnings;   // loi khong lam hong viec mo project (vd. thieu file media); khong luu vao file
+    QStringList loadWarningsLog;   // cung noi dung bang tieng Viet, de ghi log
 
     // Them nguon (tao Source neu def.source rong); tra ve nullptr neu loi.
     std::shared_ptr<Source> addSource(SourceDef def, QString* err = nullptr);

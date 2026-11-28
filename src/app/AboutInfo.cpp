@@ -1,4 +1,5 @@
 #include "AboutInfo.h"
+#include "core/I18n.h"
 #include "core/Features.h"
 #include "live/Ndi.h"
 #include <QCoreApplication>
@@ -35,18 +36,21 @@ QString ndiTrademarkNotice() {
 QString aboutHtml() {
     const LibraryInfo li = libraryInfo();
     const Entitlements& e = Entitlements::current();
-    QString h = QString("<b>LumaCast</b> — LED Display Controller<br>Phiên bản %1<br><br>").arg(QCoreApplication::applicationVersion().isEmpty() ? "0.1.0" : QCoreApplication::applicationVersion());
-    h += QString("<b>Giấy phép tính năng:</b> %1<br><br>").arg(e.summary().toHtmlEscaped());
-    h += "<b>Thư viện bên thứ ba</b> (liên kết động, thay thế được):<br>";
-    h += QString("• Qt %1 — GNU LGPL v3 (qt.io)%2<br>").arg(li.qtVersion, li.qtShared ? "" : " <i>(CẢNH BÁO: bản Qt liên kết tĩnh)</i>");
+    QString h = QString(LC_TR("<b>LumaCast</b> — LED Display Controller<br>Phiên bản %1<br><br>")).arg(QCoreApplication::applicationVersion().isEmpty() ? "0.1.0" : QCoreApplication::applicationVersion());
+    h += QString(LC_TR("<b>Giấy phép tính năng:</b> %1<br><br>")).arg(e.summary().toHtmlEscaped());
+    h += LC_TR("<b>Thư viện bên thứ ba</b> (liên kết động, thay thế được):<br>");
+    h += QString("• Qt %1 — GNU LGPL v3 (qt.io)%2<br>").arg(li.qtVersion, li.qtShared ? "" : LC_TR(" <i>(CẢNH BÁO: bản Qt liên kết tĩnh)</i>"));
+#ifdef Q_OS_WIN
+    h += "• Velopack — MIT (github.com/velopack/velopack)<br>";
+#endif
     h += QString("• FFmpeg (%1) — %2%3<br>").arg(li.ffmpegVersion, li.ffmpegLicense.toHtmlEscaped(),
-                                                li.ffmpegLgpl ? "" : " <i>(CẢNH BÁO: không phải bản LGPL)</i>");
-    h += "Toàn văn giấy phép và nguồn: xem THIRD-PARTY-NOTICES.txt trong thư mục cài đặt.<br><br>";
+                                                li.ffmpegLgpl ? "" : LC_TR(" <i>(CẢNH BÁO: không phải bản LGPL)</i>"));
+    h += LC_TR("Toàn văn giấy phép và nguồn: xem THIRD-PARTY-NOTICES.txt trong thư mục cài đặt.<br><br>");
     if (ndiCompiledIn()) {
         h += ndiTrademarkNotice().toHtmlEscaped() + " <a href=\"https://ndi.video\">ndi.video</a><br>";
-        h += "NDI không kèm theo LumaCast; cài NDI Tools/Runtime từ ndi.video để dùng nguồn/Output NDI.";
+        h += LC_TR("NDI không kèm theo LumaCast; cài NDI Tools/Runtime từ ndi.video để dùng nguồn/Output NDI.");
     } else {
-        h += "Bản này không có NDI.";
+        h += LC_TR("Bản này không có NDI.");
     }
     return h;
 }

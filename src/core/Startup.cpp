@@ -1,4 +1,5 @@
 #include "Startup.h"
+#include "core/I18n.h"
 #include <QDir>
 #include <QFile>
 
@@ -53,7 +54,9 @@ StartupDecision decideStartupProject(QSettings& st, bool hasExplicitConfig) {
     const QString last = lastProjectPath(st);
     if (last.isEmpty()) return d;
     if (!QFileInfo::exists(last) && !QFileInfo::exists(last + ".autosave")) {
-        d.notice = QString("Không tìm thấy project gần nhất: %1 — chạy với project trống.").arg(QDir::toNativeSeparators(last));
+        const i18n::Text notice = LC_BOTH(QString(LC_TR("Không tìm thấy project gần nhất: %1 — chạy với project trống.")).arg(QDir::toNativeSeparators(last)));
+        d.notice = notice.shown;
+        d.noticeLog = notice.source;
         return d;
     }
     d.path = last;

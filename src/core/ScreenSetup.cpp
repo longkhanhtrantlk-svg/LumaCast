@@ -1,4 +1,5 @@
 #include "ScreenSetup.h"
+#include "core/I18n.h"
 #include "media/StaticSources.h"
 #include <QGuiApplication>
 #include <QScreen>
@@ -43,7 +44,10 @@ int ledPixels(double meters, double pitchMm) {
 }
 
 static QString dims(QSize s) { return QString("%1×%2").arg(s.width()).arg(s.height()); }
-static QString times(double k) { return QString::number(k, 'f', 2).replace('.', ','); }
+static QString times(double k) {
+    const QString s = QString::number(k, 'f', 2);
+    return i18n::current() == Language::English ? s : QString(s).replace('.', ',');
+}
 
 QStringList outputWarnings(const std::vector<OutputConfig>& outputs, int index, QSize canvas, QSize frame) {
     QStringList w;
@@ -51,7 +55,7 @@ QStringList outputWarnings(const std::vector<OutputConfig>& outputs, int index, 
     const OutputConfig& c = outputs[size_t(index)];
     const QRect picture = outputPictureRect(c, frame);
     if (!c.area.isEmpty() && !QRect(QPoint(0, 0), frame).contains(picture))
-        w << QString("Vùng LED %1 tại (%2, %3) vượt ra ngoài khung tín hiệu %4: phần thừa bị cắt.")
+        w << QString(LC_TR("Vùng LED %1 tại (%2, %3) vượt ra ngoài khung tín hiệu %4: phần thừa bị cắt."))
                  .arg(dims(picture.size())).arg(picture.x()).arg(picture.y()).arg(dims(frame));
 
     const QSize part(int(std::lround(c.crop.width() * canvas.width())), int(std::lround(c.crop.height() * canvas.height())));
@@ -61,7 +65,7 @@ QStringList outputWarnings(const std::vector<OutputConfig>& outputs, int index, 
         const bool inWall = detectWall(outputs, c.channel, canvas, wall)
                             && std::any_of(wall.cells.begin(), wall.cells.end(), [index](const WallLayout::Cell& x) { return x.output == index; });
         if (!inWall)
-            w << QString("Chỉ hiện một phần khung hình (%1 trong %2): hình bị cắt.").arg(dims(part), dims(canvas));
+            w << QString(LC_TR("Chỉ hiện một phần khung hình (%1 trong %2): hình bị cắt.")).arg(dims(part), dims(canvas));
     }
 
     QSize shown = part;
@@ -76,17 +80,17 @@ QStringList outputWarnings(const std::vector<OutputConfig>& outputs, int index, 
     }
     const double dw = shown.width() * sx, dh = shown.height() * sy;
     if (std::abs(sx / sy - 1.0) > 0.005)
-        w << QString("Hình bị co giãn méo: %1 ép vào %2 (ngang ×%3, dọc ×%4).").arg(dims(shown), dims(picture.size()), times(sx), times(sy));
+        w << QString(LC_TR("Hình bị co giãn méo: %1 ép vào %2 (ngang ×%3, dọc ×%4).")).arg(dims(shown), dims(picture.size()), times(sx), times(sy));
     if (dw > picture.width() + 1.5 || dh > picture.height() + 1.5)
-        w << QString("Hình bị cắt mép: cần %1 nhưng chỗ hiện chỉ có %2.").arg(dims(QSize(int(std::lround(dw)), int(std::lround(dh)))), dims(picture.size()));
+        w << QString(LC_TR("Hình bị cắt mép: cần %1 nhưng chỗ hiện chỉ có %2.")).arg(dims(QSize(int(std::lround(dw)), int(std::lround(dh)))), dims(picture.size()));
     else if (dw < picture.width() - 1.5 || dh < picture.height() - 1.5)
-        w << QString("Có viền đen: hình chỉ chiếm %1 trong %2.").arg(dims(QSize(int(std::lround(dw)), int(std::lround(dh)))), dims(picture.size()));
+        w << QString(LC_TR("Có viền đen: hình chỉ chiếm %1 trong %2.")).arg(dims(QSize(int(std::lround(dw)), int(std::lround(dh)))), dims(picture.size()));
     const double up = std::max(sx, sy), down = std::min(sx, sy);
     if (up > 1.005)
-        w << QString("Hình bị phóng to ×%1 (nhoè trên LED): khung hình %2 nhỏ hơn chỗ hiện %3, ảnh/video lớn còn bị thu nhỏ rồi phóng to. "
-                     "Đặt khung hình = %3.").arg(times(up), dims(shown), dims(picture.size()));
+        w << QString(LC_TR("Hình bị phóng to ×%1 (nhoè trên LED): khung hình %2 nhỏ hơn chỗ hiện %3, ảnh/video lớn còn bị thu nhỏ rồi phóng to. "
+                     "Đặt khung hình = %3.")).arg(times(up), dims(shown), dims(picture.size()));
     else if (down < 0.995)
-        w << QString("Hình bị thu nhỏ ×%1 (mất chi tiết): khung hình %2 lớn hơn chỗ hiện %3.").arg(times(down), dims(shown), dims(picture.size()));
+        w << QString(LC_TR("Hình bị thu nhỏ ×%1 (mất chi tiết): khung hình %2 lớn hơn chỗ hiện %3.")).arg(times(down), dims(shown), dims(picture.size()));
     return w;
 }
 
@@ -96,7 +100,7 @@ QString sceneSizeWarning(const std::vector<std::shared_ptr<Scene>>& scenes, QSiz
     for (const auto& s : scenes)
         if (s->size != canvas) { ++n; if (!first) first = s.get(); }
     if (!n) return {};
-    return QString("%1 Scene dựng khác khung hình %2 (vd. “%3” %4): lên Program sẽ bị co giãn hoặc thu phóng.")
+    return QString(LC_TR("%1 Scene dựng khác khung hình %2 (vd. “%3” %4): lên Program sẽ bị co giãn hoặc thu phóng."))
         .arg(n).arg(dims(canvas), first->name, dims(first->size));
 }
 
@@ -112,13 +116,13 @@ Project makeNewProject(QSize canvas, std::vector<OutputConfig> outputs) {
     SourceDef black;
     black.type = "color";
     black.color = Qt::black;
-    black.label = "Đen";
-    add("Đen", black);
+    black.label = LC_TR("Đen");
+    add(LC_TR("Đen"), black);
     SourceDef test;
     test.type = "testpattern";
     test.size = canvas;
-    test.label = "Mẫu thử";
-    add("Mẫu thử", test);
+    test.label = LC_TR("Mẫu thử");
+    add(LC_TR("Mẫu thử"), test);
     auto ch = std::make_shared<Channel>();
     ch->name = "Channel 1";
     ch->size = canvas;

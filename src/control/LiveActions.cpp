@@ -1,4 +1,5 @@
 #include "LiveActions.h"
+#include "core/I18n.h"
 #include <algorithm>
 
 namespace lc {
@@ -10,6 +11,8 @@ QString LiveAction::id() const {
     case Cut: return "cut";
     case Ftb: return "ftb";
     case BlackAll: return "blackAll";
+    case SlideNext: return "slide.next";
+    case SlidePrev: return "slide.prev";
     case Preview: return QString("preview.%1").arg(index);
     case OutputBlack: return QString("output.%1.black").arg(index);
     case OutputFreeze: return QString("output.%1.freeze").arg(index);
@@ -29,6 +32,8 @@ LiveAction LiveAction::fromId(const QString& id) {
     };
     if (p.size() == 1) {
         a.kind = id == "lock" ? Lock : id == "take" ? Take : id == "cut" ? Cut : id == "ftb" ? Ftb : id == "blackAll" ? BlackAll : None;
+    } else if (id == "slide.next" || id == "slide.prev") {
+        a.kind = id == "slide.next" ? SlideNext : SlidePrev;
     } else if (p.size() == 2 && p[0] == "preview") {
         a.index = number(p[1], kPreviewCount);
         if (a.index) a.kind = Preview;
@@ -43,15 +48,17 @@ LiveAction LiveAction::fromId(const QString& id) {
 QString LiveAction::label(const QString& outputName) const {
     const QString out = QString("Output %1%2").arg(index).arg(outputName.isEmpty() ? QString() : " (" + outputName + ")");
     switch (kind) {
-    case Lock: return "Khoá vận hành (chỉ khoá)";
+    case Lock: return LC_TR("Khoá vận hành (chỉ khoá)");
     case Take: return "TAKE";
     case Cut: return "CUT";
     case Ftb: return "FTB";
     case BlackAll: return "BLACK ALL";
-    case Preview: return QString("Chọn Preview %1").arg(index);
-    case OutputBlack: return out + ": Đen";
-    case OutputFreeze: return out + ": Dừng";
-    case OutputPattern: return out + ": Mẫu";
+    case SlideNext: return LC_TR("PowerPoint: slide tiếp");
+    case SlidePrev: return LC_TR("PowerPoint: slide trước");
+    case Preview: return QString(LC_TR("Chọn Preview %1")).arg(index);
+    case OutputBlack: return out + LC_TR(": Đen");
+    case OutputFreeze: return out + LC_TR(": Dừng");
+    case OutputPattern: return out + LC_TR(": Mẫu");
     case None: break;
     }
     return "?";
@@ -64,6 +71,8 @@ int LiveAction::order() const {
     case Cut: return 2;
     case Ftb: return 3;
     case BlackAll: return 4;
+    case SlideNext: return 5;
+    case SlidePrev: return 6;
     case Preview: return 10 + index;
     case OutputBlack: return 100 + index * 3;
     case OutputFreeze: return 101 + index * 3;
@@ -74,7 +83,7 @@ int LiveAction::order() const {
 }
 
 QStringList LiveAction::allIds(int outputCount) {
-    QStringList ids = {"lock", "take", "cut", "ftb", "blackAll"};
+    QStringList ids = {"lock", "take", "cut", "ftb", "blackAll", "slide.next", "slide.prev"};
     for (int i = 1; i <= kPreviewCount; ++i) ids << QString("preview.%1").arg(i);
     for (int o = 1; o <= std::min(outputCount, kMaxOutputIndex); ++o)
         for (const char* what : {"black", "freeze", "pattern"}) ids << QString("output.%1.%2").arg(o).arg(what);

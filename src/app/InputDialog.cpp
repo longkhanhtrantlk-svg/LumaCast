@@ -1,4 +1,5 @@
 #include "InputDialog.h"
+#include "core/I18n.h"
 #include "core/AppSettings.h"
 #include <QCheckBox>
 #include <QComboBox>
@@ -18,24 +19,24 @@ namespace lc {
 
 InputDialog::InputDialog(MidiService& midi, const QStringList& outputNames, const KeyMap& keys, QWidget* parent)
     : QDialog(parent), midi_(midi), original_(midi.config()), draft_(midi.config()) {
-    setWindowTitle("Phím tắt và MIDI");
+    setWindowTitle(LC_TR("Phím tắt và MIDI"));
     setObjectName("inputDialog");
     resize(860, 640);
     midi_.setSuspended(true);                              // trong luc gan nut: khong chay lenh tu MIDI
     auto* root = new QVBoxLayout(this);
 
     auto* top = new QHBoxLayout;
-    midiOn_ = new QCheckBox("Bật điều khiển MIDI");
+    midiOn_ = new QCheckBox(LC_TR("Bật điều khiển MIDI"));
     midiOn_->setObjectName("midiEnable");
     midiOn_->setChecked(draft_.enabled);
     device_ = new QComboBox;
     device_->setObjectName("midiDevice");
     device_->setMinimumWidth(220);
-    auto* again = new QPushButton("Kết nối lại");
+    auto* again = new QPushButton(LC_TR("Kết nối lại"));
     again->setObjectName("midiReconnect");
     again->setAutoDefault(false);
     top->addWidget(midiOn_);
-    top->addWidget(new QLabel("Thiết bị:"));
+    top->addWidget(new QLabel(LC_TR("Thiết bị:")));
     top->addWidget(device_, 1);
     top->addWidget(again);
     root->addLayout(top);
@@ -47,9 +48,9 @@ InputDialog::InputDialog(MidiService& midi, const QStringList& outputNames, cons
     last_->setObjectName("midiLast");
     root->addWidget(last_);
 
-    auto* help = new QLabel("Space luôn là TAKE, Enter luôn là CUT (TAKE/CUT có thể thêm một phím phụ). Bấm <b>Học</b> rồi nhấn nút trên thiết bị MIDI. "
+    auto* help = new QLabel(LC_TR("Space luôn là TAKE, Enter luôn là CUT (TAKE/CUT có thể thêm một phím phụ). Bấm <b>Học</b> rồi nhấn nút trên thiết bị MIDI. "
                             "Nút MIDI tác động lên kênh và hiệu ứng đang chọn; chọn Preview từ MIDI không bao giờ đổi Program. "
-                            "Trong lúc hộp thoại này mở, nút MIDI không điều khiển chương trình. Không có phím hay nút nào mở khoá được.");
+                            "Trong lúc hộp thoại này mở, nút MIDI không điều khiển chương trình. Không có phím hay nút nào mở khoá được."));
     help->setWordWrap(true);
     root->addWidget(help);
 
@@ -61,7 +62,7 @@ InputDialog::InputDialog(MidiService& midi, const QStringList& outputNames, cons
 
     table_ = new QTableWidget(int(ids.size()), 5);
     table_->setObjectName("inputTable");
-    table_->setHorizontalHeaderLabels({"Lệnh", "Phím tắt", "Nút MIDI", "", ""});
+    table_->setHorizontalHeaderLabels({LC_TR("Lệnh"), LC_TR("Phím tắt"), LC_TR("Nút MIDI"), "", ""});
     table_->verticalHeader()->setVisible(false);
     table_->setSelectionMode(QAbstractItemView::NoSelection);
     table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -76,7 +77,7 @@ InputDialog::InputDialog(MidiService& midi, const QStringList& outputNames, cons
         row.id = ids[r];
         const bool isOutput = a.kind == LiveAction::OutputBlack || a.kind == LiveAction::OutputFreeze || a.kind == LiveAction::OutputPattern;
         row.name = a.label(isOutput && a.index <= outputNames.size() ? outputNames[a.index - 1] : QString());
-        if (isOutput && a.index > outputNames.size()) row.name += "  (không có trong project này)";
+        if (isOutput && a.index > outputNames.size()) row.name += LC_TR("  (không có trong project này)");
         table_->setItem(r, 0, new QTableWidgetItem(row.name));
 
         auto* keyCell = new QWidget;
@@ -89,7 +90,7 @@ InputDialog::InputDialog(MidiService& midi, const QStringList& outputNames, cons
         row.key->setMaximumSequenceLength(1);
         row.key->setClearButtonEnabled(true);
         row.key->setKeySequence(keys.value(row.id));
-        if (auto* line = row.key->findChild<QLineEdit*>()) line->setPlaceholderText(fixed.isEmpty() ? "Nhấn phím…" : "Phím phụ…");
+        if (auto* line = row.key->findChild<QLineEdit*>()) line->setPlaceholderText(fixed.isEmpty() ? LC_TR("Nhấn phím…") : LC_TR("Phím phụ…"));
         kl->addWidget(row.key, 1);
         table_->setCellWidget(r, 1, keyCell);
         connect(row.key, &QKeySequenceEdit::keySequenceChanged, this, [this] { validate(); });
@@ -99,12 +100,12 @@ InputDialog::InputDialog(MidiService& midi, const QStringList& outputNames, cons
         row.midi->setContentsMargins(6, 0, 6, 0);
         table_->setCellWidget(r, 2, row.midi);
         if (a.externalAllowed()) {
-            row.learn = new QPushButton("Học");
+            row.learn = new QPushButton(LC_TR("Học"));
             row.learn->setObjectName("learn:" + row.id);
             row.learn->setAutoDefault(false);
             table_->setCellWidget(r, 3, row.learn);
             connect(row.learn, &QPushButton::clicked, this, [this, id = row.id] { if (learning_ == id) stopLearn(); else startLearn(id); });
-            auto* clr = new QPushButton("Xoá");
+            auto* clr = new QPushButton(LC_TRC("Xoá", "clear binding"));
             clr->setObjectName("clearMidi:" + row.id);
             clr->setAutoDefault(false);
             table_->setCellWidget(r, 4, clr);
@@ -125,7 +126,7 @@ InputDialog::InputDialog(MidiService& midi, const QStringList& outputNames, cons
     err_->setWordWrap(true);
     root->addWidget(err_);
     auto* bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    auto* restore = bb->addButton("Khôi phục phím mặc định", QDialogButtonBox::ResetRole);
+    auto* restore = bb->addButton(LC_TR("Khôi phục phím mặc định"), QDialogButtonBox::ResetRole);
     restore->setObjectName("restoreDefaults");
     restore->setAutoDefault(false);
     root->addWidget(bb);
@@ -146,7 +147,7 @@ InputDialog::InputDialog(MidiService& midi, const QStringList& outputNames, cons
         refreshRows();
     });
     connect(&midi_, &MidiService::pressed, this, [this](const MidiBinding& b) {
-        last_->setText("Vừa nhận: " + b.label());
+        last_->setText(LC_TR("Vừa nhận: ") + b.label());
         if (learning_.isEmpty()) return;
         draft_.map.insert(learning_, b);
         learning_.clear();
@@ -183,11 +184,11 @@ void InputDialog::refreshDevices() {
     deviceList_ = midi_.devices();
     QSignalBlocker block(device_);
     device_->clear();
-    device_->addItem("(chưa chọn)", QString());
+    device_->addItem(LC_TR("(chưa chọn)"), QString());
     for (const QString& d : std::as_const(deviceList_)) device_->addItem(d, d);
-    if (!draft_.device.isEmpty() && !deviceList_.contains(draft_.device)) device_->addItem(draft_.device + "  (chưa cắm)", draft_.device);
+    if (!draft_.device.isEmpty() && !deviceList_.contains(draft_.device)) device_->addItem(draft_.device + LC_TR("  (chưa cắm)"), draft_.device);
     device_->setCurrentIndex(std::max(0, device_->findData(draft_.device)));
-    status_->setText(midi_.statusText() + (deviceList_.isEmpty() ? "  ·  Máy chưa thấy cổng MIDI nào." : ""));
+    status_->setText(midi_.statusText() + (deviceList_.isEmpty() ? LC_TR("  ·  Máy chưa thấy cổng MIDI nào.") : ""));
 }
 
 void InputDialog::applyDevice() {
@@ -216,12 +217,12 @@ void InputDialog::stopLearn() {
 void InputDialog::refreshRows() {
     for (const Row& r : std::as_const(rows_)) {
         if (!r.learn) {                                     // khoa van hanh: chi tren may
-            r.midi->setText("— (chỉ trên máy)");
+            r.midi->setText(LC_TR("— (chỉ trên máy)"));
             continue;
         }
         const bool me = learning_ == r.id;
-        r.midi->setText(me ? "Nhấn nút trên thiết bị…" : draft_.map.value(r.id).label());
-        r.learn->setText(me ? "Huỷ học" : "Học");
+        r.midi->setText(me ? LC_TR("Nhấn nút trên thiết bị…") : draft_.map.value(r.id).label());
+        r.learn->setText(me ? LC_TR("Huỷ học") : LC_TR("Học"));
         r.learn->setEnabled(midi_.connected());
     }
 }
@@ -243,9 +244,9 @@ QString InputDialog::validate() {
         QStringList why;
         const QKeySequence seq = k.value(r.id);
         const QString reserved = shortcuts::reservedReason(seq);
-        if (!reserved.isEmpty()) why << QString("phím %1: %2").arg(seq.toString(QKeySequence::NativeText), reserved);
-        if (dupKeys.contains(r.id)) why << QString("trùng phím %1").arg(seq.toString(QKeySequence::NativeText));
-        if (dupMidi.contains(r.id)) why << "trùng nút MIDI " + draft_.map.value(r.id).label();
+        if (!reserved.isEmpty()) why << QString(LC_TR("phím %1: %2")).arg(seq.toString(QKeySequence::NativeText), reserved);
+        if (dupKeys.contains(r.id)) why << QString(LC_TR("trùng phím %1")).arg(seq.toString(QKeySequence::NativeText));
+        if (dupMidi.contains(r.id)) why << LC_TR("trùng nút MIDI ") + draft_.map.value(r.id).label();
         QTableWidgetItem* it = table_->item(i, 0);
         if (!it) continue;
         it->setText(why.isEmpty() ? r.name : "⚠ " + r.name);
@@ -254,7 +255,7 @@ QString InputDialog::validate() {
         for (const QString& w : std::as_const(why)) errors << r.name + ": " + w;
     }
     QString text = errors.mid(0, 4).join("\n");
-    if (errors.size() > 4) text += QString("\n… và %1 lỗi nữa").arg(errors.size() - 4);
+    if (errors.size() > 4) text += QString(LC_TR("\n… và %1 lỗi nữa")).arg(errors.size() - 4);
     err_->setText(text);
     return text;
 }

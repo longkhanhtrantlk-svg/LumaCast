@@ -1,4 +1,5 @@
 #include "ScreenDialog.h"
+#include "core/I18n.h"
 #include "Icons.h"
 #include "core/AppSettings.h"
 #include "render/OutputHealth.h"
@@ -61,7 +62,7 @@ QHBoxLayout* line(std::initializer_list<QWidget*> widgets, bool stretch = true) 
 }
 QString screenLabel(int i, const QScreen* s) {
     const QSize px = s->geometry().size() * s->devicePixelRatio();
-    return QString("Màn %1: %2 (%3×%4)").arg(i + 1).arg(s->name()).arg(px.width()).arg(px.height());
+    return QString(LC_TR("Màn %1: %2 (%3×%4)")).arg(i + 1).arg(s->name()).arg(px.width()).arg(px.height());
 }
 int resolveScreen(const OutputConfig& c) {
     QStringList names;
@@ -81,7 +82,7 @@ bool singleFullOutput(const std::vector<OutputConfig>& outputs, int channel) {
 
 ScreenDialog::ScreenDialog(Project& project, QWidget* parent) : QDialog(parent), project_(project) {
     setObjectName("screenDialog");
-    setWindowTitle("Màn hình và khung hình");
+    setWindowTitle(LC_TR("Màn hình và khung hình"));
     build();
     QSize want(980, 700);
     if (const QScreen* sc = parent ? parent->screen() : QGuiApplication::primaryScreen())
@@ -108,39 +109,39 @@ void ScreenDialog::build() {
     addB_ = new QToolButton;
     addB_->setObjectName("sdAdd");
     addB_->setIcon(glyphIcon(Glyph::Add));
-    addB_->setToolTip("Thêm Output (một màn hình nữa)");
+    addB_->setToolTip(LC_TR("Thêm Output (một màn hình nữa)"));
     removeB_ = new QToolButton;
     removeB_->setObjectName("sdRemove");
     removeB_->setIcon(glyphIcon(Glyph::Delete));
-    removeB_->setToolTip("Xoá Output đang chọn");
+    removeB_->setToolTip(LC_TR("Xoá Output đang chọn"));
     ov->addLayout(line({addB_, removeB_}));
     left->addWidget(outputsBox);
 
     // ----- khung hinh -----
-    auto* canvasBox = new QGroupBox("Khung hình (canvas) của kênh");
+    auto* canvasBox = new QGroupBox(LC_TR("Khung hình (canvas) của kênh"));
     auto* cv = new QVBoxLayout(canvasBox);
     canvasTitle_ = new QLabel;
-    canvasW_ = pixels("sdCanvasW", kMinCanvasSide, kMaxCanvasSide, 1920, "rộng ");
-    canvasH_ = pixels("sdCanvasH", kMinCanvasSide, kMaxCanvasSide, 1080, "cao ");
-    auto* match = button("sdMatch", "Bằng chỗ hiện", "Đặt khung hình đúng bằng vùng LED / độ phân giải của Output đang chọn (1:1)");
+    canvasW_ = pixels("sdCanvasW", kMinCanvasSide, kMaxCanvasSide, 1920, LC_TR("rộng "));
+    canvasH_ = pixels("sdCanvasH", kMinCanvasSide, kMaxCanvasSide, 1080, LC_TR("cao "));
+    auto* match = button("sdMatch", LC_TR("Bằng chỗ hiện"), LC_TR("Đặt khung hình đúng bằng vùng LED / độ phân giải của Output đang chọn (1:1)"));
     cv->addWidget(canvasTitle_);
     cv->addLayout(line({canvasW_, canvasH_, match}));
-    allScenesBox_ = new QCheckBox("Đặt mọi Scene theo khung hình này");
+    allScenesBox_ = new QCheckBox(LC_TR("Đặt mọi Scene theo khung hình này"));
     allScenesBox_->setObjectName("sdAllScenes");
-    allScenesBox_->setToolTip("Bỏ chọn: chỉ Scene đang dựng đúng bằng khung hình cũ được đổi theo");
+    allScenesBox_->setToolTip(LC_TR("Bỏ chọn: chỉ Scene đang dựng đúng bằng khung hình cũ được đổi theo"));
     cv->addWidget(allScenesBox_);
     left->addWidget(canvasBox);
 
     // ----- video wall -----
-    auto* wallBox = new QGroupBox("Video wall (nhiều màn ghép)");
+    auto* wallBox = new QGroupBox(LC_TR("Video wall (nhiều màn ghép)"));
     auto* wv = new QVBoxLayout(wallBox);
-    cols_ = pixels("sdWallCols", 1, 16, 2, "cột ");
-    rows_ = pixels("sdWallRows", 1, 16, 1, "hàng ");
-    cellW_ = pixels("sdCellW", kMinCanvasSide, kMaxCanvasSide, 1920, "ô rộng ");
-    cellH_ = pixels("sdCellH", kMinCanvasSide, kMaxCanvasSide, 1080, "cao ");
-    gapX_ = pixels("sdGapX", 0, kMaxWallGap, 0, "khe ngang ");
-    gapY_ = pixels("sdGapY", 0, kMaxWallGap, 0, "khe dọc ");
-    auto* makeWallB = button("sdWall", "Tạo video wall", "Thay các Output màn hình của kênh này bằng một lưới cột × hàng, kèm khung hình tương ứng");
+    cols_ = pixels("sdWallCols", 1, 16, 2, LC_TR("cột "));
+    rows_ = pixels("sdWallRows", 1, 16, 1, LC_TR("hàng "));
+    cellW_ = pixels("sdCellW", kMinCanvasSide, kMaxCanvasSide, 1920, LC_TR("ô rộng "));
+    cellH_ = pixels("sdCellH", kMinCanvasSide, kMaxCanvasSide, 1080, LC_TR("cao "));
+    gapX_ = pixels("sdGapX", 0, kMaxWallGap, 0, LC_TR("khe ngang "));
+    gapY_ = pixels("sdGapY", 0, kMaxWallGap, 0, LC_TR("khe dọc "));
+    auto* makeWallB = button("sdWall", LC_TR("Tạo video wall"), LC_TR("Thay các Output màn hình của kênh này bằng một lưới cột × hàng, kèm khung hình tương ứng"));
     wv->addLayout(line({cols_, rows_}));
     wv->addLayout(line({cellW_, cellH_}));
     wv->addLayout(line({gapX_, gapY_}));
@@ -149,47 +150,47 @@ void ScreenDialog::build() {
     left->addStretch();
 
     // ----- Output dang chon -----
-    auto* props = new QGroupBox("Output đang chọn");
+    auto* props = new QGroupBox(LC_TR("Output đang chọn"));
     auto* form = new QFormLayout(props);
     name_ = new QLineEdit;
     name_->setObjectName("sdName");
-    form->addRow("Tên", name_);
+    form->addRow(LC_TR("Tên"), name_);
     channel_ = new QComboBox;
     channel_->setObjectName("sdChannel");
     for (size_t i = 0; i < project_.channels.size(); ++i)
-        channel_->addItem(QString("Kênh %1: %2").arg(i + 1).arg(project_.channels[i]->name));
-    form->addRow("Kênh", channel_);
+        channel_->addItem(QString(LC_TR("Kênh %1: %2")).arg(i + 1).arg(project_.channels[i]->name));
+    form->addRow(LC_TR("Kênh"), channel_);
     form->setRowVisible(channel_, project_.channels.size() > 1);
     mode_ = new QComboBox;
     mode_->setObjectName("sdMode");
-    mode_->addItems({"Cửa sổ thường (để thử)", "Toàn màn hình (ra LED)"});
-    form->addRow("Hiển thị", mode_);
+    mode_->addItems({LC_TR("Cửa sổ thường (để thử)"), LC_TR("Toàn màn hình (ra LED)")});
+    form->addRow(LC_TR("Hiển thị"), mode_);
     screen_ = new QComboBox;
     screen_->setObjectName("sdScreen");
-    form->addRow("Màn hình", screen_);
-    w_ = pixels("sdW", kMinCanvasSide, kMaxCanvasSide, 1920, "rộng ");
-    h_ = pixels("sdH", kMinCanvasSide, kMaxCanvasSide, 1080, "cao ");
+    form->addRow(LC_TR("Màn hình"), screen_);
+    w_ = pixels("sdW", kMinCanvasSide, kMaxCanvasSide, 1920, LC_TR("rộng "));
+    h_ = pixels("sdH", kMinCanvasSide, kMaxCanvasSide, 1080, LC_TR("cao "));
     auto* sizeRow = new QWidget;
     auto* sh = line({w_, h_});
     sh->setContentsMargins(0, 0, 0, 0);
     sizeRow->setLayout(sh);
-    form->addRow("Rộng × cao", sizeRow);
+    form->addRow(LC_TR("Rộng × cao"), sizeRow);
     scale_ = new QComboBox;
     scale_->setObjectName("sdScale");
-    scale_->addItems({"Fit (giữ tỉ lệ, có thể viền đen)", "Fill (phủ kín, có thể cắt mép)", "Stretch (kéo cho vừa)", "1:1 (không co giãn)"});
-    form->addRow("Đặt hình", scale_);
+    scale_->addItems({LC_TR("Fit (giữ tỉ lệ, có thể viền đen)"), LC_TR("Fill (phủ kín, có thể cắt mép)"), LC_TR("Stretch (kéo cho vừa)"), LC_TR("1:1 (không co giãn)")});
+    form->addRow(LC_TR("Đặt hình"), scale_);
 
-    areaBox_ = new QGroupBox("LED chỉ lấy một vùng của tín hiệu");
+    areaBox_ = new QGroupBox(LC_TR("LED chỉ lấy một vùng của tín hiệu"));
     areaBox_->setObjectName("sdAreaBox");
     areaBox_->setCheckable(true);
-    areaBox_->setToolTip("Bật khi LED nhỏ hơn tín hiệu và bộ xử lý lấy đúng một góc của hình: hình chỉ đặt trong vùng này, ngoài vùng để đen");
+    areaBox_->setToolTip(LC_TR("Bật khi LED nhỏ hơn tín hiệu và bộ xử lý lấy đúng một góc của hình: hình chỉ đặt trong vùng này, ngoài vùng để đen"));
     auto* av = new QVBoxLayout(areaBox_);
     areaX_ = pixels("sdAreaX", 0, kMaxCanvasSide, 0, "x ");
     areaY_ = pixels("sdAreaY", 0, kMaxCanvasSide, 0, "y ");
-    areaW_ = pixels("sdAreaW", kMinCanvasSide, kMaxCanvasSide, 1920, "rộng ");
-    areaH_ = pixels("sdAreaH", kMinCanvasSide, kMaxCanvasSide, 1080, "cao ");
-    auto* topLeft = button("sdTopLeft", "Góc trên trái");
-    auto* center = button("sdCenter", "Giữa khung");
+    areaW_ = pixels("sdAreaW", kMinCanvasSide, kMaxCanvasSide, 1920, LC_TR("rộng "));
+    areaH_ = pixels("sdAreaH", kMinCanvasSide, kMaxCanvasSide, 1080, LC_TR("cao "));
+    auto* topLeft = button("sdTopLeft", LC_TR("Góc trên trái"));
+    auto* center = button("sdCenter", LC_TR("Giữa khung"));
     av->addLayout(line({areaW_, areaH_}));
     av->addLayout(line({areaX_, areaY_, topLeft, center}));
     metersW_ = meters("sdMetersW", 4, " m");
@@ -200,13 +201,13 @@ void ScreenDialog::build() {
     pitch_->setDecimals(2);
     pitch_->setValue(2.5);
     pitch_->setPrefix("P");
-    pitch_->setToolTip("Pixel pitch của tấm LED (mm giữa hai điểm ảnh): P2.5 = 2,5 mm");
+    pitch_->setToolTip(LC_TR("Pixel pitch của tấm LED (mm giữa hai điểm ảnh): P2.5 = 2,5 mm"));
     ledPixels_ = new QLabel;
     ledPixels_->setObjectName("sdLedPixels");
-    auto* fromMeters = button("sdFromMeters", "Dùng số này", "Điền số điểm ảnh tính được vào rộng/cao của vùng LED");
-    av->addLayout(line({new QLabel("Màn LED"), metersW_, new QLabel("×"), metersH_, pitch_}));
+    auto* fromMeters = button("sdFromMeters", LC_TR("Dùng số này"), LC_TR("Điền số điểm ảnh tính được vào rộng/cao của vùng LED"));
+    av->addLayout(line({new QLabel(LC_TR("Màn LED")), metersW_, new QLabel("×"), metersH_, pitch_}));
     av->addLayout(line({ledPixels_, fromMeters}));
-    follow_ = new QCheckBox("Khung hình = đúng vùng LED (1:1)");
+    follow_ = new QCheckBox(LC_TR("Khung hình = đúng vùng LED (1:1)"));
     follow_->setObjectName("sdFollow");
     follow_->setChecked(true);
     av->addWidget(follow_);
@@ -214,13 +215,13 @@ void ScreenDialog::build() {
     right->addWidget(props);
 
     // ----- cau hinh luu san -----
-    auto* presetBox = new QGroupBox("Cấu hình LED đã lưu (theo máy này)");
+    auto* presetBox = new QGroupBox(LC_TR("Cấu hình LED đã lưu (theo máy này)"));
     auto* ph = new QHBoxLayout(presetBox);
     presets_ = new QComboBox;
     presets_->setObjectName("sdPresets");
-    auto* load = button("sdPresetLoad", "Dùng", "Điền vùng LED và khung hình đã lưu cho Output đang chọn (còn phải bấm Áp dụng)");
-    auto* save = button("sdPresetSave", "Lưu…", "Lưu vùng LED + khung hình hiện tại thành một cấu hình đặt tên");
-    auto* del = button("sdPresetDelete", "Xoá", "Xoá cấu hình đã lưu đang chọn");
+    auto* load = button("sdPresetLoad", LC_TR("Dùng"), LC_TR("Điền vùng LED và khung hình đã lưu cho Output đang chọn (còn phải bấm Áp dụng)"));
+    auto* save = button("sdPresetSave", LC_TR("Lưu…"), LC_TR("Lưu vùng LED + khung hình hiện tại thành một cấu hình đặt tên"));
+    auto* del = button("sdPresetDelete", LC_TR("Xoá"), LC_TR("Xoá cấu hình đã lưu đang chọn"));
     ph->addWidget(presets_, 1);
     ph->addWidget(load);
     ph->addWidget(save);
@@ -245,10 +246,10 @@ void ScreenDialog::build() {
     warnArea->setMinimumHeight(60);
     outer->addWidget(warnArea);
 
-    patternB_ = button("sdPattern", "Mẫu thử", "Hiện mẫu thử (viền, thước, ô kiểm tra 1:1) trên các Output ĐANG CHẠY; bấm Áp dụng trước nếu vừa đổi");
+    patternB_ = button("sdPattern", LC_TR("Mẫu thử"), LC_TR("Hiện mẫu thử (viền, thước, ô kiểm tra 1:1) trên các Output ĐANG CHẠY; bấm Áp dụng trước nếu vừa đổi"));
     patternB_->setCheckable(true);
-    applyB_ = button("sdApply", "Áp dụng", "Đổi Output / khung hình ngay. Hoàn tác được (Ctrl+Z). Không đổi Preview/Program");
-    auto* close = button("sdClose", "Đóng");
+    applyB_ = button("sdApply", LC_TR("Áp dụng"), LC_TR("Đổi Output / khung hình ngay. Hoàn tác được (Ctrl+Z). Không đổi Preview/Program"));
+    auto* close = button("sdClose", LC_TR("Đóng"));
     auto* bottom = new QHBoxLayout;
     bottom->addWidget(patternB_);
     bottom->addStretch();
@@ -321,7 +322,7 @@ void ScreenDialog::build() {
                       areaW_->value(), areaH_->value()));
     });
     auto showLed = [this] {
-        ledPixels_->setText(QString("= %1 × %2 điểm ảnh").arg(ledPixels(metersW_->value(), pitch_->value())).arg(ledPixels(metersH_->value(), pitch_->value())));
+        ledPixels_->setText(QString(LC_TR("= %1 × %2 điểm ảnh")).arg(ledPixels(metersW_->value(), pitch_->value())).arg(ledPixels(metersH_->value(), pitch_->value())));
     };
     for (QDoubleSpinBox* s : {metersW_, metersH_, pitch_}) connect(s, &QDoubleSpinBox::valueChanged, this, [showLed] { showLed(); });
     showLed();
@@ -356,7 +357,7 @@ void ScreenDialog::build() {
     connect(makeWallB, &QPushButton::clicked, this, [this] { makeWallFromFields(); });
     connect(load, &QPushButton::clicked, this, [this] { loadPreset(presets_->currentText()); });
     connect(save, &QPushButton::clicked, this, [this] {
-        const QString name = QInputDialog::getText(this, "Lưu cấu hình LED", "Tên (vd. sự kiện / nhà cung cấp):", QLineEdit::Normal, presets_->currentText());
+        const QString name = QInputDialog::getText(this, LC_TR("Lưu cấu hình LED"), LC_TR("Tên (vd. sự kiện / nhà cung cấp):"), QLineEdit::Normal, presets_->currentText());
         if (!name.trimmed().isEmpty()) savePreset(name.trimmed());
     });
     connect(del, &QPushButton::clicked, this, [this] { deletePreset(presets_->currentText()); });
@@ -416,7 +417,7 @@ void ScreenDialog::syncForm() {
             if (c.screenName.isEmpty() ? k == std::max(0, c.screenIndex) : screens[k]->name() == c.screenName) sel = k;
         }
         if (sel < 0 && c.fullscreen) {                               // man cua project khong co tren may nay: giu nguyen
-            screen_->addItem("(không có trên máy này) " + c.screenName, -1);
+            screen_->addItem(LC_TR("(không có trên máy này) ") + c.screenName, -1);
             sel = screen_->count() - 1;
         }
         screen_->setCurrentIndex(std::max(0, sel));
@@ -436,7 +437,7 @@ void ScreenDialog::syncForm() {
         areaH_->setValue(a.height());
         follow_->setEnabled(singleFullOutput(draft_.outputs, c.channel));
         const QSize canvas = canvasOfSelected();
-        canvasTitle_->setText(QString("Kênh %1").arg(c.channel + 1));
+        canvasTitle_->setText(QString(LC_TR("Kênh %1")).arg(c.channel + 1));
         canvasW_->setValue(canvas.width());
         canvasH_->setValue(canvas.height());
         allScenesBox_->setChecked(c.channel < int(allScenes_.size()) && allScenes_[size_t(c.channel)]);
@@ -482,7 +483,7 @@ void ScreenDialog::makeWallFromFields() {
     const QSize cell(cellW_->value(), cellH_->value()), gap(cols > 1 ? gapX_->value() : 0, rows > 1 ? gapY_->value() : 0);
     const QSize canvas = wallCanvas(cols, rows, cell, gap);
     if (canvas.width() > kMaxCanvasSide || canvas.height() > kMaxCanvasSide) {
-        warnings_->setText(QString("Không tạo được video wall: khung hình %1×%2 vượt quá %3 điểm ảnh.").arg(canvas.width()).arg(canvas.height()).arg(kMaxCanvasSide));
+        warnings_->setText(QString(LC_TR("Không tạo được video wall: khung hình %1×%2 vượt quá %3 điểm ảnh.")).arg(canvas.width()).arg(canvas.height()).arg(kMaxCanvasSide));
         return;
     }
     const int sel = selectedOutput();
@@ -512,11 +513,11 @@ QStringList ScreenDialog::warnings() const {
             w << c.name + ": " + t;
         if (!c.fullscreen || c.kind != OutputKind::Screen) continue;
         const int k = resolveScreen(c);
-        if (k < 0) { w << c.name + ": màn hình này không có trên máy — Output sẽ không hiện."; continue; }
+        if (k < 0) { w << c.name + LC_TR(": màn hình này không có trên máy — Output sẽ không hiện."); continue; }
         if (std::find(usedScreens.begin(), usedScreens.end(), k) != usedScreens.end())
-            w << c.name + ": trùng màn hình với Output khác (sẽ che nhau).";
+            w << c.name + LC_TR(": trùng màn hình với Output khác (sẽ che nhau).");
         usedScreens.push_back(k);
-        if (control && screens[k] == control) w << c.name + ": màn này đang chứa bảng điều khiển — Output toàn màn hình sẽ che nó.";
+        if (control && screens[k] == control) w << c.name + LC_TR(": màn này đang chứa bảng điều khiển — Output toàn màn hình sẽ che nó.");
     }
     for (int c = 0; c < int(draft_.canvases.size()) && c < int(project_.channels.size()); ++c) {
         if (c < int(allScenes_.size()) && allScenes_[size_t(c)]) continue;
@@ -533,7 +534,7 @@ QStringList ScreenDialog::warnings() const {
 
 void ScreenDialog::updateWarnings() {
     const QStringList w = warnings();
-    warnings_->setText(w.isEmpty() ? QString("✓ Không có co giãn hay cắt hình.") : "⚠ " + w.join("\n⚠ "));
+    warnings_->setText(w.isEmpty() ? QString(LC_TR("✓ Không có co giãn hay cắt hình.")) : "⚠ " + w.join("\n⚠ "));
     warnings_->setStyleSheet(w.isEmpty() ? "color:#81c784" : "color:#ffb74d");
 }
 
@@ -552,10 +553,10 @@ bool ScreenDialog::applyDraft() {
         covers = covers || (k >= 0 && control && screens[k] == control && !already);
     }
     if (covers) {
-        const QString q = "Một Output toàn màn hình sẽ nằm trên chính màn đang chứa bảng điều khiển và che nó.\n"
-                          "Muốn thoát: bấm vào hình đó rồi nhấn Esc.\n\nVẫn áp dụng?";
+        const QString q = LC_TR("Một Output toàn màn hình sẽ nằm trên chính màn đang chứa bảng điều khiển và che nó.\n"
+                          "Muốn thoát: bấm vào hình đó rồi nhấn Esc.\n\nVẫn áp dụng?");
         const bool yes = confirm ? confirm(q)
-                                 : QMessageBox::warning(this, "Che bảng điều khiển", q, QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes;
+                                 : QMessageBox::warning(this, LC_TR("Che bảng điều khiển"), q, QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes;
         if (!yes) return false;
     }
     if (!apply(draft_, allScenes_)) return false;
@@ -621,24 +622,24 @@ void ScreenDialog::deletePreset(const QString& name) {
 
 NewProjectDialog::NewProjectDialog(QWidget* parent) : QDialog(parent) {
     setObjectName("newProjectDialog");
-    setWindowTitle("Project mới");
+    setWindowTitle(LC_TR("Project mới"));
     auto* v = new QVBoxLayout(this);
-    v->addWidget(new QLabel("Khung hình (canvas). Một màn LED qua một dây HDMI: để 1920×1080, đặt vùng LED sau trong \"Màn hình và khung hình\"."));
-    w_ = pixels("npW", kMinCanvasSide, kMaxCanvasSide, 1920, "rộng ");
-    h_ = pixels("npH", kMinCanvasSide, kMaxCanvasSide, 1080, "cao ");
+    v->addWidget(new QLabel(LC_TR("Khung hình (canvas). Một màn LED qua một dây HDMI: để 1920×1080, đặt vùng LED sau trong \"Màn hình và khung hình\".")));
+    w_ = pixels("npW", kMinCanvasSide, kMaxCanvasSide, 1920, LC_TR("rộng "));
+    h_ = pixels("npH", kMinCanvasSide, kMaxCanvasSide, 1080, LC_TR("cao "));
     v->addLayout(line({w_, h_}));
-    wall_ = new QGroupBox("Video wall: nhiều màn ghép (khung hình = ô × số màn + khe)");
+    wall_ = new QGroupBox(LC_TR("Video wall: nhiều màn ghép (khung hình = ô × số màn + khe)"));
     wall_->setObjectName("npWall");
     wall_->setCheckable(true);
     wall_->setChecked(false);
     auto* g = new QVBoxLayout(wall_);
-    cols_ = pixels("npCols", 1, 16, 2, "cột ");
-    rows_ = pixels("npRows", 1, 16, 1, "hàng ");
-    gapX_ = pixels("npGapX", 0, kMaxWallGap, 0, "khe ngang ");
-    gapY_ = pixels("npGapY", 0, kMaxWallGap, 0, "khe dọc ");
-    fullscreen_ = new QCheckBox("Mỗi ô toàn màn hình trên một màn (màn 2, 3…)");
+    cols_ = pixels("npCols", 1, 16, 2, LC_TR("cột "));
+    rows_ = pixels("npRows", 1, 16, 1, LC_TR("hàng "));
+    gapX_ = pixels("npGapX", 0, kMaxWallGap, 0, LC_TR("khe ngang "));
+    gapY_ = pixels("npGapY", 0, kMaxWallGap, 0, LC_TR("khe dọc "));
+    fullscreen_ = new QCheckBox(LC_TR("Mỗi ô toàn màn hình trên một màn (màn 2, 3…)"));
     fullscreen_->setObjectName("npFullscreen");
-    g->addWidget(new QLabel("Rộng × cao ở trên là cỡ của MỘT ô."));
+    g->addWidget(new QLabel(LC_TR("Rộng × cao ở trên là cỡ của MỘT ô.")));
     g->addLayout(line({cols_, rows_}));
     g->addLayout(line({gapX_, gapY_}));
     g->addWidget(fullscreen_);
@@ -648,8 +649,8 @@ NewProjectDialog::NewProjectDialog(QWidget* parent) : QDialog(parent) {
     info_->setWordWrap(true);
     v->addWidget(info_);
     auto* box = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    box->button(QDialogButtonBox::Ok)->setText("Tạo…");
-    box->button(QDialogButtonBox::Cancel)->setText("Huỷ");
+    box->button(QDialogButtonBox::Ok)->setText(LC_TR("Tạo…"));
+    box->button(QDialogButtonBox::Cancel)->setText(LC_TR("Huỷ"));
     v->addWidget(box);
     connect(box, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(box, &QDialogButtonBox::rejected, this, &QDialog::reject);
@@ -658,7 +659,7 @@ NewProjectDialog::NewProjectDialog(QWidget* parent) : QDialog(parent) {
         box->button(QDialogButtonBox::Ok)->setEnabled(p.isEmpty());
         const Project pr = p.isEmpty() ? project() : Project{};
         info_->setText(!p.isEmpty() ? p
-                                    : QString("Khung hình %1×%2, %3 Output.").arg(pr.channels[0]->size.width()).arg(pr.channels[0]->size.height()).arg(pr.outputs.size()));
+                                    : QString(LC_TR("Khung hình %1×%2, %3 Output.")).arg(pr.channels[0]->size.width()).arg(pr.channels[0]->size.height()).arg(pr.outputs.size()));
     };
     for (QSpinBox* s : {w_, h_, cols_, rows_, gapX_, gapY_}) connect(s, &QSpinBox::valueChanged, this, update);
     connect(wall_, &QGroupBox::toggled, this, update);
@@ -669,7 +670,7 @@ QString NewProjectDialog::problem() const {
     if (!wall_->isChecked()) return {};
     const QSize canvas = wallCanvas(cols_->value(), rows_->value(), QSize(w_->value(), h_->value()), QSize(gapX_->value(), gapY_->value()));
     if (canvas.width() > kMaxCanvasSide || canvas.height() > kMaxCanvasSide)
-        return QString("Khung hình %1×%2 vượt quá %3 điểm ảnh.").arg(canvas.width()).arg(canvas.height()).arg(kMaxCanvasSide);
+        return QString(LC_TR("Khung hình %1×%2 vượt quá %3 điểm ảnh.")).arg(canvas.width()).arg(canvas.height()).arg(kMaxCanvasSide);
     return {};
 }
 

@@ -1,4 +1,5 @@
 #include "PluginManager.h"
+#include "core/I18n.h"
 #include "core/AppSettings.h"
 #include "core/Features.h"
 #include <QCoreApplication>
@@ -96,17 +97,17 @@ void PluginManager::rescan() {
                 failed.push_back(info);
             };
             QFile mf(manifestPath);
-            if (!mf.open(QIODevice::ReadOnly)) { fail("khong doc duoc plugin.json"); continue; }
+            if (!mf.open(QIODevice::ReadOnly)) { fail(LC_TR("khong doc duoc plugin.json")); continue; }
             const QByteArray manifestBytes = mf.readAll();
             QJsonParseError pe;
             const QJsonDocument doc = QJsonDocument::fromJson(manifestBytes, &pe);
-            if (!doc.isObject()) { fail("plugin.json khong phai JSON hop le: " + pe.errorString()); continue; }
+            if (!doc.isObject()) { fail(LC_TR("plugin.json khong phai JSON hop le: ") + pe.errorString()); continue; }
             const QJsonObject m = doc.object();
             const QString entry = m["entry"].toString();
             // chi cho phep file shader NAM TRONG thu muc plug-in (chan "../..")
-            if (entry.isEmpty() || QFileInfo(entry).fileName() != entry) { fail("entry phai la ten file nam trong thu muc plug-in"); continue; }
+            if (entry.isEmpty() || QFileInfo(entry).fileName() != entry) { fail(LC_TR("entry phai la ten file nam trong thu muc plug-in")); continue; }
             QFile sf(folder + "/" + entry);
-            if (!sf.open(QIODevice::ReadOnly)) { fail("khong doc duoc file shader '" + entry + "'"); continue; }
+            if (!sf.open(QIODevice::ReadOnly)) { fail(LC_TR("khong doc duoc file shader '") + entry + "'"); continue; }
             const QByteArray shaderBytes = sf.readAll();
 
             EffectDef def;
@@ -114,7 +115,7 @@ void PluginManager::rescan() {
             if (!parseManifest(m, QString::fromUtf8(shaderBytes), def, &err)) { fail(err); continue; }
             info.id = def.id; info.name = def.name; info.version = def.version; info.author = def.author;
             info.description = def.description; info.kind = def.kind;
-            if (def.id.startsWith("builtin.")) { fail("id bat dau bang 'builtin.' la danh rieng cho Effect dung san"); continue; }
+            if (def.id.startsWith("builtin.")) { fail(LC_TR("id bat dau bang 'builtin.' la danh rieng cho Effect dung san")); continue; }
             def.dir = folder;
             QCryptographicHash h(QCryptographicHash::Sha1);
             h.addData(manifestBytes);

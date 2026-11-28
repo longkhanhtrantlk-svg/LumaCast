@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "core/I18n.h"
 #include "AboutInfo.h"
 #include "live/Ndi.h"
 #include "core/Features.h"
@@ -25,10 +26,12 @@
 #include "core/Startup.h"
 #include "TimelineWidget.h"
 #include "live/LiveSource.h"
+#include "live/SlideRemote.h"
 #include "render/NdiOutput.h"
 #include "render/OutputWindow.h"
 #include "Theme.h"
 #include <QAction>
+#include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QComboBox>
@@ -71,7 +74,7 @@ namespace lc {
 static const QStringList kImageExt = {"png", "jpg", "jpeg", "bmp", "gif", "webp"};
 static const QStringList kVideoExt = {"mp4", "mov", "mkv", "avi", "webm"};
 // Bo loc hop thoai "Nhap media..."; keo tha chi nhan cung cac phan mo rong nay.
-static const QString kMediaFilter = "Media (*." + (kVideoExt + kImageExt).join(" *.") + ");;Tất cả (*.*)";
+static QString mediaFilter() { return "Media (*." + (kVideoExt + kImageExt).join(" *.") + LC_TR(");;Tất cả (*.*)"); }
 
 // File tren may (hoac o mang) trong mot lan keo; rong neu khong phai keo file (vd. keo doi thu tu Layer).
 static QStringList draggedFiles(const QMimeData* mime) {
@@ -111,7 +114,7 @@ private:
 class RenameSceneCmd : public QUndoCommand {
 public:
     RenameSceneCmd(MainWindow* w, std::shared_ptr<Scene> s, QString after)
-        : QUndoCommand("Đổi tên Scene: " + after), w_(w), s_(std::move(s)), before_(s_->name), after_(std::move(after)) {}
+        : QUndoCommand(LC_TR("Đổi tên Scene: ") + after), w_(w), s_(std::move(s)), before_(s_->name), after_(std::move(after)) {}
     void redo() override { w_->applySceneName(s_, after_); }
     void undo() override { w_->applySceneName(s_, before_); }
 private:
@@ -179,6 +182,7 @@ MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList plugi
     statusBar()->insertPermanentWidget(0, statusReopen_);        // "permanent": thong bao tam thoi khong che mat nut
     connect(statusReopen_, &QPushButton::clicked, this, [this] { reopenOutputs(); });
     connect(ctl_, &ControlService::statusChanged, this, [this] { updateControlStatus(); });
+    setupUpdates();
     buildMenus();
     // Keo tha file tu Explorer. Loc o muc ung dung de moi widget trong cua so (ke ca o nhap so, von tu nhan tha) xu ly nhu nhau;
     // dock tach roi la cua so rieng nen cung phai bat nhan tha.
@@ -207,7 +211,7 @@ MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList plugi
         const ControlSettings cs = ControlSettings::load(cst);
         if (cs.httpEnabled || cs.oscEnabled) {
             const QString e = ctl_->apply(cs);
-            if (!e.isEmpty()) showMessage("Điều khiển ngoài: " + e.section('\n', 0, 0));
+            if (!e.isEmpty()) showMessage(LC_TR("Điều khiển ngoài: ") + e.section('\n', 0, 0));
         }
     }
     updateControlStatus();
@@ -218,8 +222,8 @@ MainWindow::MainWindow(Project& project, RenderEngine& engine, QStringList plugi
 void MainWindow::updateUndoActions() {
     undoAct_->setEnabled(!locked_ && undo_.canUndo());
     redoAct_->setEnabled(!locked_ && undo_.canRedo());
-    undoAct_->setText(undo_.canUndo() ? "Hoàn tác " + undo_.undoText() : "Hoàn tác");
-    redoAct_->setText(undo_.canRedo() ? "Làm lại " + undo_.redoText() : "Làm lại");
+    undoAct_->setText(undo_.canUndo() ? LC_TR("Hoàn tác ") + undo_.undoText() : LC_TR("Hoàn tác"));
+    redoAct_->setText(undo_.canRedo() ? LC_TR("Làm lại ") + undo_.redoText() : LC_TR("Làm lại"));
 }
 
 // UI-07. Khoa = vo hieu moi dieu khien SUA (Inspector, sua keyframe/thoi luong, nhap media, Plug-in, Hoan tac/Lam lai, mo project,
@@ -239,10 +243,13 @@ void MainWindow::setLocked(bool on) {
     overlayPanel_->setLocked(on);              // khoa: chi con hien/an va dong ho dem nguoc
     scenes_->setLocked(on);                    // khoa: khong nhap/doi ten/xoa/lap; phat/tua/tieng van dung duoc
     importAct_->setEnabled(!on);
-    for (QAction* a : {addNdiAct_, addCamAct_, addNdiOutAct_}) a->setEnabled(!on);
+    for (QAction* a : {addNdiAct_, addCamAct_, addWinAct_, addNdiOutAct_}) a->setEnabled(!on);
     openAct_->setEnabled(!on);
     recentMenu_->setEnabled(!on && !appSettings().value("recent").toStringList().isEmpty());
     settingsAct_->setEnabled(!on);
+    languageMenu_->setEnabled(!on);
+    updateAct_->setEnabled(!on);
+    refreshUpdateUi();
     screenAct_->setEnabled(!on);
     newAct_->setEnabled(!on);
     screenBtn_->setEnabled(!on);
@@ -250,12 +257,12 @@ void MainWindow::setLocked(bool on) {
     updateUndoActions();
     updateLayoutActions();
     refreshPreviewEditing();
-    lockLabel_->setText(on ? "🔒 KHOÁ VẬN HÀNH" : "🔓 Mở khoá");
+    lockLabel_->setText(on ? LC_TR("🔒 KHOÁ VẬN HÀNH") : LC_TR("🔓 Mở khoá"));
     lockLabel_->setStyleSheet(on ? "color:white;background:#8a1c1c;font-weight:bold;padding:0 8px" : "color:#8a90a2");
     updateTitle();
     if (changed) {
         qInfo().noquote() << (on ? "Khoá vận hành: BẬT" : "Khoá vận hành: TẮT");
-        showMessage(on ? "Đã khoá vận hành: chỉ còn điều khiển live" : "Đã mở khoá vận hành");
+        showMessage(on ? LC_TR("Đã khoá vận hành: chỉ còn điều khiển live") : LC_TR("Đã mở khoá vận hành"));
     }
 }
 
@@ -263,8 +270,8 @@ void MainWindow::updateControlStatus() {
     QStringList parts;
     if (ctl_->httpRunning()) parts << QString("HTTP :%1%2").arg(ctl_->httpPort()).arg(ctl_->settings().httpLan ? " (LAN)" : "");
     if (ctl_->oscRunning()) parts << QString("OSC :%1%2").arg(ctl_->oscPort()).arg(ctl_->settings().oscLan ? " (LAN)" : "");
-    if (midi_ && midi_->config().enabled) parts << (midi_->connected() ? "MIDI: " + midi_->config().device : QString("MIDI: chưa nối"));
-    ctlLabel_->setText(parts.isEmpty() ? QString() : "Điều khiển ngoài: " + parts.join(" · "));
+    if (midi_ && midi_->config().enabled) parts << (midi_->connected() ? "MIDI: " + midi_->config().device : QString(LC_TR("MIDI: chưa nối")));
+    ctlLabel_->setText(parts.isEmpty() ? QString() : LC_TR("Điều khiển ngoài: ") + parts.join(" · "));
 }
 
 void MainWindow::showMapping() {
@@ -281,10 +288,10 @@ void MainWindow::showMapping() {
 // Project mo duoc nhung thieu file: bao ro tung file, khong chan (khong dung hop thoai modal giua show).
 void MainWindow::showLoadWarnings() {
     if (project_.loadWarnings.isEmpty()) return;
-    for (const QString& w : project_.loadWarnings) qWarning().noquote() << w;
-    auto* box = new QMessageBox(QMessageBox::Warning, "Thiếu file media",
-                                QString("Project đã mở nhưng %1 file không dùng được (đang hiện hình “THIẾU FILE”):\n\n%2\n\n"
-                                        "Chép file về đúng chỗ rồi mở lại project. Lưu project không làm mất tham chiếu.")
+    for (const QString& w : project_.loadWarningsLog) qWarning().noquote() << w;
+    auto* box = new QMessageBox(QMessageBox::Warning, LC_TR("Thiếu file media"),
+                                QString(LC_TR("Project đã mở nhưng %1 file không dùng được (đang hiện hình “THIẾU FILE”):\n\n%2\n\n"
+                                        "Chép file về đúng chỗ rồi mở lại project. Lưu project không làm mất tham chiếu."))
                                     .arg(project_.loadWarnings.size()).arg(project_.loadWarnings.join("\n")),
                                 QMessageBox::Ok, this);
     box->setObjectName("missingFiles");
@@ -319,7 +326,7 @@ void MainWindow::buildUi() {
     chanCombo_ = new QComboBox;
     chanCombo_->setObjectName("chanCombo");
     for (size_t i = 0; i < project_.channels.size(); ++i)
-        chanCombo_->addItem(QString("Kênh %1: %2").arg(i + 1).arg(project_.channels[i]->name));
+        chanCombo_->addItem(QString(LC_TR("Kênh %1: %2")).arg(i + 1).arg(project_.channels[i]->name));
     top->addWidget(chanCombo_);
     top->addStretch();
     layoutBtn_ = new QToolButton;                        // hien ten bo cuc dang dung; menu doi bo cuc
@@ -403,18 +410,18 @@ void MainWindow::buildUi() {
     easingCombo_ = new QComboBox;
     easingCombo_->setObjectName("easingCombo");
     for (auto e : {Easing::EaseInOut, Easing::Linear, Easing::EaseIn, Easing::EaseOut}) easingCombo_->addItem(easingName(e), int(e));
-    easingCombo_->setToolTip("Đường cong tốc độ của hiệu ứng (T-bar kéo tay luôn tuyến tính)");
+    easingCombo_->setToolTip(LC_TR("Đường cong tốc độ của hiệu ứng (T-bar kéo tay luôn tuyến tính)"));
     paramsBtn_ = ui::iconButton(Glyph::Params, "transParams", text::transParams());
     stingerCombo_ = new QComboBox;
     stingerCombo_->setObjectName("stingerCombo");
-    stingerCombo_->setToolTip("Video có kênh alpha chạy đè lên lúc chuyển cảnh");
+    stingerCombo_->setToolTip(LC_TR("Video có kênh alpha chạy đè lên lúc chuyển cảnh"));
     cutSpin_ = new QDoubleSpinBox;
     cutSpin_->setObjectName("cutPoint");
     cutSpin_->setRange(0.05, 0.95);
     cutSpin_->setSingleStep(0.05);
     cutSpin_->setValue(0.5);
-    cutSpin_->setPrefix("cắt tại ");
-    cutSpin_->setToolTip("Thời điểm (tỉ lệ 0–1 của video stinger) đổi cảnh phía dưới");
+    cutSpin_->setPrefix(LC_TR("cắt tại "));
+    cutSpin_->setToolTip(LC_TR("Thời điểm (tỉ lệ 0–1 của video stinger) đổi cảnh phía dưới"));
     durSpin_ = new QDoubleSpinBox;
     durSpin_->setObjectName("transDuration");
     durSpin_->setRange(0.1, 10);
@@ -425,12 +432,12 @@ void MainWindow::buildUi() {
     autoBtn_ = new QPushButton("AUTO");
     autoBtn_->setObjectName("auto");
     autoBtn_->setCheckable(true);
-    autoBtn_->setToolTip("AUTO bật: bấm một Scene = chuyển thẳng lên Program bằng hiệu ứng đang chọn (không qua Preview).\nTắt (mặc định): bấm Scene chỉ đưa vào Preview.");
+    autoBtn_->setToolTip(LC_TR("AUTO bật: bấm một Scene = chuyển thẳng lên Program bằng hiệu ứng đang chọn (không qua Preview).\nTắt (mặc định): bấm Scene chỉ đưa vào Preview."));
     tbar_ = new QSlider(Qt::Horizontal);
     tbar_->setObjectName("tbar");
     tbar_->setRange(0, 1000);
     tbar_->setFixedWidth(220);
-    tbar_->setToolTip("T-bar: kéo tay để chuyển Preview → Program. Kéo hết = hoàn tất, kéo về 0 = huỷ.");
+    tbar_->setToolTip(LC_TR("T-bar: kéo tay để chuyển Preview → Program. Kéo hết = hoàn tất, kéo về 0 = huỷ."));
     blackAll_ = new QPushButton("BLACK ALL");
     blackAll_->setObjectName("blackAll");
     blackAll_->setCheckable(true);
@@ -503,7 +510,7 @@ void MainWindow::buildDocks() {
     outDock->setWidget(scrollable(outW));
 
     // Am thanh (M5a)
-    auto* audDock = new QDockWidget("Âm thanh", this);
+    auto* audDock = new QDockWidget(LC_TR("Âm thanh"), this);
     audDock->setObjectName("dockAudio");
     audioPanel_ = new AudioPanel(project_, engine_);
     audDock->setWidget(scrollable(audioPanel_));
@@ -530,6 +537,7 @@ void MainWindow::buildDocks() {
     connect(scenes_->importButton(), &QToolButton::clicked, this, [this] { chooseMediaFiles(); });
     connect(scenes_->ndiButton(), &QToolButton::clicked, this, [this] { showAddNdiSource(); });
     connect(scenes_->cameraButton(), &QToolButton::clicked, this, [this] { showAddCamera(); });
+    connect(scenes_->windowButton(), &QToolButton::clicked, this, [this] { showAddWindow(); });
     connect(sceneList_, &QListWidget::itemClicked, this, [this](QListWidgetItem* it) {
         auto ch = project_.channels[channelIdx()];
         const int idx = sceneList_->row(it);
@@ -553,14 +561,14 @@ void MainWindow::buildDocks() {
     tlDock->setWidget(scrollable(timeline_));
     if (!Entitlements::current().timeline) {                      // goi khong co timeline/keyframe: lam xam, giai thich
         timeline_->setEnabled(false);
-        tlDock->setWindowTitle("Timeline (không có trong gói)");
+        tlDock->setWindowTitle(LC_TR("Timeline (không có trong gói)"));
     }
 
     // Playlist / slide anh tu chuyen (tab canh Scenes)
     auto* plDock = new QDockWidget("Playlist", this);
     plDock->setObjectName("dockPlaylist");
     playlist_ = new PlaylistPanel(project_, engine_, &undo_);
-    playlist_->mediaFilter = kMediaFilter;
+    playlist_->mediaFilter = mediaFilter();
     playlist_->importFile = [this](const QString& path) { return importMedia(path); };
     playlist_->showMessage = [this](const QString& m) { showMessage(m); };
     plDock->setWidget(playlist_);
@@ -582,7 +590,7 @@ void MainWindow::buildDocks() {
     prow->addWidget(openB);
     prow->addStretch();
     pv->addLayout(prow);
-    auto* hint = new QLabel("Tự nạp lại khi bạn sửa file shader. Xem docs/PLUGIN-SDK.md để viết plug-in.");
+    auto* hint = new QLabel(LC_TR("Tự nạp lại khi bạn sửa file shader. Xem docs/PLUGIN-SDK.md để viết plug-in."));
     hint->setWordWrap(true);
     pv->addWidget(hint);
     plugDock->setWidget(pw);
@@ -634,7 +642,7 @@ void MainWindow::addOutputRow(int i) {
     row->setVerticalSpacing(1);
     row->setColumnStretch(1, 1);
     r.dot = new QLabel("●");
-    r.info = new QLabel(QString("<b>%1</b><br><small>%2x%3 · kênh %4</small>")
+    r.info = new QLabel(QString(LC_TR("<b>%1</b><br><small>%2x%3 · kênh %4</small>"))
                             .arg(c.name).arg(c.size.width()).arg(c.size.height()).arg(c.channel + 1));
     r.info->setWordWrap(true);
     r.info->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
@@ -649,9 +657,9 @@ void MainWindow::addOutputRow(int i) {
     row->addWidget(r.info, 0, 1, 1, 4);
     auto* alerts = new QHBoxLayout;
     r.reopen = new QToolButton;
-    r.reopen->setText("Mở lại");
+    r.reopen->setText(LC_TR("Mở lại"));
     r.reopen->setObjectName(QString("reopenOutput%1").arg(i));
-    r.reopen->setToolTip("Cửa sổ Output này đã bị đóng: bấm để hiện lại đúng chỗ");
+    r.reopen->setToolTip(LC_TR("Cửa sổ Output này đã bị đóng: bấm để hiện lại đúng chỗ"));
     r.reopen->setStyleSheet("background:#8a1c1c;color:white;font-weight:bold");
     r.reopen->setVisible(false);
     alerts->addWidget(r.reopen);
@@ -674,7 +682,7 @@ void MainWindow::addOutputRow(int i) {
     connect(r.pattern, &QToolButton::toggled, this, [sink](bool on) { sink->testPattern = on; });
     connect(r.reopen, &QToolButton::clicked, this, [this, sink] {
         auto* w = dynamic_cast<OutputWindow*>(sink);
-        if (w && !w->applyScreen()) showMessage("Không mở lại được: màn hình của Output này không còn");
+        if (w && !w->applyScreen()) showMessage(LC_TR("Không mở lại được: màn hình của Output này không còn"));
     });
     outRows_.push_back(r);
 }
@@ -695,7 +703,7 @@ void MainWindow::reopenOutputs() {
     for (int i = 0; i < engine_.outputCount(); ++i)
         if (auto* w = dynamic_cast<OutputWindow*>(engine_.output(i)); w && !w->isVisible() && w->canShow())
             failed = !w->applyScreen() || failed;
-    if (failed) showMessage("Không mở lại được: màn hình của Output này không còn");
+    if (failed) showMessage(LC_TR("Không mở lại được: màn hình của Output này không còn"));
 }
 
 // ---------------- Preview: keo hinh ----------------
@@ -765,27 +773,27 @@ ScreenSetup MainWindow::screenSetup() const {
 }
 
 bool MainWindow::applyScreenSetup(const ScreenSetup& after, const std::vector<char>& allScenes, const QString& text) {
-    if (locked_) { showMessage("Đang khoá vận hành: không đổi màn hình / khung hình được"); return false; }
+    if (locked_) { showMessage(LC_TR("Đang khoá vận hành: không đổi màn hình / khung hình được")); return false; }
     const ScreenSetup now = screenSetup();
-    auto reject = [this](const QString& why) { showMessage("Không áp dụng được: " + why); return false; };
-    if (after.outputs.empty()) return reject("cần ít nhất một Output");
-    if (after.canvases.size() != project_.channels.size()) return reject("số kênh không khớp");
+    auto reject = [this](const QString& why) { showMessage(LC_TR("Không áp dụng được: ") + why); return false; };
+    if (after.outputs.empty()) return reject(LC_TR("cần ít nhất một Output"));
+    if (after.canvases.size() != project_.channels.size()) return reject(LC_TR("số kênh không khớp"));
     for (const QSize& s : after.canvases)
         if (s.width() < kMinCanvasSide || s.height() < kMinCanvasSide || s.width() > kMaxCanvasSide || s.height() > kMaxCanvasSide)
-            return reject("khung hình không hợp lệ");
+            return reject(LC_TR("khung hình không hợp lệ"));
     int ndiBefore = 0, ndiAfter = 0;
     for (const OutputConfig& o : now.outputs) ndiBefore += o.kind == OutputKind::Ndi;
     for (const OutputConfig& o : after.outputs) {
         const int limit = o.kind == OutputKind::Ndi ? 8192 : kMaxCanvasSide;
-        if (o.channel < 0 || o.channel >= int(project_.channels.size())) return reject("Output trỏ tới kênh không có");
-        if (o.size.width() < 16 || o.size.height() < 16 || o.size.width() > limit || o.size.height() > limit) return reject("kích thước Output không hợp lệ");
-        if (o.crop.width() <= 0 || o.crop.height() <= 0) return reject("vùng cắt không hợp lệ");
+        if (o.channel < 0 || o.channel >= int(project_.channels.size())) return reject(LC_TR("Output trỏ tới kênh không có"));
+        if (o.size.width() < 16 || o.size.height() < 16 || o.size.width() > limit || o.size.height() > limit) return reject(LC_TR("kích thước Output không hợp lệ"));
+        if (o.crop.width() <= 0 || o.crop.height() <= 0) return reject(LC_TR("vùng cắt không hợp lệ"));
         ndiAfter += o.kind == OutputKind::Ndi;
     }
     const Entitlements& ent = Entitlements::current();
-    if (ndiAfter > ndiBefore && !ent.ndi) return reject("NDI không có trong gói giấy phép hiện tại");
+    if (ndiAfter > ndiBefore && !ent.ndi) return reject(LC_TR("NDI không có trong gói giấy phép hiện tại"));
     if (ent.maxOutputs > 0 && after.outputs.size() > now.outputs.size() && int(after.outputs.size()) > ent.maxOutputs)
-        return reject(QString("gói giấy phép tối đa %1 Output").arg(ent.maxOutputs));
+        return reject(QString(LC_TR("gói giấy phép tối đa %1 Output")).arg(ent.maxOutputs));
 
     ScreenState from{now.outputs, now.canvases, {}}, to{after.outputs, after.canvases, {}};
     for (size_t c = 0; c < project_.channels.size(); ++c) {
@@ -803,7 +811,7 @@ bool MainWindow::applyScreenSetup(const ScreenSetup& after, const std::vector<ch
                              std::equal(now.outputs.begin(), now.outputs.end(), after.outputs.begin(), sameOutput);
     if (sameOutputs && now.canvases == after.canvases && to.scenes.empty()) return true;      // khong co gi doi
     undo_.push(new ScreenCmd(this, std::move(from), std::move(to), text));
-    showMessage("Đã áp dụng: " + text);
+    showMessage(LC_TR("Đã áp dụng: ") + text);
     return true;
 }
 
@@ -830,7 +838,7 @@ void MainWindow::setScreenState(const ScreenState& state) {
     refreshSlow();
     QStringList desc;
     for (const OutputConfig& o : state.outputs)
-        desc << QString("%1 %2x%3%4").arg(o.name).arg(o.size.width()).arg(o.size.height()).arg(o.fullscreen ? " toàn màn hình" : "");
+        desc << QString("%1 %2x%3%4").arg(o.name).arg(o.size.width()).arg(o.size.height()).arg(o.fullscreen ? " toàn màn hình" : "");      // chi ghi log: khong-dich
     qInfo().noquote() << "Thiết lập màn hình:" << desc.join("; ");
 }
 
@@ -846,27 +854,28 @@ ScreenDialog* MainWindow::createScreenDialog() {
 }
 
 void MainWindow::showScreenSetup() {
-    if (locked_) { showMessage("Đang khoá vận hành: không đổi màn hình / khung hình được"); return; }
+    if (locked_) { showMessage(LC_TR("Đang khoá vận hành: không đổi màn hình / khung hình được")); return; }
     std::unique_ptr<ScreenDialog> dlg(createScreenDialog());
     dlg->exec();
 }
 
 void MainWindow::showNewProject() {
-    if (locked_) { showMessage("Đang khoá vận hành: không tạo project mới được"); return; }
+    if (locked_) { showMessage(LC_TR("Đang khoá vận hành: không tạo project mới được")); return; }
     NewProjectDialog dlg(this);
     if (dlg.exec() != QDialog::Accepted) return;
-    const QString path = QFileDialog::getSaveFileName(this, "Lưu project mới", "su-kien-moi.lumacast.json", "LumaCast project (*.json)");
+    const QString path = askSavePath_(LC_TR("Lưu project mới"), defaultSavePath(LC_TR("su-kien-moi") + ".lumacast.json"));
     if (!path.isEmpty() && createProject(path, dlg.project())) launchProject(path);      // hoi xac nhan truoc khi dong project hien tai
 }
 
 bool MainWindow::createProject(const QString& path, const Project& project) {
     if (locked_) return false;
+    if (refuseWipedPath(path)) return false;
     if (QFileInfo(path).absoluteFilePath() == QFileInfo(project_.filePath).absoluteFilePath()) {
-        showMessage("Chọn tên file khác với project đang mở");
+        showMessage(LC_TR("Chọn tên file khác với project đang mở"));
         return false;
     }
     QString err;
-    if (!lc::saveProject(project, path, &err)) { showMessage("Lỗi lưu: " + err); return false; }
+    if (!lc::saveProject(project, path, &err)) { showMessage(LC_TR("Lỗi lưu: ") + err); return false; }
     QFile::remove(path + ".autosave");                      // ghi de project cu cung ten: bo ban tu luu cu
     return true;
 }
@@ -882,7 +891,7 @@ void MainWindow::rebuildPluginList() {
             it->setForeground(QColor(colors::kProgram));
             it->setFlags(it->flags() & ~Qt::ItemIsUserCheckable);
         } else {
-            it = new QListWidgetItem(QString("%1  ·  %2%3%4").arg(i.name, kind, i.builtin ? "  ·  dựng sẵn" : QString("  ·  v%1  ·  %2").arg(i.version, i.author),
+            it = new QListWidgetItem(QString("%1  ·  %2%3%4").arg(i.name, kind, i.builtin ? LC_TR("  ·  dựng sẵn") : QString("  ·  v%1  ·  %2").arg(i.version, i.author),
                                                                i.ok ? "" : "\n⚠ " + i.error));
             it->setToolTip(i.description);
             if (!i.builtin) {
@@ -898,31 +907,32 @@ void MainWindow::rebuildPluginList() {
 
 void MainWindow::buildMenus() {
     auto* file = menuBar()->addMenu("&File");
-    newAct_ = file->addAction("Project mới…", this, [this] { showNewProject(); });
-    openAct_ = file->addAction("Mở project...", QKeySequence::Open, this, [this] { openProject(); });
-    recentMenu_ = file->addMenu("Gần đây");
+    newAct_ = file->addAction(LC_TR("Project mới…"), this, [this] { showNewProject(); });
+    openAct_ = file->addAction(LC_TR("Mở project..."), QKeySequence::Open, this, [this] { openProject(); });
+    recentMenu_ = file->addMenu(LC_TR("Gần đây"));
     file->addSeparator();
-    file->addAction("Lưu", QKeySequence::Save, this, [this] { saveProject(false); });
-    file->addAction("Lưu thành...", QKeySequence::SaveAs, this, [this] { saveProject(true); });
+    file->addAction(LC_TR("Lưu"), QKeySequence::Save, this, [this] { saveProject(false); });
+    file->addAction(LC_TR("Lưu thành..."), QKeySequence::SaveAs, this, [this] { saveProject(true); });
     file->addSeparator();
-    importAct_ = file->addAction("Nhập media...", this, [this] { chooseMediaFiles(); });
-    addNdiAct_ = file->addAction("Thêm nguồn NDI...", this, [this] { showAddNdiSource(); });
-    addCamAct_ = file->addAction("Thêm camera...", this, [this] { showAddCamera(); });
-    addNdiOutAct_ = file->addAction("Thêm Output NDI...", this, [this] { showAddNdiOutput(); });
+    importAct_ = file->addAction(LC_TR("Nhập media..."), this, [this] { chooseMediaFiles(); });
+    addNdiAct_ = file->addAction(LC_TR("Thêm nguồn NDI..."), this, [this] { showAddNdiSource(); });
+    addCamAct_ = file->addAction(LC_TR("Thêm camera..."), this, [this] { showAddCamera(); });
+    addWinAct_ = file->addAction(LC_TR("Thêm slideshow PowerPoint / cửa sổ..."), this, [this] { showAddWindow(); });
+    addNdiOutAct_ = file->addAction(LC_TR("Thêm Output NDI..."), this, [this] { showAddNdiOutput(); });
     if (!ndiCompiledIn()) {                                       // ban dich khong co NDI: an moi muc NDI
         addNdiAct_->setVisible(false);
         addNdiOutAct_->setVisible(false);
         scenes_->ndiButton()->setVisible(false);
     }
     file->addSeparator();
-    file->addAction("Thoát", QKeySequence::Quit, this, [this] { close(); });
+    file->addAction(LC_TR("Thoát"), QKeySequence::Quit, this, [this] { close(); });
     rebuildRecentMenu();
 
     auto* edit = menuBar()->addMenu("&Edit");
     // Hoan tac/Lam lai tu dinh nghia (khong dung createUndoAction) de khoa van hanh vo hieu duoc chung.
-    undoAct_ = new QAction("Hoàn tác", this);
+    undoAct_ = new QAction(LC_TR("Hoàn tác"), this);
     undoAct_->setShortcut(QKeySequence::Undo);
-    redoAct_ = new QAction("Làm lại", this);
+    redoAct_ = new QAction(LC_TR("Làm lại"), this);
     redoAct_->setShortcuts({QKeySequence::Redo, QKeySequence(Qt::CTRL | Qt::Key_Y)});
     connect(undoAct_, &QAction::triggered, this, [this] { if (!locked_) doUndo(); });
     connect(redoAct_, &QAction::triggered, this, [this] { if (!locked_) doRedo(); });
@@ -935,18 +945,48 @@ void MainWindow::buildMenus() {
     auto* view = menuBar()->addMenu("&View");
     for (QDockWidget* d : findChildren<QDockWidget*>()) view->addAction(d->toggleViewAction());
     view->addSeparator();
-    view->addAction("Mapping trực quan…", QKeySequence(Qt::CTRL | Qt::Key_M), this, [this] { showMapping(); });
+    view->addAction(LC_TR("Mapping trực quan…"), QKeySequence(Qt::CTRL | Qt::Key_M), this, [this] { showMapping(); });
     view->addAction("Multiview…", this, [this] { showMultiview(); })->setObjectName("multiviewAction");
     view->addSeparator();
     buildLayoutMenu(view);
 
-    auto* settings = menuBar()->addMenu("&Cài đặt");
-    settingsAct_ = settings->addAction("Cài đặt vận hành…", this, [this] { openSettings(); });
-    screenAct_ = settings->addAction("Màn hình và khung hình…", this, [this] { showScreenSetup(); });
+    auto* settings = menuBar()->addMenu(LC_TR("&Cài đặt"));
+    settingsAct_ = settings->addAction(LC_TR("Cài đặt vận hành…"), this, [this] { openSettings(); });
+    screenAct_ = settings->addAction(LC_TR("Màn hình và khung hình…"), this, [this] { showScreenSetup(); });
     setupInput(settings);                                 // phim tat tu dat + MIDI (MainWindowInput.cpp)
+    buildLanguageMenu(settings);
 
     auto* help = menuBar()->addMenu("&Help");
-    help->addAction("Giới thiệu", this, [this] { QMessageBox::about(this, "LumaCast", aboutHtml()); });
+    updateAct_ = help->addAction(LC_TR("Kiểm tra cập nhật…"), this, [this] {
+        showUpdateDialog();
+        updates_->checkNow();
+    });
+    updateAct_->setObjectName("updateAction");
+    help->addAction(LC_TR("Giới thiệu"), this, [this] { QMessageBox::about(this, "LumaCast", aboutHtml()); });
+}
+
+// Cai dat -> Ngon ngu. Ten tung ngon ngu viet bang chinh ngon ngu do (chon nham van tim lai duoc), va chi doi o lan mo sau.
+void MainWindow::buildLanguageMenu(QMenu* settings) {
+    const bool english = i18n::current() == Language::English;
+    languageMenu_ = settings->addMenu(english ? "Language (Ngôn ngữ)" : "Ngôn ngữ (Language)");   // khong-dich
+    languageMenu_->setObjectName("languageMenu");
+    auto* group = new QActionGroup(languageMenu_);
+    QSettings st = appSettings();
+    const Language chosen = i18n::configured(st, QCoreApplication::applicationDirPath());
+    for (const Language l : {Language::Vietnamese, Language::English}) {
+        QAction* a = languageMenu_->addAction(l == Language::English ? "English" : "Tiếng Việt");      // khong-dich
+        a->setObjectName(QString("language_") + i18n::languageId(l));
+        a->setCheckable(true);
+        a->setChecked(l == chosen);
+        group->addAction(a);
+        connect(a, &QAction::triggered, this, [this, l] {
+            QSettings out = appSettings();
+            i18n::save(out, l);
+            // Khong bat hop thoai: dang dien van phai TAKE/CUT duoc.
+            if (l != i18n::current()) statusBar()->showMessage(LC_TR("Ngôn ngữ mới được áp dụng ở lần mở LumaCast sau."), 15000);
+            else statusBar()->clearMessage();
+        });
+    }
 }
 
 // Multiview chi chon Preview / Channel dang xem: khong co duong nao tu day len Program (ke ca khi AUTO dang bat).
@@ -1027,7 +1067,7 @@ void MainWindow::rebuildTransitionCombo() {
         stingerCombo_->clear();
         for (size_t i = 0; i < project_.sources.size(); ++i)
             if (project_.sources[i].type == "video") stingerCombo_->addItem(project_.sources[i].source ? project_.sources[i].source->name() : project_.sources[i].id, project_.sources[i].id);
-        if (stingerCombo_->count() == 0) stingerCombo_->addItem("(chưa có video)", QString());
+        if (stingerCombo_->count() == 0) stingerCombo_->addItem(LC_TR("(chưa có video)"), QString());
         const int ks = stingerCombo_->findData(keepSt);
         stingerCombo_->setCurrentIndex(ks >= 0 ? ks : 0);
     }
@@ -1055,13 +1095,13 @@ void MainWindow::editTransitionParams() {
     auto def = engine_.registry().find(key.mid(2));
     if (!def) return;
     QDialog dlg(this);
-    dlg.setWindowTitle("Tham số: " + def->name);
+    dlg.setWindowTitle(LC_TR("Tham số: ") + def->name);
     auto* lay = new QVBoxLayout(&dlg);
     auto* ed = new ParamEditor(def, transParams_.value(def->id));
     ed->setObjectName("transitionParams");
     lay->addWidget(ed);
     connect(ed, &ParamEditor::changed, this, [this, id = def->id](const QVariantMap& v, int) { transParams_[id] = v; });
-    auto* close = new QPushButton("Đóng");
+    auto* close = new QPushButton(LC_TR("Đóng"));
     lay->addWidget(close);
     connect(close, &QPushButton::clicked, &dlg, &QDialog::accept);
     dlg.exec();
@@ -1090,7 +1130,7 @@ void MainWindow::refresh() {
     program_->setImage(mf.program);
     preview_->setImage(mf.preview);
     const int pg = ch.program, pv = ch.preview;
-    program_->setSceneName(sceneName(ci, pg) + (ch.inTransition() ? "  (đang chuyển)" : ""));
+    program_->setSceneName(sceneName(ci, pg) + (ch.inTransition() ? LC_TR("  (đang chuyển)") : ""));
     preview_->setSceneName(sceneName(ci, pv));
     program_->setOnAir(ch.ftbAmount < 1.0f);
     scenes_->setMarks(pg, pv);
@@ -1131,13 +1171,13 @@ void MainWindow::refreshSlow() {
         r.dot->setStyleSheet(QString("color:%1;font-size:16px").arg(col));
         const OutputConfig& c = sink->config();
         QString extra;
-        if (ndiSink) extra = " · NDI: " + ndiSink->statusText().toHtmlEscaped() + (sink->testPattern ? " · MẪU THỬ" : sink->freeze ? " · DỪNG HÌNH" : "");
+        if (ndiSink) extra = " · NDI: " + ndiSink->statusText().toHtmlEscaped() + (sink->testPattern ? LC_TR(" · MẪU THỬ") : sink->freeze ? LC_TR(" · DỪNG HÌNH") : "");
         else if (!exposed) extra = " · " + sup_.text(i);
-        else if (sink->testPattern) extra = " · MẪU THỬ";
-        else if (sink->freeze) extra = " · DỪNG HÌNH";
+        else if (sink->testPattern) extra = LC_TR(" · MẪU THỬ");
+        else if (sink->freeze) extra = LC_TR(" · DỪNG HÌNH");
         const QSize signal = outputSignalSize(c);
         if (!c.area.isEmpty()) extra.prepend(QString(" · LED %1x%2").arg(c.area.width()).arg(c.area.height()));
-        r.info->setText(QString("<b>%1</b><br><small>%2x%3 · kênh %4 · %5 fps%6</small>")
+        r.info->setText(QString(LC_TR("<b>%1</b><br><small>%2x%3 · kênh %4 · %5 fps%6</small>"))
                             .arg(c.name.toHtmlEscaped()).arg(signal.width()).arg(signal.height()).arg(c.channel + 1)
                             .arg(fps, 0, 'f', 0).arg(extra));
         QStringList warnings;
@@ -1172,8 +1212,8 @@ void MainWindow::refreshSlow() {
         else qInfo() << "WATCHDOG: render thread hoat dong tro lai";
     }
     statusLabel_->setStyleSheet(stalled ? "color:#ff4d4d;font-weight:bold" : QString());
-    statusLabel_->setText(QString("%1  |  GPU: %2  |  FPS: %3  |  Khung p50/p99: %7/%8 ms  |  Rơi khung: %4  |  Output: %5/%6")
-                              .arg(stalled ? "⚠ RENDER THREAD KHÔNG PHẢN HỒI" : engine_.error().isEmpty() ? "System Ready" : "LỖI: " + engine_.error())
+    statusLabel_->setText(QString(LC_TR("%1  |  GPU: %2  |  FPS: %3  |  Khung p50/p99: %7/%8 ms  |  Rơi khung: %4  |  Output: %5/%6"))
+                              .arg(stalled ? LC_TR("⚠ RENDER THREAD KHÔNG PHẢN HỒI") : engine_.error().isEmpty() ? "System Ready" : LC_TR("LỖI: ") + engine_.error())
                               .arg(engine_.gpuName().isEmpty() ? "-" : engine_.gpuName())
                               .arg(engine_.fps(), 0, 'f', 1).arg(engine_.droppedFrames()).arg(ready).arg(engine_.outputCount())
                               .arg(engine_.frameP50(), 0, 'f', 1).arg(engine_.frameP99(), 0, 'f', 1));
@@ -1206,7 +1246,7 @@ void MainWindow::onProjectChanged() {
 bool MainWindow::addMediaFile(const QString& path) { return importMedia(path) != nullptr; }
 
 void MainWindow::chooseMediaFiles() {
-    for (const QString& f : QFileDialog::getOpenFileNames(this, "Nhập media", QString(), kMediaFilter)) addMediaFile(f);
+    for (const QString& f : QFileDialog::getOpenFileNames(this, LC_TR("Nhập media"), QString(), mediaFilter())) addMediaFile(f);
 }
 
 // Scene "cua rieng" mot nguon: dung mot Layer va nguon con dung duoc.
@@ -1221,7 +1261,7 @@ std::shared_ptr<Scene> MainWindow::homeScene(const std::function<bool(const Sour
 
 void MainWindow::announceExisting(const std::shared_ptr<Scene>& s) {
     scenes_->reveal(s.get());
-    showMessage("Đã có trong danh sách Scenes: " + s->name);
+    showMessage(LC_TR("Đã có trong danh sách Scenes: ") + s->name);
 }
 
 static std::shared_ptr<MainWindow::ImportEntry> importEntry(const SourceDef& d, std::shared_ptr<Source> src, QSize canvas) {
@@ -1237,7 +1277,7 @@ static std::shared_ptr<MainWindow::ImportEntry> importEntry(const SourceDef& d, 
 
 std::shared_ptr<Scene> MainWindow::importMedia(const QString& path, bool* created) {
     if (created) *created = false;
-    if (locked_) { showMessage("Đang khoá vận hành: không nhập media được"); return nullptr; }
+    if (locked_) { showMessage(LC_TR("Đang khoá vận hành: không nhập media được")); return nullptr; }
     SourceDef d;
     d.path = QFileInfo(path).absoluteFilePath();
     d.type = kImageExt.contains(QFileInfo(path).suffix().toLower()) ? "image" : "video";
@@ -1251,12 +1291,12 @@ std::shared_ptr<Scene> MainWindow::importMedia(const QString& path, bool* create
     if (!src) {
         QString err;
         src = createSource(d, &err);
-        if (!src) { showMessage("Không nhập được: " + err); return nullptr; }
+        if (!src) { showMessage(LC_TR("Không nhập được: ") + err); return nullptr; }
     }
     auto e = importEntry(d, src, project_.channels[0]->size);
     e->addsSource = addsSource;
     auto scene = e->scene;
-    pushImport(e, "Nhập media: " + src->name());
+    pushImport(e, LC_TR("Nhập media: ") + src->name());
     if (created) *created = true;
     scenes_->reveal(scene.get());
     return scene;
@@ -1288,7 +1328,7 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* ev) {
     if (QApplication::activeModalWidget() || !(de->possibleActions() & Qt::CopyAction)) {
         de->ignore();
     } else if (locked_) {
-        showMessage("Đang khoá vận hành: không nhập media được");
+        showMessage(LC_TR("Đang khoá vận hành: không nhập media được"));
         de->ignore();
     } else {
         de->setDropAction(Qt::CopyAction);
@@ -1317,42 +1357,42 @@ void MainWindow::importDroppedFiles(const QStringList& files, bool toPlaylist) {
     if (toPlaylist) playlist_->addScenes(imported);
     QString msg;
     if (skipped.isEmpty()) {
-        msg = QString("Đã nhập %1 file bằng kéo thả").arg(added);
+        msg = QString(LC_TR("Đã nhập %1 file bằng kéo thả")).arg(added);
     } else {
         qWarning().noquote() << "Kéo thả: bỏ qua file không hỗ trợ hoặc không đọc được:" << skipped.join(", ");
         QString names = skipped.mid(0, 3).join(", ");
         if (skipped.size() > 3) names += ", …";
-        msg = QString("Đã nhập %1 file; bỏ qua %2 file không hỗ trợ hoặc không đọc được: %3").arg(added).arg(skipped.size()).arg(names);
+        msg = QString(LC_TR("Đã nhập %1 file; bỏ qua %2 file không hỗ trợ hoặc không đọc được: %3")).arg(added).arg(skipped.size()).arg(names);
     }
-    if (existing) msg += QString(" · %1 file đã có trong danh sách Scenes").arg(existing);
+    if (existing) msg += QString(LC_TR(" · %1 file đã có trong danh sách Scenes")).arg(existing);
     showMessage(msg);
 }
 
 bool MainWindow::addLiveSource(const SourceDef& def, const QString& what) {
     QString err;
     auto src = createSource(def, &err);
-    if (!src) { showMessage("Không thêm được " + what + ": " + err); return false; }
+    if (!src) { showMessage(LC_TR("Không thêm được ") + what + ": " + err); return false; }
     auto e = importEntry(def, src, project_.channels[0]->size);
     auto scene = e->scene;
-    pushImport(e, "Thêm " + what + ": " + src->name());
+    pushImport(e, LC_TR("Thêm ") + what + ": " + src->name());
     scenes_->reveal(scene.get());
     return true;
 }
 
 bool MainWindow::addNdiSource(const QString& name, const QString& url, const QString& label) {
-    if (locked_) { showMessage("Đang khoá vận hành: không thêm nguồn được"); return false; }
-    if (name.trimmed().isEmpty()) { showMessage("Chưa chọn nguồn NDI"); return false; }
+    if (locked_) { showMessage(LC_TR("Đang khoá vận hành: không thêm nguồn được")); return false; }
+    if (name.trimmed().isEmpty()) { showMessage(LC_TR("Chưa chọn nguồn NDI")); return false; }
     SourceDef d;
     d.type = "ndi";
     d.device = name.trimmed();
     d.url = url;
     d.label = label;
     if (auto s = homeScene([&](const SourceDef& o) { return o.type == "ndi" && o.device == d.device; })) { announceExisting(s); return true; }
-    return addLiveSource(d, "nguồn NDI");
+    return addLiveSource(d, LC_TR("nguồn NDI"));
 }
 
 bool MainWindow::addCameraSource(const QString& deviceId, const QString& deviceName, CameraFormat fmt, const QString& label) {
-    if (locked_) { showMessage("Đang khoá vận hành: không thêm nguồn được"); return false; }
+    if (locked_) { showMessage(LC_TR("Đang khoá vận hành: không thêm nguồn được")); return false; }
     SourceDef d;
     d.type = "camera";
     d.device = deviceId;
@@ -1366,10 +1406,33 @@ bool MainWindow::addCameraSource(const QString& deviceId, const QString& deviceN
     return addLiveSource(d, "camera");
 }
 
+bool MainWindow::addWindowSource(const WindowTarget& target, const QString& label) {
+    if (locked_) { showMessage(LC_TR("Đang khoá vận hành: không thêm nguồn được")); return false; }
+    if (target.app.isEmpty()) { showMessage(LC_TR("Chưa chọn cửa sổ")); return false; }
+    SourceDef d;
+    d.type = "window";
+    d.device = target.app;
+    d.url = target.windowClass;
+    d.deviceName = target.title;
+    d.label = label;
+    if (auto s = homeScene([&](const SourceDef& o) { return o.type == "window" && WindowTarget{o.device, o.url, o.deviceName} == target; })) {
+        announceExisting(s);
+        return true;
+    }
+    return addLiveSource(d, LC_TR("cửa sổ"));
+}
+
+void MainWindow::showAddWindow() {
+    if (!Entitlements::current().camera) { showMessage(LC_TR("Camera/capture không có trong gói giấy phép hiện tại")); return; }
+    if (locked_) { showMessage(LC_TR("Đang khoá vận hành: không thêm nguồn được")); return; }
+    WindowSourceDialog dlg(this);
+    if (dlg.exec() == QDialog::Accepted) addWindowSource(dlg.target(), dlg.label());
+}
+
 bool MainWindow::addNdiOutput(const QString& name, int channel, QSize size, bool audio) {
-    if (locked_) { showMessage("Đang khoá vận hành: không thêm Output được"); return false; }
+    if (locked_) { showMessage(LC_TR("Đang khoá vận hành: không thêm Output được")); return false; }
     if (channel < 0 || channel >= int(project_.channels.size()) || size.width() < 16 || size.height() < 16 || size.width() > 8192 || size.height() > 8192) {
-        showMessage("Output NDI: kênh hoặc kích thước không hợp lệ");
+        showMessage(LC_TR("Output NDI: kênh hoặc kích thước không hợp lệ"));
         return false;
     }
     OutputConfig c;
@@ -1384,29 +1447,29 @@ bool MainWindow::addNdiOutput(const QString& name, int channel, QSize size, bool
     ScreenSetup setup = screenSetup();
     setup.outputs.push_back(c);
     if (!ent.ndi || (ent.maxOutputs > 0 && int(setup.outputs.size()) > ent.maxOutputs) ||
-        !applyScreenSetup(setup, {}, "Thêm Output NDI: " + c.name)) { showMessage("Không thêm được Output NDI"); return false; }
+        !applyScreenSetup(setup, {}, LC_TR("Thêm Output NDI: ") + c.name)) { showMessage(LC_TR("Không thêm được Output NDI")); return false; }
     qInfo().noquote() << QString("Thêm Output NDI '%1' (kênh %2, %3x%4)").arg(c.name).arg(channel + 1).arg(size.width()).arg(size.height());
-    showMessage("Đã thêm Output NDI: " + c.name);
+    showMessage(LC_TR("Đã thêm Output NDI: ") + c.name);
     return true;
 }
 
 void MainWindow::showAddNdiSource() {
-    if (!Entitlements::current().ndi) { showMessage("NDI không có trong gói giấy phép hiện tại"); return; }
-    if (locked_) { showMessage("Đang khoá vận hành: không thêm nguồn được"); return; }
+    if (!Entitlements::current().ndi) { showMessage(LC_TR("NDI không có trong gói giấy phép hiện tại")); return; }
+    if (locked_) { showMessage(LC_TR("Đang khoá vận hành: không thêm nguồn được")); return; }
     NdiSourceDialog dlg(this);
     if (dlg.exec() == QDialog::Accepted) addNdiSource(dlg.name(), dlg.url(), dlg.label());
 }
 
 void MainWindow::showAddCamera() {
-    if (!Entitlements::current().camera) { showMessage("Camera/capture không có trong gói giấy phép hiện tại"); return; }
-    if (locked_) { showMessage("Đang khoá vận hành: không thêm nguồn được"); return; }
+    if (!Entitlements::current().camera) { showMessage(LC_TR("Camera/capture không có trong gói giấy phép hiện tại")); return; }
+    if (locked_) { showMessage(LC_TR("Đang khoá vận hành: không thêm nguồn được")); return; }
     CameraSourceDialog dlg(this);
     if (dlg.exec() == QDialog::Accepted && !dlg.deviceId().isEmpty()) addCameraSource(dlg.deviceId(), dlg.deviceName(), dlg.format(), dlg.label());
 }
 
 void MainWindow::showAddNdiOutput() {
-    if (!Entitlements::current().ndi) { showMessage("NDI không có trong gói giấy phép hiện tại"); return; }
-    if (locked_) { showMessage("Đang khoá vận hành: không thêm Output được"); return; }
+    if (!Entitlements::current().ndi) { showMessage(LC_TR("NDI không có trong gói giấy phép hiện tại")); return; }
+    if (locked_) { showMessage(LC_TR("Đang khoá vận hành: không thêm Output được")); return; }
     QStringList names;
     for (const auto& c : project_.channels) names << c->name;
     NdiOutputDialog dlg(names, this);
@@ -1419,7 +1482,7 @@ void MainWindow::doUndo() {
     // Khong hoan tac nhap media khi Scene do dang On Air (go ra se doi hinh dang len song): bao va giu nguyen.
     if (undo_.canUndo())
         if (auto* c = dynamic_cast<const ImportCmd*>(undo_.command(undo_.index() - 1)); c && importInUse(c->entry())) {
-            showMessage("Không hoàn tác được: Scene này đang ở PROGRAM/đang chuyển cảnh. Đưa Scene khác lên Program rồi hoàn tác lại.");
+            showMessage(LC_TR("Không hoàn tác được: Scene này đang ở PROGRAM/đang chuyển cảnh. Đưa Scene khác lên Program rồi hoàn tác lại."));
             qWarning().noquote() << "Hoàn tác nhập media bị từ chối: Scene đang On Air";
             return;
         }
@@ -1430,7 +1493,7 @@ void MainWindow::doRedo() {
     // Lam lai lenh Xoa: nhu lenh Xoa, khong go Scene dang On Air.
     if (undo_.canRedo())
         if (auto* c = dynamic_cast<const RemoveSceneCmd*>(undo_.command(undo_.index())); c && sceneOnAir(c->scene())) {
-            showMessage("Không làm lại được: Scene này đang ở PROGRAM/đang chuyển cảnh");
+            showMessage(LC_TR("Không làm lại được: Scene này đang ở PROGRAM/đang chuyển cảnh"));
             return;
         }
     undo_.redo();
@@ -1448,7 +1511,7 @@ bool MainWindow::sceneOnAir(const Scene* s) const {
 }
 
 bool MainWindow::renameScene(const std::shared_ptr<Scene>& s, const QString& name) {
-    if (locked_) { showMessage("Đang khoá vận hành: không đổi tên Scene được"); return false; }
+    if (locked_) { showMessage(LC_TR("Đang khoá vận hành: không đổi tên Scene được")); return false; }
     const QString n = name.trimmed();
     if (!s || n.isEmpty() || n == s->name || std::find(project_.scenes.begin(), project_.scenes.end(), s) == project_.scenes.end()) return false;
     undo_.push(new RenameSceneCmd(this, s, n));
@@ -1461,18 +1524,18 @@ void MainWindow::applySceneName(const std::shared_ptr<Scene>& s, const QString& 
 }
 
 bool MainWindow::deleteScene(const std::shared_ptr<Scene>& s) {
-    if (locked_) { showMessage("Đang khoá vận hành: không xoá Scene được"); return false; }
+    if (locked_) { showMessage(LC_TR("Đang khoá vận hành: không xoá Scene được")); return false; }
     if (!s || std::find(project_.scenes.begin(), project_.scenes.end(), s) == project_.scenes.end()) return false;
     if (sceneOnAir(s.get())) {
-        showMessage("Không xoá được: Scene đang ở PROGRAM/đang chuyển cảnh. Đưa Scene khác lên Program rồi xoá.");
+        showMessage(LC_TR("Không xoá được: Scene đang ở PROGRAM/đang chuyển cảnh. Đưa Scene khác lên Program rồi xoá."));
         return false;
     }
     auto r = std::make_shared<SceneRemoval>();
     r->scene = s;
     const QString name = s->name;
-    undo_.push(new RemoveSceneCmd(this, r, "Xoá Scene: " + name));
+    undo_.push(new RemoveSceneCmd(this, r, LC_TR("Xoá Scene: ") + name));
     if (std::find(project_.scenes.begin(), project_.scenes.end(), s) != project_.scenes.end()) return false;
-    showMessage("Đã xoá Scene: " + name + " (Ctrl+Z để lấy lại)");
+    showMessage(LC_TR("Đã xoá Scene: ") + name + LC_TR(" (Ctrl+Z để lấy lại)"));
     return true;
 }
 
@@ -1534,7 +1597,7 @@ bool MainWindow::applyRemoval(const std::shared_ptr<SceneRemoval>& r) {
 // Lenh live (CUT...) xen vao giua kiem tra UI va render thread: bo luon buoc nay khoi ngan xep Hoan tac.
 void MainWindow::removalRefused(const QUndoCommand* cmd) {
     QMetaObject::invokeMethod(this, [this, cmd] {
-        showMessage("Xoá Scene bị huỷ: Scene vừa được đưa lên PROGRAM");
+        showMessage(LC_TR("Xoá Scene bị huỷ: Scene vừa được đưa lên PROGRAM"));
         if (undo_.index() > 0 && undo_.command(undo_.index() - 1) == cmd) {
             const_cast<QUndoCommand*>(cmd)->setObsolete(true);
             undo_.undo();
@@ -1644,7 +1707,7 @@ void MainWindow::unapplyImport(const std::shared_ptr<ImportEntry>& e, const QUnd
     });
     if (*busy) {
         QMetaObject::invokeMethod(this, [this, cmd] {
-            showMessage("Hoàn tác nhập media bị huỷ: Scene vừa được đưa lên PROGRAM");
+            showMessage(LC_TR("Hoàn tác nhập media bị huỷ: Scene vừa được đưa lên PROGRAM"));
             qWarning().noquote() << "Hoàn tác nhập media bị huỷ giữa chừng: Scene đang On Air";
             if (undo_.index() < undo_.count() && undo_.command(undo_.index()) == cmd) undo_.redo();   // giu ngan xep nhat quan voi project
         }, Qt::QueuedConnection);
@@ -1677,10 +1740,13 @@ void MainWindow::autosaveNow() {
 
 void MainWindow::saveProject(bool saveAs) {
     QString path = project_.filePath;
-    if (path.isEmpty() || saveAs) {
-        path = QFileDialog::getSaveFileName(this, "Lưu project", path.isEmpty() ? "project.lumacast.json" : path,
-                                            "LumaCast project (*.json)");
-        if (path.isEmpty()) return;
+    bool ask = path.isEmpty() || saveAs;
+    if (!ask && refuseWipedPath(path)) ask = true;       // project dang nam trong thu muc cai: bao roi cho chon cho khac
+    if (ask) {
+        const QString suggestion = path.isEmpty() ? defaultSavePath("project.lumacast.json")
+                                   : update::isInside(path, updates_->installDir()) ? defaultSavePath(QFileInfo(path).fileName()) : path;
+        path = askSavePath_(LC_TR("Lưu project"), suggestion);
+        if (path.isEmpty() || refuseWipedPath(path)) return;
     }
     project_.filePath = path;
     engine_.post([this, path](double) {
@@ -1688,14 +1754,14 @@ void MainWindow::saveProject(bool saveAs) {
         QString err;
         const bool ok = lc::saveProject(project_, path, &err);
         QMetaObject::invokeMethod(this, [this, ok, err, path] {
-            showMessage(ok ? "Đã lưu: " + path : "Lỗi lưu: " + err);
+            showMessage(ok ? LC_TR("Đã lưu: ") + path : LC_TR("Lỗi lưu: ") + err);
             if (ok) { addRecent(path); updateTitle(); QFile::remove(path + ".autosave"); QSettings stl = appSettings(); rememberProject(stl, path); }
         }, Qt::QueuedConnection);
     });
 }
 
 void MainWindow::updateTitle() {
-    setWindowTitle(QString("LumaCast — %1%2").arg(project_.filePath.isEmpty() ? "Chưa đặt tên" : QFileInfo(project_.filePath).fileName(), locked_ ? "  [KHOÁ VẬN HÀNH]" : ""));
+    setWindowTitle(QString("LumaCast — %1%2").arg(project_.filePath.isEmpty() ? LC_TR("Chưa đặt tên") : QFileInfo(project_.filePath).fileName(), locked_ ? LC_TR("  [KHOÁ VẬN HÀNH]") : ""));
 }
 
 void MainWindow::addRecent(const QString& path) {
@@ -1716,19 +1782,19 @@ void MainWindow::rebuildRecentMenu() {
 }
 
 void MainWindow::openProject() {
-    const QString p = QFileDialog::getOpenFileName(this, "Mở project", QString(), "LumaCast project (*.json)");
+    const QString p = QFileDialog::getOpenFileName(this, LC_TR("Mở project"), QString(), "LumaCast project (*.json)");
     if (!p.isEmpty()) launchProject(p);
 }
 
 // Mo project khac = khoi dong lai voi project do (engine/output dung lai tu dau, don gian va chac chan).
 void MainWindow::launchProject(const QString& path) {
-    if (locked_) { showMessage("Đang khoá vận hành: không mở project khác được"); return; }
-    if (QMessageBox::question(this, "Mở project",
-                              "Mở project này sẽ ĐÓNG project hiện tại và tắt các output.\nTiếp tục?",
+    if (locked_) { showMessage(LC_TR("Đang khoá vận hành: không mở project khác được")); return; }
+    if (QMessageBox::question(this, LC_TR("Mở project"),
+                              LC_TR("Mở project này sẽ ĐÓNG project hiện tại và tắt các output.\nTiếp tục?"),
                               QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
         return;
     if (!QProcess::startDetached(QCoreApplication::applicationFilePath(), {"--project", path})) {
-        showMessage("Không khởi động được LumaCast mới");
+        showMessage(LC_TR("Không khởi động được LumaCast mới"));
         return;
     }
     askOnClose_ = false;
@@ -1738,12 +1804,12 @@ void MainWindow::launchProject(const QString& path) {
 void MainWindow::closeEvent(QCloseEvent* e) {
     if (locked_ && askOnClose_) {                          // khoa: khong dong duoc cho den khi mo khoa (mo khoa = xac nhan)
         qWarning().noquote() << "Khoá vận hành: từ chối đóng cửa sổ chính";
-        showMessage("Đang KHOÁ vận hành — giữ nút khoá 1 giây để mở khoá rồi mới thoát được");
+        showMessage(LC_TR("Đang KHOÁ vận hành — giữ nút khoá 1 giây để mở khoá rồi mới thoát được"));
         e->ignore();
         return;
     }
     if (askOnClose_ &&
-        QMessageBox::question(this, "Thoát LumaCast", "Thoát sẽ tắt tất cả output.\nBạn chắc chắn?",
+        QMessageBox::question(this, LC_TR("Thoát LumaCast"), LC_TR("Thoát sẽ tắt tất cả output.\nBạn chắc chắn?"),
                               QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) {
         e->ignore();
         return;

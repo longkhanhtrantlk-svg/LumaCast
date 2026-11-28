@@ -1,9 +1,10 @@
 // Bo cuc cua so chinh: MOI bo cuc dung san phai vua man hinh nho (1920x1080 phong 125% = 1536x816 diem logic), cac khung khong de
 // len nhau, khong bi ep, cot phai khong co thanh cuon ngang; doi bo cuc / F9 / bo cuc cua toi / khoa keo khung / bo cuc cu da luu.
-// LC_SHOT_DIR=<thu muc> de luu anh chup giao dien.
+// LC_SHOT_DIR=<thu muc> de luu anh chup giao dien. Tham so "en": chay voi giao dien tieng Anh (ctest layout_en).
 #include "DockChrome.h"
 #include "MainWindow.h"
 #include "OverlayPanel.h"
+#include "Text.h"
 #include "Theme.h"
 #include "core/AppSettings.h"
 #include "media/StaticSources.h"
@@ -275,6 +276,7 @@ int main(int argc, char** argv) {
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.filePath("cfg"));
     qputenv("LUMACAST_CONFIG_DIR", dir.filePath("config").toUtf8());     // log + tien trinh con
     QApplication app(argc, argv);
+    if (argc > 1 && QString(argv[1]) == "en") i18n::install(Language::English);
     applyDarkTheme(app);
 
     Project p = makeProject();
@@ -323,13 +325,14 @@ int main(int argc, char** argv) {
         const uint64_t presented = engine.output(0)->presented;
 
         // ---------- ba bo cuc dung san ----------
-        const struct { const char* id; QString name; } presets[3] = {{"prepare", "Chuẩn bị"}, {"live", "Đang diễn"}, {"big", "Màn lớn"}};
+        const struct { const char* id; QString name; } presets[3] = {{"prepare", text::layoutPrepare()}, {"live", text::layoutLive()}, {"big", text::layoutBig()}};
+        const QString modified = text::layoutModified().arg(QString()).trimmed();      // "(đã chỉnh)" / "(modified)"
         int centralWidth[3] = {};
         for (int i = 0; i < 3; ++i) {
             const std::string id = presets[i].id;
             action(("layout_" + id).c_str())->trigger();
             pump(300);
-            CHECK(w.layoutId() == presets[i].id && label->text().contains(presets[i].name) && !label->text().contains("chỉnh"),
+            CHECK(w.layoutId() == presets[i].id && label->text().contains(presets[i].name) && !label->text().contains(modified),
                   id + ": hien ten bo cuc dang dung (" + label->text().toStdString() + ")");
             checkLayout(w, {1536, 780}, id + "-125");
             checkChrome(w, id + ": ");
@@ -447,8 +450,8 @@ int main(int argc, char** argv) {
         pump(400);
         dock(w, "dockPlaylist")->hide();
         pump(700);
-        CHECK(label->text().contains("đã chỉnh"), "sua khung bang tay: nhan bao da chinh (" + label->text().toStdString() + ")");
-        CHECK(w.saveMyLayout() && w.layoutId() == "mine" && action("layout_mine")->isEnabled() && label->text().contains("của tôi"), "luu thanh bo cuc cua toi");
+        CHECK(label->text().contains(modified), "sua khung bang tay: nhan bao da chinh (" + label->text().toStdString() + ")");
+        CHECK(w.saveMyLayout() && w.layoutId() == "mine" && action("layout_mine")->isEnabled() && label->text().contains(text::layoutMine()), "luu thanh bo cuc cua toi");
         w.applyLayout("big");
         pump(400);
         CHECK(!dock(w, "dockPlaylist")->isHidden(), "bo cuc dung san khong bi ghi de");

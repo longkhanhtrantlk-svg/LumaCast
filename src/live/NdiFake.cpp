@@ -1,4 +1,5 @@
 #include "NdiFake.h"
+#include "core/I18n.h"
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
@@ -253,7 +254,7 @@ std::unique_ptr<NdiSender> FakeNdiBackend::createSender(const QString& name, QSt
     s->sent = std::make_shared<SentStats>();
     {
         std::lock_guard lk(net_->m);
-        if (net_->sources.count(name)) { if (err) *err = "Trùng tên nguồn NDI: " + name; return nullptr; }
+        if (net_->sources.count(name)) { if (err) *err = LC_TR("Trùng tên nguồn NDI: ") + name; return nullptr; }
         net_->sources[name] = s;
     }
     return std::make_unique<FakeSender>(net_, s);

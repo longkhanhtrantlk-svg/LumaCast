@@ -5,9 +5,10 @@
 namespace lc {
 
 // Danh sach lenh LIVE gan duoc phim tat (UI-07) va MIDI (CTL-01). Ma lenh (chuoi) la khoa luu trong QSettings:
-//   lock, take, cut, ftb, blackAll, preview.1 .. preview.9, output.N.black | output.N.freeze | output.N.pattern (N tu 1).
+//   lock, take, cut, ftb, blackAll, slide.next, slide.prev, preview.1 .. preview.9,
+//   output.N.black | output.N.freeze | output.N.pattern (N tu 1).
 struct LiveAction {
-    enum Kind { None, Lock, Take, Cut, Ftb, BlackAll, Preview, OutputBlack, OutputFreeze, OutputPattern };
+    enum Kind { None, Lock, Take, Cut, Ftb, BlackAll, Preview, OutputBlack, OutputFreeze, OutputPattern, SlideNext, SlidePrev };
     Kind kind = None;
     int index = 0;                                      // Preview: 1..9; Output*: so Output (tu 1)
 
@@ -20,8 +21,9 @@ struct LiveAction {
     static LiveAction fromId(const QString& id);        // ma la -> kind = None
     QString label(const QString& outputName = {}) const;   // tieng Viet, cho giao dien va log
     // Lenh duoc phep goi tu ngoai (MIDI): dung bang tap lenh live cua HTTP/OSC. Khoa van hanh KHONG co o day (khong khoa/mo khoa tu ngoai).
-    bool externalAllowed() const { return kind != None && kind != Lock; }
-    // Thu tu hien thi: khoa, TAKE, CUT, FTB, BLACK ALL, Preview 1-9, roi tung Output (Den, Dung, Mau).
+    // Chuyen slide PowerPoint (CTL-02) cung chi tu phim tren may.
+    bool externalAllowed() const { return kind != None && kind != Lock && kind != SlideNext && kind != SlidePrev; }
+    // Thu tu hien thi: khoa, TAKE, CUT, FTB, BLACK ALL, slide tiep/lui, Preview 1-9, roi tung Output (Den, Dung, Mau).
     int order() const;
     static QStringList allIds(int outputCount);
 };

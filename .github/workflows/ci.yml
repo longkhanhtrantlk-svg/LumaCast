@@ -19,7 +19,7 @@ jobs:
       - name: Cai phu thuoc
         run: |
           sudo apt-get update
-          sudo apt-get install -y qt6-base-dev libqt6opengl6-dev libgl1-mesa-dev libxkbcommon-dev xvfb \
+          sudo apt-get install -y qt6-base-dev libqt6opengl6-dev qt6-tools-dev qt6-l10n-tools libgl1-mesa-dev libxkbcommon-dev xvfb \
             libavformat-dev libavcodec-dev libswscale-dev libswresample-dev libavutil-dev \
             cmake g++ pkg-config ninja-build ffmpeg
       - name: Cau hinh
@@ -79,12 +79,10 @@ jobs:
         run: |
           Get-ChildItem build\lumacast_*tests*.exe | ForEach-Object { & "$env:QT_ROOT_DIR\bin\windeployqt.exe" $_.FullName }
           ctest --test-dir build --output-on-failure --timeout 600
-      - name: Dong goi (NSIS + ZIP)
+      - name: Dong goi (ZIP mang theo; bo cai Velopack o release.yml)
         shell: pwsh
         run: cpack --config build/CPackConfig.cmake -C Release -B build/pkg
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installer
-          path: |
-            build/pkg/*.exe
-            build/pkg/*.zip
+          path: build/pkg/*.zip

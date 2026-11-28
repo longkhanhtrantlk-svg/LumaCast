@@ -1,4 +1,5 @@
 #include "LiveSource.h"
+#include "core/I18n.h"
 #include <QImage>
 #include <chrono>
 #include <cmath>
@@ -17,7 +18,7 @@ const char* liveStateId(LiveState s) {
 
 LiveSource::LiveSource(QString name, QString kind, LiveInputFactory factory, LiveOptions opts)
     : name_(std::move(name)), kind_(std::move(kind)), factory_(std::move(factory)), opts_(opts) {
-    status_ = "Đang kết nối...";
+    status_ = LC_TR("Đang kết nối...");
     thread_ = std::thread([this] { run(); });
 }
 
@@ -64,7 +65,8 @@ QImage LiveSource::snapshot(int maxWidth) const {
     }
     if (!f) return {};
     QImage img(f->rgba.data(), f->w, f->h, f->w * 4, QImage::Format_RGBA8888);
-    return img.scaledToWidth(std::min(maxWidth, f->w), Qt::SmoothTransformation);
+    // .copy(): khi khong phai thu nho, scaledToWidth tra ve chinh `img` dang muon bo nho cua `f`
+    return img.scaledToWidth(std::min(maxWidth, f->w), Qt::SmoothTransformation).copy();
 }
 
 LiveSource::Stats LiveSource::stats() const {
@@ -105,11 +107,11 @@ void LiveSource::run() {
     while (!stop_) {
         reconnectReq_ = false;
         if (!in) {
-            if (!everConnected) setStatus(LiveState::Connecting, "Đang kết nối...");
+            if (!everConnected) setStatus(LiveState::Connecting, LC_TR("Đang kết nối..."));
             LiveOpenResult r = factory_();
             if (stop_) break;
             if (!r.input) {
-                setStatus(r.unavailable ? LiveState::Unavailable : LiveState::Lost, r.error.isEmpty() ? "Không kết nối được" : r.error);
+                setStatus(r.unavailable ? LiveState::Unavailable : LiveState::Lost, r.error.isEmpty() ? LC_TR("Không kết nối được") : r.error);
                 sleepInterruptible(r.unavailable ? opts_.unavailableRetryMs : backoff);
                 backoff = std::min(backoff * 2, opts_.retryMaxMs);
                 continue;
@@ -119,7 +121,7 @@ void LiveSource::run() {
             lastDataNs = audioSteadyNs();
             ++reconnects_;
             everConnected = true;
-            if (state_ != LiveState::Lost) setStatus(LiveState::Connecting, "Đang chờ tín hiệu...");   // da mo nhung chua co khung; dang "Mat tin hieu" thi giu nguyen cho den khi co hinh
+            if (state_ != LiveState::Lost) setStatus(LiveState::Connecting, LC_TR("Đang chờ tín hiệu..."));   // da mo nhung chua co khung; dang "Mat tin hieu" thi giu nguyen cho den khi co hinh
         }
 
         const LiveInput::Event ev = in->capture(20, vf, ab);
@@ -141,7 +143,7 @@ void LiveSource::run() {
             w_ = vf.w; h_ = vf.h;
             ++videoFrames_;
             ++fpsCount;
-            if (state_ != LiveState::Live) { setStatus(LiveState::Live, QString("Trực tiếp %1x%2").arg(vf.w).arg(vf.h)); backoff = opts_.retryMs; }
+            if (state_ != LiveState::Live) { setStatus(LiveState::Live, QString(LC_TR("Trực tiếp %1x%2")).arg(vf.w).arg(vf.h)); backoff = opts_.retryMs; }
             vf = LiveVideoFrame();
         } else if (ev == LiveInput::Event::Audio && !ab.data.empty()) {
             lastDataNs = now;
@@ -163,7 +165,7 @@ void LiveSource::run() {
         }
         if (lost) {                          // giu khung cuoi (latest_ khong bi xoa), im lang, noi lai
             in.reset();
-            setStatus(LiveState::Lost, "Mất tín hiệu — đang thử nối lại");
+            setStatus(LiveState::Lost, LC_TR("Mất tín hiệu — đang thử nối lại"));
             fps_ = 0;
             sleepInterruptible(backoff);
             backoff = std::min(backoff * 2, opts_.retryMaxMs);

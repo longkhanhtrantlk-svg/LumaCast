@@ -86,7 +86,7 @@ Thân yêu cầu (POST) là một **đối tượng JSON** hoặc rỗng (rỗng
 ```
 
 `engine.stages` (M6, trường thêm — `version` vẫn 1): thời gian CPU mỗi giai đoạn của khung render, ms, p50/p99 trên ~300 khung gần nhất. GPU chạy bất đồng bộ nên đây là thời gian phát lệnh, không phải thời gian GPU (muốn GPU: `lumacast --benchmark ... sync=1`, xem `TEST-PLAN.md` mục 4).
-**M5b:** `outputs[]` có thêm `kind` (`screen`/`ndi`) và với Output NDI một khối `ndi: {name, sending, connections, status}`; `sources` liệt kê **chỉ nguồn trực tiếp** (NDI/camera): `{index (1-based theo Media Pool), name, kind, state (connecting|live|lost|unavailable), status, width, height, fps, reconnects}`; nguồn NDI thêm `audio: {fillMs, driftPpm, resyncs}` (độ đầy ring âm thanh, độ lệch đồng hồ ước lượng, số lần mất đồng bộ) — dùng khi thử T-NDI-IN.
+**M5b:** `outputs[]` có thêm `kind` (`screen`/`ndi`) và với Output NDI một khối `ndi: {name, sending, connections, status}`; `sources` liệt kê **chỉ nguồn trực tiếp** (NDI/camera, và `window` = slideshow PowerPoint / cửa sổ): `{index (1-based theo Media Pool), name, kind, state (connecting|live|lost|unavailable), status, width, height, fps, reconnects}`; nguồn NDI thêm `audio: {fillMs, driftPpm, resyncs}` (độ đầy ring âm thanh, độ lệch đồng hồ ước lượng, số lần mất đồng bộ) — dùng khi thử T-NDI-IN.
 
 `program`/`preview` là `null` khi chưa có Scene. `health`: `ok`, `no_screen` (mất màn), `hidden`, `wrong_screen`.
 
@@ -95,9 +95,9 @@ Thân yêu cầu (POST) là một **đối tượng JSON** hoặc rỗng (rỗng
 ### Nguồn trực tiếp (M5b)
 | Phương thức | Đường dẫn | Mô tả |
 |---|---|---|
-| GET | `/api/sources` | Danh sách + trạng thái nguồn NDI/camera (như `state.sources`) |
+| GET | `/api/sources` | Danh sách + trạng thái nguồn NDI/camera/cửa sổ (như `state.sources`) |
 | POST | `/api/sources/{n}/reconnect` | Đóng và mở lại kết nối của nguồn thứ `n` (chỉ số 1-based theo thứ tự `sources[]` của project). **Lệnh sửa** → `423` khi Khoá vận hành. `404 source_not_found` nếu không có, `400 not_live` nếu nguồn không phải NDI/camera |
-Đen/Dừng/Mẫu của Output NDI dùng chung `POST /api/outputs/{i}/black|freeze|pattern`. Chưa có OSC cho nguồn trực tiếp.
+Đen/Dừng/Mẫu của Output NDI dùng chung `POST /api/outputs/{i}/black|freeze|pattern`. Chưa có OSC cho nguồn trực tiếp. Chưa có lệnh HTTP/OSC/MIDI chuyển slide PowerPoint (CTL-02 chỉ từ bàn phím).
 
 ### SSE (`GET /api/events`)
 

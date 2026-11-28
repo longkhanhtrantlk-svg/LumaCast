@@ -1,4 +1,5 @@
 #include "HttpServer.h"
+#include "core/I18n.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTcpSocket>
@@ -110,7 +111,7 @@ void HttpServer::sweep() {
         if (c.responded) {
             if (c.age.elapsed() > limits_.writeTimeoutMs) dropConn(s);          // phan hoi khong gui het (client ngung doc)
         } else if (c.age.elapsed() > limits_.requestTimeoutMs) {                // slowloris / yeu cau do dang
-            fail(s, 408, "request_timeout", "Hết thời gian chờ yêu cầu");
+            fail(s, 408, "request_timeout", LC_TR("Hết thời gian chờ yêu cầu"));
         }
     }
     if (!sse_.isEmpty() && sinceBeat_.elapsed() >= limits_.sseHeartbeatMs) {
@@ -119,10 +120,10 @@ void HttpServer::sweep() {
     }
 }
 
-void HttpServer::fail(QTcpSocket* s, int status, const QByteArray& code, const QByteArray& message) {
+void HttpServer::fail(QTcpSocket* s, int status, const QByteArray& code, const QString& message) {
     QJsonObject o;
     o["error"] = QString::fromUtf8(code);
-    o["message"] = QString::fromUtf8(message);
+    o["message"] = message;
     respond(s, HttpResponse::json(status, QJsonDocument(o).toJson(QJsonDocument::Compact)));
 }
 
@@ -148,66 +149,66 @@ void HttpServer::respond(QTcpSocket* s, const HttpResponse& r, bool head) {
 bool HttpServer::parseAndDispatch(QTcpSocket* s, Conn& c) {
     const int hdrEnd = c.buf.indexOf("\r\n\r\n");
     if (hdrEnd < 0) {
-        if (c.buf.size() > limits_.maxHeaderBytes) { fail(s, 431, "header_too_large", "Header quá lớn"); }
+        if (c.buf.size() > limits_.maxHeaderBytes) { fail(s, 431, "header_too_large", LC_TR("Header quá lớn")); }
         return false;                                    // chua du header
     }
-    if (hdrEnd + 4 > limits_.maxHeaderBytes) { fail(s, 431, "header_too_large", "Header quá lớn"); return false; }
+    if (hdrEnd + 4 > limits_.maxHeaderBytes) { fail(s, 431, "header_too_large", LC_TR("Header quá lớn")); return false; }
 
     QList<QByteArray> lines = c.buf.left(hdrEnd + 2).split('\n');     // moi dong ket thuc bang \r\n; phan tu cuoi rong
     if (!lines.isEmpty()) lines.removeLast();
     // dong yeu cau
     QByteArray first = lines.value(0);
-    if (!first.endsWith('\r')) { fail(s, 400, "bad_request", "Dòng yêu cầu sai định dạng"); return false; }
+    if (!first.endsWith('\r')) { fail(s, 400, "bad_request", LC_TR("Dòng yêu cầu sai định dạng")); return false; }
     first.chop(1);
     const QList<QByteArray> parts = first.split(' ');
-    if (parts.size() != 3) { fail(s, 400, "bad_request", "Dòng yêu cầu sai định dạng"); return false; }
+    if (parts.size() != 3) { fail(s, 400, "bad_request", LC_TR("Dòng yêu cầu sai định dạng")); return false; }
     HttpRequest req;
     req.method = parts[0];
-    if (!isToken(req.method) || req.method.size() > 16) { fail(s, 400, "bad_request", "Phương thức không hợp lệ"); return false; }
+    if (!isToken(req.method) || req.method.size() > 16) { fail(s, 400, "bad_request", LC_TR("Phương thức không hợp lệ")); return false; }
     const QByteArray target = parts[1];
     if (parts[2] != "HTTP/1.1" && parts[2] != "HTTP/1.0") {
-        fail(s, parts[2].startsWith("HTTP/") ? 505 : 400, "bad_version", "Chỉ hỗ trợ HTTP/1.0 và 1.1");
+        fail(s, parts[2].startsWith("HTTP/") ? 505 : 400, "bad_version", LC_TR("Chỉ hỗ trợ HTTP/1.0 và 1.1"));
         return false;
     }
-    if (target.size() > limits_.maxTargetBytes) { fail(s, 414, "uri_too_long", "Đường dẫn quá dài"); return false; }
-    if (!target.startsWith('/') || hasControl(target) || target.contains('#')) { fail(s, 400, "bad_request", "Đường dẫn không hợp lệ"); return false; }
+    if (target.size() > limits_.maxTargetBytes) { fail(s, 414, "uri_too_long", LC_TR("Đường dẫn quá dài")); return false; }
+    if (!target.startsWith('/') || hasControl(target) || target.contains('#')) { fail(s, 400, "bad_request", LC_TR("Đường dẫn không hợp lệ")); return false; }
     const int q = target.indexOf('?');
     const QByteArray rawPath = q >= 0 ? target.left(q) : target;
     req.query = q >= 0 ? target.mid(q + 1) : QByteArray();
     req.path = QUrl::fromPercentEncoding(rawPath).toUtf8();
     if (req.path.contains('\0') || hasControl(req.path) || QUrl::fromPercentEncoding(rawPath).contains(QChar::ReplacementCharacter)) {
-        fail(s, 400, "bad_request", "Đường dẫn không hợp lệ");
+        fail(s, 400, "bad_request", LC_TR("Đường dẫn không hợp lệ"));
         return false;
     }
     // header
-    if (lines.size() - 1 > limits_.maxHeaders) { fail(s, 431, "too_many_headers", "Quá nhiều header"); return false; }
+    if (lines.size() - 1 > limits_.maxHeaders) { fail(s, 431, "too_many_headers", LC_TR("Quá nhiều header")); return false; }
     for (int i = 1; i < lines.size(); ++i) {
         QByteArray ln = lines[i];
-        if (!ln.endsWith('\r')) { fail(s, 400, "bad_request", "Header sai định dạng"); return false; }
+        if (!ln.endsWith('\r')) { fail(s, 400, "bad_request", LC_TR("Header sai định dạng")); return false; }
         ln.chop(1);
         const int colon = ln.indexOf(':');
-        if (colon <= 0 || ln[0] == ' ' || ln[0] == '\t') { fail(s, 400, "bad_request", "Header sai định dạng"); return false; }
+        if (colon <= 0 || ln[0] == ' ' || ln[0] == '\t') { fail(s, 400, "bad_request", LC_TR("Header sai định dạng")); return false; }
         const QByteArray name = ln.left(colon).toLower();
-        if (!isToken(name)) { fail(s, 400, "bad_request", "Tên header không hợp lệ"); return false; }
+        if (!isToken(name)) { fail(s, 400, "bad_request", LC_TR("Tên header không hợp lệ")); return false; }
         const QByteArray value = ln.mid(colon + 1).trimmed();
-        if (hasControl(value)) { fail(s, 400, "bad_request", "Giá trị header không hợp lệ"); return false; }
+        if (hasControl(value)) { fail(s, 400, "bad_request", LC_TR("Giá trị header không hợp lệ")); return false; }
         if (req.headers.contains(name)) {
-            if (name == "content-length" && req.headers[name] != value) { fail(s, 400, "bad_request", "Content-Length mâu thuẫn"); return false; }
-            if (name == "authorization" || name == "host") { fail(s, 400, "bad_request", "Header bị lặp"); return false; }
+            if (name == "content-length" && req.headers[name] != value) { fail(s, 400, "bad_request", LC_TR("Content-Length mâu thuẫn")); return false; }
+            if (name == "authorization" || name == "host") { fail(s, 400, "bad_request", LC_TR("Header bị lặp")); return false; }
             req.headers[name] += ", " + value;
         } else {
             req.headers.insert(name, value);
         }
     }
-    if (req.headers.contains("transfer-encoding")) { fail(s, 501, "not_implemented", "Không hỗ trợ Transfer-Encoding"); return false; }
+    if (req.headers.contains("transfer-encoding")) { fail(s, 501, "not_implemented", LC_TR("Không hỗ trợ Transfer-Encoding")); return false; }
     qint64 len = 0;
     if (req.headers.contains("content-length")) {
         const QByteArray v = req.headers["content-length"];
         bool ok = !v.isEmpty() && v.size() <= 9;
         for (char ch : v) ok = ok && ch >= '0' && ch <= '9';
-        if (!ok) { fail(s, 400, "bad_request", "Content-Length không hợp lệ"); return false; }
+        if (!ok) { fail(s, 400, "bad_request", LC_TR("Content-Length không hợp lệ")); return false; }
         len = v.toLongLong();
-        if (len > limits_.maxBodyBytes) { fail(s, 413, "body_too_large", "Nội dung yêu cầu quá lớn"); return false; }
+        if (len > limits_.maxBodyBytes) { fail(s, 413, "body_too_large", LC_TR("Nội dung yêu cầu quá lớn")); return false; }
     }
     const int bodyStart = hdrEnd + 4;
     if (c.buf.size() < bodyStart + len) return false;                // chua du body
@@ -218,11 +219,11 @@ bool HttpServer::parseAndDispatch(QTcpSocket* s, Conn& c) {
     try {
         resp = handler_ ? handler_(req) : HttpResponse::json(404, R"J({"error":"not_found"})J");
     } catch (...) {
-        fail(s, 500, "internal_error", "Lỗi nội bộ");
+        fail(s, 500, "internal_error", LC_TR("Lỗi nội bộ"));
         return true;
     }
     if (resp.sse) {
-        if (sse_.size() >= limits_.maxSseClients) { fail(s, 503, "too_many_streams", "Quá nhiều luồng sự kiện"); return true; }
+        if (sse_.size() >= limits_.maxSseClients) { fail(s, 503, "too_many_streams", LC_TR("Quá nhiều luồng sự kiện")); return true; }
         QByteArray out = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nConnection: keep-alive\r\nX-Content-Type-Options: nosniff\r\n";
         for (const auto& h : resp.headers) if (!hasControl(h.first) && !hasControl(h.second)) out += h.first + ": " + h.second + "\r\n";
         out += "\r\n" + resp.body;
@@ -244,7 +245,7 @@ void HttpServer::onReadyRead(QTcpSocket* s) {
     const qint64 room = qint64(limits_.maxHeaderBytes) + limits_.maxBodyBytes + 8 - c.buf.size();
     c.buf += s->read(std::max<qint64>(0, room));
     if (c.buf.size() > limits_.maxHeaderBytes + limits_.maxBodyBytes + 4) {
-        fail(s, 413, "body_too_large", "Yêu cầu quá lớn");
+        fail(s, 413, "body_too_large", LC_TR("Yêu cầu quá lớn"));
         return;
     }
     parseAndDispatch(s, c);

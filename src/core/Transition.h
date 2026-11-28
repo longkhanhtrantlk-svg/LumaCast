@@ -1,5 +1,6 @@
 #pragma once
 #include "core/Types.h"
+#include "core/I18n.h"
 #include "media/Source.h"
 #include <QString>
 #include <QVariantMap>
@@ -10,12 +11,12 @@ namespace lc {
 
 enum class Easing { Linear, EaseInOut, EaseIn, EaseOut };
 
-inline const char* easingName(Easing e) {
+inline QString easingName(Easing e) {
     switch (e) {
-    case Easing::Linear: return "Tuyến tính";
-    case Easing::EaseInOut: return "Êm hai đầu";
-    case Easing::EaseIn: return "Êm lúc đầu";
-    case Easing::EaseOut: return "Êm lúc cuối";
+    case Easing::Linear: return LC_TR("Tuyến tính");
+    case Easing::EaseInOut: return LC_TR("Êm hai đầu");
+    case Easing::EaseIn: return LC_TR("Êm lúc đầu");
+    case Easing::EaseOut: return LC_TR("Êm lúc cuối");
     }
     return "?";
 }

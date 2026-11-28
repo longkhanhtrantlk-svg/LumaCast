@@ -1,4 +1,5 @@
 #include "OutputSupervisor.h"
+#include "core/I18n.h"
 #include "render/OutputWindow.h"
 #include <QGuiApplication>
 #include <QScreen>
@@ -42,7 +43,10 @@ void OutputSupervisor::check() {
         if (h != last_[i]) {
             const QString name = w->config().name;
             if (h == OutputHealth::Ok) qInfo().noquote() << QString("Output '%1': hoat dong tro lai").arg(name);
-            else qWarning().noquote() << QString("Output '%1': %2").arg(name, healthText(h, w->config()));
+            else {
+                i18n::SourceScope logLanguage;
+                qWarning().noquote() << QString("Output '%1': %2").arg(name, healthText(h, w->config()));
+            }
             last_[i] = h;
             emit healthChanged(i, int(h));
         }

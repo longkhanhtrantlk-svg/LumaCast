@@ -1,4 +1,5 @@
 #include "InspectorPanel.h"
+#include "core/I18n.h"
 #include "DragList.h"
 #include "ParamEditor.h"
 #include "Text.h"
@@ -176,17 +177,17 @@ QWidget* InspectorPanel::buildSceneTab() {
     add->addWidget(delB);
     v->addLayout(add);
 
-    propBox_ = new QGroupBox("Thuộc tính layer đang chọn");
-    propBox_->setToolTip("Ô viền vàng = thuộc tính đang có keyframe: chỉnh giá trị sẽ tự đặt/sửa keyframe tại vị trí playhead.");
+    propBox_ = new QGroupBox(LC_TR("Thuộc tính layer đang chọn"));
+    propBox_->setToolTip(LC_TR("Ô viền vàng = thuộc tính đang có keyframe: chỉnh giá trị sẽ tự đặt/sửa keyframe tại vị trí playhead."));
     auto* g = new QGridLayout(propBox_);
     struct PS { AnimProp p; const char* prefix; const char* name; double lo, hi, step; int row, col; };
     const PS props[kAnimPropCount] = {
         {AnimProp::X, "x ", "layerX", -4, 8, 0.01, 0, 0}, {AnimProp::Y, "y ", "layerY", -4, 8, 0.01, 0, 1},
         {AnimProp::W, "w ", "layerW", 0, 8, 0.01, 1, 0}, {AnimProp::H, "h ", "layerH", 0, 8, 0.01, 1, 1},
-        {AnimProp::Opacity, "alpha ", "layerAlpha", 0, 1, 0.05, 2, 0}, {AnimProp::Rotation, "xoay ", "layerRot", -3600, 3600, 1, 3, 0}};
+        {AnimProp::Opacity, "alpha ", "layerAlpha", 0, 1, 0.05, 2, 0}, {AnimProp::Rotation, LC_NOOP("xoay "), "layerRot", -3600, 3600, 1, 3, 0}};
     for (const PS& ps : props) {
         auto* sp = spin(ps.lo, ps.hi, ps.step, ps.p == AnimProp::Opacity ? 1 : 0);
-        sp->setPrefix(ps.prefix);
+        sp->setPrefix(i18n::translate(ps.prefix));
         sp->setObjectName(ps.name);
         if (ps.p == AnimProp::Rotation) sp->setSuffix("°");
         g->addWidget(sp, ps.row, ps.col);
@@ -197,31 +198,31 @@ QWidget* InspectorPanel::buildSceneTab() {
     fitCombo_->addItems({"Stretch", "Fit", "Fill"});
     g->addWidget(fitCombo_, 2, 1);
     connect(fitCombo_, &QComboBox::currentIndexChanged, this, [this](int i) {
-        editCurrentLayer([i](Layer& l) { l.fit = LayerFit(i); }, "Đổi kiểu fit layer");
+        editCurrentLayer([i](Layer& l) { l.fit = LayerFit(i); }, LC_TR("Đổi kiểu fit layer"));
     });
     blendCombo_ = new QComboBox;
     blendCombo_->setObjectName("layerBlend");
-    blendCombo_->addItems({"Normal", "Add (cộng sáng)", "Multiply (nhân)", "Screen (màn lọc)"});
+    blendCombo_->addItems({"Normal", LC_TR("Add (cộng sáng)"), LC_TR("Multiply (nhân)"), LC_TR("Screen (màn lọc)")});
     g->addWidget(blendCombo_, 3, 1);
     connect(blendCombo_, &QComboBox::currentIndexChanged, this, [this](int i) {
-        editCurrentLayer([i](Layer& l) { l.blend = BlendMode(i); }, "Đổi chế độ hoà trộn layer");
+        editCurrentLayer([i](Layer& l) { l.blend = BlendMode(i); }, LC_TR("Đổi chế độ hoà trộn layer"));
     });
     volumeSpin_ = spin(0, 200, 5, 100, 0);
     volumeSpin_->setObjectName("layerVolume");
-    volumeSpin_->setPrefix("tiếng ");
+    volumeSpin_->setPrefix(LC_TR("tiếng "));
     volumeSpin_->setSuffix("%");
-    volumeSpin_->setToolTip("Âm lượng của nguồn trong Layer này (100% = nguyên gốc). Chỉ có tác dụng nếu nguồn có âm thanh.");
+    volumeSpin_->setToolTip(LC_TR("Âm lượng của nguồn trong Layer này (100% = nguyên gốc). Chỉ có tác dụng nếu nguồn có âm thanh."));
     g->addWidget(volumeSpin_, 6, 0);
     connect(volumeSpin_, &QDoubleSpinBox::valueChanged, this, [this](double v) {
-        editCurrentLayer([v](Layer& l) { l.volume = float(v / 100.0); }, "Đổi âm lượng layer", 1000000 + 60);
+        editCurrentLayer([v](Layer& l) { l.volume = float(v / 100.0); }, LC_TR("Đổi âm lượng layer"), 1000000 + 60);
     });
-    const char* cropPrefix[4] = {"cắt x ", "cắt y ", "cắt w ", "cắt h "};
+    const QString cropPrefix[4] = {LC_TR("cắt x "), LC_TR("cắt y "), LC_TR("cắt w "), LC_TR("cắt h ")};
     const char* cropName[4] = {"layerCropX", "layerCropY", "layerCropW", "layerCropH"};
     for (int k = 0; k < 4; ++k) {
         cropSpin_[k] = spin(0, 1, 0.01, k < 2 ? 0 : 1, 3);
         cropSpin_[k]->setPrefix(cropPrefix[k]);
         cropSpin_[k]->setObjectName(cropName[k]);
-        cropSpin_[k]->setToolTip("Vùng của nguồn được dùng, tính theo hình đã xoay (0–1, gốc trên-trái)");
+        cropSpin_[k]->setToolTip(LC_TR("Vùng của nguồn được dùng, tính theo hình đã xoay (0–1, gốc trên-trái)"));
         g->addWidget(cropSpin_[k], 4 + k / 2, k % 2);
         connect(cropSpin_[k], &QDoubleSpinBox::valueChanged, this, [this, k](double val) {
             editCurrentLayer([k, val](Layer& l) {
@@ -231,7 +232,7 @@ QWidget* InspectorPanel::buildSceneTab() {
                 if (r.right() > 1) { if (k == 2) r.setWidth(1 - r.x()); else r.moveLeft(1 - r.width()); }
                 if (r.bottom() > 1) { if (k == 3) r.setHeight(1 - r.y()); else r.moveTop(1 - r.height()); }
                 l.crop = r.intersected(QRectF(0, 0, 1, 1));
-            }, "Sửa vùng cắt layer", 1000000 + 50 + k);
+            }, LC_TR("Sửa vùng cắt layer"), 1000000 + 50 + k);
         });
     }
     v->addWidget(propBox_);
@@ -243,7 +244,7 @@ QWidget* InspectorPanel::buildSceneTab() {
         if (si < 0 || li < 0 || li >= int(layerCache_[si].size())) return;
         auto after = layerCache_[si];
         after[li].visible = it->checkState() == Qt::Checked;
-        editLayers(si, after, after[li].visible ? "Hiện layer" : "Ẩn layer");
+        editLayers(si, after, after[li].visible ? LC_TR("Hiện layer") : LC_TR("Ẩn layer"));
     });
     connect(addB, &QPushButton::clicked, this, [this] {
         const int si = currentScene(), k = addSrcCombo_->currentIndex();
@@ -252,7 +253,7 @@ QWidget* InspectorPanel::buildSceneTab() {
         Layer l;
         l.source = project_.sources[k].source;
         after.push_back(l);
-        editLayers(si, after, "Thêm layer");
+        editLayers(si, after, LC_TR("Thêm layer"));
         syncLayerList(int(after.size()) - 1);
     });
     connect(delB, &QPushButton::clicked, this, [this] {
@@ -260,7 +261,7 @@ QWidget* InspectorPanel::buildSceneTab() {
         if (li < 0) return;
         auto after = layerCache_[si];
         after.erase(after.begin() + li);
-        editLayers(si, after, "Xoá layer");
+        editLayers(si, after, LC_TR("Xoá layer"));
         syncLayerList(std::min(li, int(after.size()) - 1));
     });
     refreshFromProject();
@@ -411,7 +412,7 @@ void InspectorPanel::setLayerProp(AnimProp p, double v) {
         case AnimProp::Opacity: l.opacity = float(v); break;
         case AnimProp::Rotation: l.rotation = float(v); break;
         }
-    }, "Sửa thuộc tính layer", 1000000 + si * 10000 + li * 100 + int(p));
+    }, LC_TR("Sửa thuộc tính layer"), 1000000 + si * 10000 + li * 100 + int(p));
 }
 
 // rows/before tinh theo danh sach (hang 0 = layer tren cung = phan tu cuoi cua vector)
@@ -422,7 +423,7 @@ void InspectorPanel::reorderLayers(const std::vector<int>& rows, int before) {
     shown = movedRows(shown, rows, before);
     const int n = int(shown.size());
     const int selRow = rows.front() < before ? before - int(rows.size()) : before;       // hang moi cua muc keo dau tien
-    editLayers(si, std::vector<Layer>(shown.rbegin(), shown.rend()), "Sắp xếp layer");
+    editLayers(si, std::vector<Layer>(shown.rbegin(), shown.rend()), LC_TR("Sắp xếp layer"));
     syncLayerList(std::clamp(n - 1 - selRow, 0, n - 1));
 }
 
@@ -483,7 +484,7 @@ QWidget* InspectorPanel::buildEffectTab() {
 
     fxList_ = new QListWidget;
     fxList_->setObjectName("effectList");
-    fxList_->setToolTip("Chuỗi Effect của layer, chạy từ trên xuống. Tick để bật/tắt từng Effect.");
+    fxList_->setToolTip(LC_TR("Chuỗi Effect của layer, chạy từ trên xuống. Tick để bật/tắt từng Effect."));
     v->addWidget(fxList_, 1);
 
     auto* add = new QHBoxLayout;
@@ -508,7 +509,7 @@ QWidget* InspectorPanel::buildEffectTab() {
     fxNote_->setStyleSheet("color:#ff8a65");
     v->addWidget(fxNote_);
 
-    fxParamBox_ = new QGroupBox("Tham số");
+    fxParamBox_ = new QGroupBox(LC_TR("Tham số"));
     new QVBoxLayout(fxParamBox_);
     v->addWidget(fxParamBox_);
 
@@ -518,7 +519,7 @@ QWidget* InspectorPanel::buildEffectTab() {
         if (li < 0 || ei < 0 || ei >= int(layerCache_[si][li].effects.size())) return;
         auto after = layerCache_[si];
         after[li].effects[ei].enabled = it->checkState() == Qt::Checked;
-        editLayers(si, after, after[li].effects[ei].enabled ? "Bật Effect" : "Tắt Effect");
+        editLayers(si, after, after[li].effects[ei].enabled ? LC_TR("Bật Effect") : LC_TR("Tắt Effect"));
     });
     connect(addB, &QPushButton::clicked, this, [this] {
         const int si = currentScene(), li = currentLayerIdx();
@@ -530,7 +531,7 @@ QWidget* InspectorPanel::buildEffectTab() {
         e.effectId = id;
         e.params = defaultParams(*def);
         after[li].effects.push_back(e);
-        editLayers(si, after, "Thêm Effect");
+        editLayers(si, after, LC_TR("Thêm Effect"));
         syncEffectList(int(after[li].effects.size()) - 1);
     });
     auto move = [this](int dir) {
@@ -540,7 +541,7 @@ QWidget* InspectorPanel::buildEffectTab() {
         auto& fx = after[li].effects;
         if (ei + dir < 0 || ei + dir >= int(fx.size())) return;
         std::swap(fx[ei], fx[ei + dir]);
-        editLayers(si, after, "Đổi thứ tự Effect");
+        editLayers(si, after, LC_TR("Đổi thứ tự Effect"));
         syncEffectList(ei + dir);
     };
     connect(upB, &QPushButton::clicked, this, [move] { move(-1); });
@@ -550,7 +551,7 @@ QWidget* InspectorPanel::buildEffectTab() {
         if (li < 0 || ei < 0) return;
         auto after = layerCache_[si];
         after[li].effects.erase(after[li].effects.begin() + ei);
-        editLayers(si, after, "Gỡ Effect");
+        editLayers(si, after, LC_TR("Gỡ Effect"));
         syncEffectList(std::min(ei, int(after[li].effects.size()) - 1));
     });
     refreshEffectCatalog();
@@ -579,7 +580,7 @@ void InspectorPanel::syncEffectList(int selectRow) {
         if (has) {
             for (const EffectInstance& e : layerCache_[si][li].effects) {
                 auto def = engine_.registry().find(e.effectId);
-                auto* it = new QListWidgetItem(def ? def->name : QString("⚠ thiếu plug-in: %1").arg(e.effectId));
+                auto* it = new QListWidgetItem(def ? def->name : QString(LC_TR("⚠ thiếu plug-in: %1")).arg(e.effectId));
                 it->setFlags(it->flags() | Qt::ItemIsUserCheckable);
                 it->setCheckState(e.enabled ? Qt::Checked : Qt::Unchecked);
                 if (!def) it->setForeground(QColor("#ff8a65"));
@@ -589,8 +590,8 @@ void InspectorPanel::syncEffectList(int selectRow) {
             if (n > 0) fxList_->setCurrentRow(selectRow >= 0 && selectRow < n ? selectRow : 0);
         }
     }
-    fxTitle_->setText(has ? QString("Effect của layer %1 (chạy từ trên xuống dưới)").arg(li + 1)
-                          : "Chọn một layer ở tab Scene / Layer để thêm Effect.");
+    fxTitle_->setText(has ? QString(LC_TR("Effect của layer %1 (chạy từ trên xuống dưới)")).arg(li + 1)
+                          : LC_TR("Chọn một layer ở tab Scene / Layer để thêm Effect."));
     syncEffectParams();
 }
 
@@ -605,7 +606,7 @@ void InspectorPanel::syncEffectParams() {
     const EffectInstance inst = layerCache_[si][li].effects[ei];
     auto def = engine_.registry().find(inst.effectId);
     if (!def) {
-        fxNote_->setText(QString("Plug-in '%1' không có hoặc đã tắt. Dữ liệu vẫn được giữ trong project; Effect này đang bị bỏ qua.").arg(inst.effectId));
+        fxNote_->setText(QString(LC_TR("Plug-in '%1' không có hoặc đã tắt. Dữ liệu vẫn được giữ trong project; Effect này đang bị bỏ qua.")).arg(inst.effectId));
         fxParamBox_->setVisible(false);
         return;
     }
@@ -619,7 +620,7 @@ void InspectorPanel::syncEffectParams() {
         if (li < 0 || ei < 0) return;
         auto after = layerCache_[si];
         after[li].effects[ei].params = vals;
-        editLayers(si, after, "Sửa tham số Effect", 3000000 + (si * 100 + li) * 1000 + ei * 50 + pi);
+        editLayers(si, after, LC_TR("Sửa tham số Effect"), 3000000 + (si * 100 + li) * 1000 + ei * 50 + pi);
     });
 }
 
@@ -628,7 +629,7 @@ void InspectorPanel::updateEffectNote() {
     const int si = currentScene(), li = currentLayerIdx(), ei = fxList_->currentRow();
     if (si < 0 || li < 0 || ei < 0 || li >= int(layerCache_[si].size()) || ei >= int(layerCache_[si][li].effects.size())) return;
     const QString err = engine_.registry().compileError(layerCache_[si][li].effects[ei].effectId);
-    fxNote_->setText(err.isEmpty() ? QString() : "Shader lỗi, Effect này đang bị bỏ qua:\n" + err);
+    fxNote_->setText(err.isEmpty() ? QString() : LC_TR("Shader lỗi, Effect này đang bị bỏ qua:\n") + err);
 }
 
 // ---------------- Output ----------------
@@ -643,7 +644,7 @@ void InspectorPanel::pushOutput(int i) {
 namespace {
 struct CalField { const char* label; double lo, hi, step; float Calibration::*field; };
 const CalField kCal[6] = {
-    {"sáng", 0, 2, 0.05, &Calibration::brightness}, {"tương phản", 0, 3, 0.05, &Calibration::contrast},
+    {LC_NOOP("sáng"), 0, 2, 0.05, &Calibration::brightness}, {LC_NOOP("tương phản"), 0, 3, 0.05, &Calibration::contrast},
     {"gamma", 0.2, 4, 0.05, &Calibration::gamma}, {"R", 0, 2, 0.02, &Calibration::gainR},
     {"G", 0, 2, 0.02, &Calibration::gainG}, {"B", 0, 2, 0.02, &Calibration::gainB}};
 }
@@ -663,30 +664,30 @@ QWidget* InspectorPanel::buildOutputTab() {
     auto* host = new QWidget;
     auto* root = new QVBoxLayout(host);
     outW_.resize(engine_.outputCount());
-    auto* mapBtn = new QPushButton(glyphIcon(Glyph::Layout), "Mapping trực quan…");
+    auto* mapBtn = new QPushButton(glyphIcon(Glyph::Layout), LC_TR("Mapping trực quan…"));
     mapBtn->setObjectName("openMapping");
-    mapBtn->setToolTip("Kéo thả vùng cắt của từng Output trên hình Channel");
+    mapBtn->setToolTip(LC_TR("Kéo thả vùng cắt của từng Output trên hình Channel"));
     connect(mapBtn, &QPushButton::clicked, this, [this] { emit mappingRequested(); });
     root->addWidget(mapBtn);
     for (int i = 0; i < engine_.outputCount(); ++i) {
         const OutputConfig& c = outCache_[i];
         OutW& w = outW_[i];
-        auto* box = new QGroupBox(QString("%1  (%2x%3, kênh %4)").arg(c.name).arg(c.size.width()).arg(c.size.height()).arg(c.channel + 1));
+        auto* box = new QGroupBox(QString(LC_TR("%1  (%2x%3, kênh %4)")).arg(c.name).arg(c.size.width()).arg(c.size.height()).arg(c.channel + 1));
         auto* g = new QGridLayout(box);
 
         w.scale = new QComboBox;
         w.scale->addItems({"Fit", "Fill", "Stretch", "Pixel 1:1"});
         connect(w.scale, &QComboBox::currentIndexChanged, this, [this, i](int k) {
             OutputConfig after = outCache_[i]; after.scale = ScaleMode(k);
-            editOutput(i, after, "Đổi kiểu scale output");
+            editOutput(i, after, LC_TR("Đổi kiểu scale output"));
         });
         g->addWidget(w.scale, 0, 0);
 
         w.rot = new QComboBox;
-        w.rot->addItems({"Xoay 0°", "Xoay 90°", "Xoay 180°", "Xoay 270°"});
+        w.rot->addItems({LC_TR("Xoay 0°"), LC_TR("Xoay 90°"), LC_TR("Xoay 180°"), LC_TR("Xoay 270°")});
         connect(w.rot, &QComboBox::currentIndexChanged, this, [this, i](int k) {
             OutputConfig after = outCache_[i]; after.rotation = k * 90;
-            editOutput(i, after, "Xoay output");
+            editOutput(i, after, LC_TR("Xoay output"));
         });
         g->addWidget(w.rot, 0, 1);
 
@@ -699,17 +700,17 @@ QWidget* InspectorPanel::buildOutputTab() {
                 QRectF& r = after.crop;
                 if (k == 0) r.moveLeft(v); else if (k == 1) r.moveTop(v);
                 else if (k == 2) r.setWidth(std::max(0.001, v)); else r.setHeight(std::max(0.001, v));
-                editOutput(i, after, "Sửa vùng crop output", 2000000 + i * 100 + k);
+                editOutput(i, after, LC_TR("Sửa vùng crop output"), 2000000 + i * 100 + k);
             });
             g->addWidget(w.crop[k], 1 + k / 2, k % 2);
         }
         for (int k = 0; k < 6; ++k) {
             w.cal[k] = spin(kCal[k].lo, kCal[k].hi, kCal[k].step, 0);
-            w.cal[k]->setPrefix(QString(kCal[k].label) + " ");
+            w.cal[k]->setPrefix(i18n::translate(kCal[k].label) + " ");
             connect(w.cal[k], &QDoubleSpinBox::valueChanged, this, [this, i, k](double v) {
                 OutputConfig after = outCache_[i];
                 after.cal.*(kCal[k].field) = float(v);
-                editOutput(i, after, "Hiệu chỉnh màu output", 2000000 + i * 100 + 10 + k);
+                editOutput(i, after, LC_TR("Hiệu chỉnh màu output"), 2000000 + i * 100 + 10 + k);
             });
             g->addWidget(w.cal[k], 3 + k / 2, k % 2);
         }

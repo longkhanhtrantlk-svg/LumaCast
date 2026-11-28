@@ -1,4 +1,5 @@
 #include "ScenePanel.h"
+#include "core/I18n.h"
 #include "Icons.h"
 #include "Theme.h"
 #include "live/LiveSource.h"
@@ -184,8 +185,8 @@ SceneCard::SceneCard(std::shared_ptr<Scene> scene, int number, const QString& na
     auto* eh = new QHBoxLayout(edits);
     eh->setContentsMargins(0, 0, 0, 0);
     eh->setSpacing(0);
-    renameB_ = iconButton(Glyph::Rename, "scRename", "Đổi tên Scene", edits);
-    deleteB_ = iconButton(Glyph::Delete, "scDelete", "Xoá Scene (Hoàn tác được)", edits);
+    renameB_ = iconButton(Glyph::Rename, "scRename", LC_TR("Đổi tên Scene"), edits);
+    deleteB_ = iconButton(Glyph::Delete, "scDelete", LC_TR("Xoá Scene (Hoàn tác được)"), edits);
     eh->addWidget(renameB_);
     eh->addWidget(deleteB_);
     nameRow->addWidget(name_, 1);
@@ -201,17 +202,17 @@ SceneCard::SceneCard(std::shared_ptr<Scene> scene, int number, const QString& na
 
     auto* t = new QHBoxLayout;
     t->setSpacing(1);
-    rewindB_ = iconButton(Glyph::Rewind, "scRewind", "Về đầu", controls);
-    playB_ = iconButton(Glyph::Play, "scPlay", "Phát", controls);
+    rewindB_ = iconButton(Glyph::Rewind, "scRewind", LC_TR("Về đầu"), controls);
+    playB_ = iconButton(Glyph::Play, "scPlay", LC_TR("Phát"), controls);
     seek_ = new CardSlider(controls);
     seek_->setObjectName("scSeek");
     seek_->setRange(0, 1000);
-    seek_->setToolTip("Kéo để tua. Khi đưa từ Preview lên Program, video vẫn phát lại từ đầu (tắt ở Timeline: \"Phát lại khi lên Program\")");
+    seek_->setToolTip(LC_TR("Kéo để tua. Khi đưa từ Preview lên Program, video vẫn phát lại từ đầu (tắt ở Timeline: \"Phát lại khi lên Program\")"));
     time_ = new QLabel(controls);
     time_->setObjectName("scTime");
     time_->setFixedWidth(42);
     time_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    time_->setToolTip("Thời gian còn lại");
+    time_->setToolTip(LC_TR("Thời gian còn lại"));
     t->addWidget(rewindB_);
     t->addWidget(playB_);
     t->addWidget(seek_, 1);
@@ -220,14 +221,14 @@ SceneCard::SceneCard(std::shared_ptr<Scene> scene, int number, const QString& na
 
     auto* a = new QHBoxLayout;
     a->setSpacing(1);
-    loopB_ = iconButton(Glyph::Loop, "scLoop", "Lặp lại", controls);
+    loopB_ = iconButton(Glyph::Loop, "scLoop", LC_TR("Lặp lại"), controls);
     loopB_->setCheckable(true);
-    muteB_ = iconButton(Glyph::Speaker, "scMute", "Tắt tiếng Scene này (chỉ Scene ở PROGRAM mới ra loa)", controls);
+    muteB_ = iconButton(Glyph::Speaker, "scMute", LC_TR("Tắt tiếng Scene này (chỉ Scene ở PROGRAM mới ra loa)"), controls);
     muteB_->setCheckable(true);
     volume_ = new CardSlider(controls);
     volume_->setObjectName("scVolume");
     volume_->setRange(0, 150);
-    volume_->setToolTip("Âm lượng Scene (100% = nguyên gốc)");
+    volume_->setToolTip(LC_TR("Âm lượng Scene (100% = nguyên gốc)"));
     volumeText_ = new QLabel(controls);
     volumeText_->setFixedWidth(42);
     volumeText_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
@@ -304,7 +305,7 @@ void SceneCard::setMedia(const SceneMediaState& st) {
     if (changed) syncEnabled();
     if (iconChanged) {
         playB_->setIcon(glyphIcon(st.playing ? Glyph::Pause : Glyph::Play));
-        playB_->setToolTip(st.playing ? "Tạm dừng" : "Phát");
+        playB_->setToolTip(st.playing ? LC_TR("Tạm dừng") : LC_TR("Phát"));
     }
     // Vua tua: gia tri doc ve co the con cu, dung de thanh nhay lui
     const bool settled = !seek_->isSliderDown() && QDateTime::currentMSecsSinceEpoch() - lastSeekMs_ > 400;
@@ -413,8 +414,8 @@ void SceneCard::contextMenuEvent(QContextMenuEvent* e) {
     auto* menu = new QMenu(this);                 // popup (khong exec): danh sach co the duoc dung lai trong luc menu dang mo
     menu->setObjectName("scMenu");
     menu->setAttribute(Qt::WA_DeleteOnClose);
-    menu->addAction(glyphIcon(Glyph::Rename), "Đổi tên", this, [this] { startRename(); })->setEnabled(!locked_);
-    menu->addAction(glyphIcon(Glyph::Delete), "Xoá Scene", this, [this] { if (onDelete) QTimer::singleShot(0, this, onDelete); })->setEnabled(!locked_);
+    menu->addAction(glyphIcon(Glyph::Rename), LC_TR("Đổi tên"), this, [this] { startRename(); })->setEnabled(!locked_);
+    menu->addAction(glyphIcon(Glyph::Delete), LC_TR("Xoá Scene"), this, [this] { if (onDelete) QTimer::singleShot(0, this, onDelete); })->setEnabled(!locked_);
     menu->popup(e->globalPos());
 }
 
@@ -437,11 +438,12 @@ ScenePanel::ScenePanel(Project& project, RenderEngine& engine, QWidget* parent) 
         b->setToolTip(tip);
         return b;
     };
-    importB_ = tool(Glyph::Import, "importBtn", "Nhập media (ảnh/video): mỗi file thành một Scene. Cũng có thể kéo thả file vào cửa sổ");
-    ndiB_ = tool(Glyph::Ndi, "addNdiBtn", "Thêm nguồn NDI từ mạng (cần NDI Runtime)");
-    camB_ = tool(Glyph::Camera, "addCamBtn", "Thêm webcam / card capture");
-    for (QToolButton* b : {importB_, ndiB_, camB_}) top->addWidget(b);
-    hint_ = new QLabel("Bấm = Preview · Nhấp đúp = CUT · Phím 1–9");
+    importB_ = tool(Glyph::Import, "importBtn", LC_TR("Nhập media (ảnh/video): mỗi file thành một Scene. Cũng có thể kéo thả file vào cửa sổ"));
+    ndiB_ = tool(Glyph::Ndi, "addNdiBtn", LC_TR("Thêm nguồn NDI từ mạng (cần NDI Runtime)"));
+    camB_ = tool(Glyph::Camera, "addCamBtn", LC_TR("Thêm webcam / card capture"));
+    winB_ = tool(Glyph::Window, "addWindowBtn", LC_TR("Thêm slideshow PowerPoint hoặc cửa sổ khác trên máy này"));
+    for (QToolButton* b : {importB_, ndiB_, camB_, winB_}) top->addWidget(b);
+    hint_ = new QLabel(LC_TR("Bấm = Preview · Nhấp đúp = CUT · Phím 1–9"));
     hint_->setStyleSheet("color:#8a90a2");
     hint_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     top->addSpacing(8);
@@ -571,7 +573,8 @@ void ScenePanel::refresh() {
             case LiveState::Lost: col = QColor(colors::kProgram); break;
             case LiveState::Unavailable: col = QColor(0x8a, 0x90, 0xa2); hollow = true; break;
             }
-            const QString tip = QString("%1: %2").arg(ls->kind() == "ndi" ? "NDI" : "Camera", ls->statusText());
+            const QString what = ls->kind() == "ndi" ? "NDI" : ls->kind() == "window" ? LC_TR("Cửa sổ") : QString("Camera");
+            const QString tip = QString("%1: %2").arg(what, ls->statusText());
             c->setLive(col, hollow, tip);
             it->setToolTip(tip);
         } else {
@@ -597,7 +600,7 @@ void ScenePanel::transport(const std::shared_ptr<Scene>& s, std::function<void(S
 
 void ScenePanel::setLocked(bool on) {
     locked_ = on;
-    for (QToolButton* b : {importB_, ndiB_, camB_}) b->setEnabled(!on);
+    for (QToolButton* b : {importB_, ndiB_, camB_, winB_}) b->setEnabled(!on);
     for (int i = 0; i < list_->count(); ++i)
         if (SceneCard* c = card(i)) c->setLocked(on);
 }

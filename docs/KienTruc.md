@@ -367,6 +367,12 @@ về 0 = huỷ, CUT giữa chừng hoàn tất ngay. AUTO là công tắc giao d
 
 ---
 
+**Bắt cửa sổ (`WindowCapture*`, SRC-09).** Cũng là một `LiveSource` (`kind: "window"`). `WindowCaptureBackend` (Windows Graphics Capture; giả cho test, `LUMACAST_WINDOW_BACKEND=fake`) liệt kê cửa sổ và mở `LiveInput`. WGC **chỉ giao khung khi nội dung đổi**, nên `stallMs` gần như vô hạn và việc mất nguồn do backend báo (cửa sổ đóng, ẩn, thu nhỏ). Khung: texture D3D11 → chép đúng vùng cần vào staging → đổi BGRA→RGBA trên thread của nguồn. Nhận slideshow PowerPoint: lớp `screenClass` (toàn màn hình), hoặc `PPTFrameClass` không có ribbon (chế độ cửa sổ; **không** dựa vào tiêu đề vì đổi theo ngôn ngữ Office). Vùng cắt = `MDIClient` trừ thanh cuộn, rồi thu về tỉ lệ slide (hỏi PowerPoint qua COM). Các tên lớp này là chi tiết nội bộ của Office, bản Office mới có thể đổi (đã thử với Office 16 trên một máy). LumaCast không liệt kê cửa sổ của chính nó.
+
+**Chuyển slide (`SlideRemote*`, CTL-02).** `LiveAction` `slide.next`/`slide.prev` (mặc định PageDown/PageUp, không tự lặp, không cho MIDI) → `SlideRemote` xếp hàng sang một thread riêng (tối đa 3 lệnh chờ, tách rời để thoát chương trình không phải chờ COM) → `SlideBackend`: COM late binding `PowerPoint.Application` đang chạy → `SlideShowWindows(1).View.Next/Previous`. Không cần thư viện Office lúc dịch.
+
+**Project.** Nguồn `window`: `app`, `windowClass`, `title`, `label` (xem `PROJECT-FORMAT.md`).
+
 ## 17. Phát hành Windows và giấy phép (M6)
 
 - **Cấu hình cài đặt** nằm trong `CMakeLists.txt` (phần cuối): `install()` đặt `lumacast`, plug-in mẫu (`<exe>/plugins`), tài liệu, `THIRD-PARTY-NOTICES.txt`, `license.example.json`, `licenses/`. Windows: cài thẳng vào thư mục gốc (exe + DLL cạnh nhau, đúng chỗ `PluginManager::defaultDirs()` tìm). **Qt**: `qt_generate_deploy_app_script` (windeployqt; dự phòng `FILENAME_VARIABLE` cho Qt 6.3–6.4). **FFmpeg**: glob `avcodec/avformat/avutil/swscale/swresample*.dll` từ `LUMACAST_FFMPEG_BIN_DIR` hoặc `../bin` của `FFMPEG_LIBRARY_DIRS`/vcpkg, rồi `file(GET_RUNTIME_DEPENDENCIES)` kéo theo DLL phụ thuộc (zlib...). Giấy phép `copyright` của vcpkg (ffmpeg, qtbase) được chép vào `licenses/` nếu thấy.

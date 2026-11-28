@@ -1,6 +1,7 @@
 #pragma once
 #include "live/Camera.h"
 #include "live/Ndi.h"
+#include "live/WindowCapture.h"
 #include <QDialog>
 #include <atomic>
 #include <memory>
@@ -78,6 +79,22 @@ private:
     QComboBox* channel_;
     QSpinBox *w_, *h_;
     QCheckBox* audio_;
+};
+
+// Chon cua so can bat (SRC-09). Muc dau tien la slideshow PowerPoint tu nhan; cac muc sau la cua so dang mo.
+class WindowSourceDialog : public QDialog {
+    Q_OBJECT
+public:
+    explicit WindowSourceDialog(QWidget* parent = nullptr);
+    WindowTarget target() const;        // app rong = chua chon
+    QString label() const;
+    void refresh();
+private:
+    QLabel* note_;
+    QListWidget* list_;
+    QLineEdit* labelEdit_;
+    QPushButton* ok_;
+    std::vector<WindowTarget> targets_;
 };
 
 } // namespace lc

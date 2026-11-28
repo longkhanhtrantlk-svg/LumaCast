@@ -1,4 +1,5 @@
 #include "MappingWindow.h"
+#include "core/I18n.h"
 #include "InspectorPanel.h"
 #include <QCheckBox>
 #include <QComboBox>
@@ -94,7 +95,7 @@ constexpr int kDragMerge = InspectorPanel::kMappingMergeBase;
 constexpr int kNudgeMerge = InspectorPanel::kMappingMergeBase + 50000000;
 const QColor kColors[] = {QColor("#4fc3f7"), QColor("#ffb74d"), QColor("#81c784"), QColor("#ba68c8"),
                           QColor("#fff176"), QColor("#f06292"), QColor("#4db6ac"), QColor("#a1887f")};
-const char* kEditText = "Mapping: sửa vùng output";
+static QString editText() { return LC_TR("Mapping: sửa vùng output"); }
 }
 
 MappingCanvas::MappingCanvas(InspectorPanel& inspector, QWidget* parent) : QWidget(parent), inspector_(inspector) {
@@ -221,7 +222,7 @@ void MappingCanvas::paintEvent(QPaintEvent*) {
     }
     if (outs.empty()) {
         g.setPen(QColor("#8a90a2"));
-        g.drawText(c, Qt::AlignCenter, "Kênh này chưa có Output nào.");
+        g.drawText(c, Qt::AlignCenter, LC_TR("Kênh này chưa có Output nào."));
     }
 }
 
@@ -262,7 +263,7 @@ void MappingCanvas::mouseMoveEvent(QMouseEvent* e) {
     const QRect r = mapping::drag(dragStart_, dragEdges_, int(std::lround(d.x())), int(std::lround(d.y())), size_, others, snap);
     if (r == cropPx(selected_)) return;
     // ve lai dung vi tri ban dau: tra lai CHINH XAC gia tri cu (khong lam tron qua diem anh)
-    inspector_.setOutputCrop(selected_, r == dragStart_ ? dragStartCrop_ : mapping::toCrop(r, size_), kEditText, dragMergeId_);
+    inspector_.setOutputCrop(selected_, r == dragStart_ ? dragStartCrop_ : mapping::toCrop(r, size_), editText(), dragMergeId_);
 }
 
 void MappingCanvas::mouseReleaseEvent(QMouseEvent* e) {
@@ -273,7 +274,7 @@ void MappingCanvas::endDrag() { dragEdges_ = mapping::None; }
 
 void MappingCanvas::keyPressEvent(QKeyEvent* e) {
     if (e->key() == Qt::Key_Escape && dragging() && selected_ >= 0) {
-        inspector_.setOutputCrop(selected_, dragStartCrop_, kEditText, dragMergeId_);
+        inspector_.setOutputCrop(selected_, dragStartCrop_, editText(), dragMergeId_);
         endDrag();
         return;
     }
@@ -289,7 +290,7 @@ void MappingCanvas::keyPressEvent(QKeyEvent* e) {
     const int step = e->modifiers() & Qt::ShiftModifier ? 10 : 1;
     const QRect now = cropPx(selected_);
     const QRect r = mapping::drag(now, mapping::Move, dx * step, dy * step, size_, {}, 0);
-    if (r != now) inspector_.setOutputCrop(selected_, mapping::toCrop(r, size_), kEditText, kNudgeMerge + selected_);
+    if (r != now) inspector_.setOutputCrop(selected_, mapping::toCrop(r, size_), editText(), kNudgeMerge + selected_);
 }
 
 // ---------------- Cua so ----------------
@@ -311,22 +312,22 @@ protected:
 MappingWindow::MappingWindow(Project& project, RenderEngine& engine, InspectorPanel& inspector, QWidget* parent)
     : QWidget(parent, Qt::Tool), project_(project), engine_(engine), inspector_(inspector) {
     setObjectName("mappingWindow");
-    setWindowTitle("Mapping trực quan");
+    setWindowTitle(LC_TR("Mapping trực quan"));
     auto* v = new QVBoxLayout(this);
 
     auto* top = new QHBoxLayout;
     chanCombo_ = new QComboBox;
     chanCombo_->setObjectName("mapChannel");
     for (size_t i = 0; i < project_.channels.size(); ++i)
-        chanCombo_->addItem(QString("Kênh %1: %2  (%3×%4)").arg(i + 1).arg(project_.channels[i]->name)
+        chanCombo_->addItem(QString(LC_TR("Kênh %1: %2  (%3×%4)")).arg(i + 1).arg(project_.channels[i]->name)
                                 .arg(project_.channels[i]->size.width()).arg(project_.channels[i]->size.height()));
     top->addWidget(chanCombo_);
     outCombo_ = new QComboBox;
     outCombo_->setObjectName("mapOutput");
     top->addWidget(outCombo_, 1);
-    snapBox_ = new QCheckBox("Bắt dính");
+    snapBox_ = new QCheckBox(LC_TR("Bắt dính"));
     snapBox_->setChecked(true);
-    snapBox_->setToolTip("Bắt dính vào mép canvas và mép Output khác. Giữ Alt khi kéo để tạm tắt.");
+    snapBox_->setToolTip(LC_TR("Bắt dính vào mép canvas và mép Output khác. Giữ Alt khi kéo để tạm tắt."));
     top->addWidget(snapBox_);
     v->addLayout(top);
 
@@ -334,7 +335,7 @@ MappingWindow::MappingWindow(Project& project, RenderEngine& engine, InspectorPa
     v->addWidget(canvas_, 1);
 
     auto* row = new QHBoxLayout;
-    const char* names[4] = {"X ", "Y ", "Rộng ", "Cao "};
+    const QString names[4] = {"X ", "Y ", LC_TR("Rộng "), LC_TR("Cao ")};
     const char* ids[4] = {"mapX", "mapY", "mapW", "mapH"};
     for (int k = 0; k < 4; ++k) {
         spin_[k] = new PixelSpin;
@@ -345,10 +346,10 @@ MappingWindow::MappingWindow(Project& project, RenderEngine& engine, InspectorPa
         connect(spin_[k], &QSpinBox::valueChanged, this, [this, k](int val) { applySpin(k, val); });
         row->addWidget(spin_[k]);
     }
-    oneToOne_ = new QPushButton("Khớp 1:1");
+    oneToOne_ = new QPushButton(LC_TR("Khớp 1:1"));
     oneToOne_->setObjectName("mapOneToOne");
-    oneToOne_->setToolTip("Đặt cỡ vùng bằng số điểm ảnh thật của Output (giữ nguyên vị trí nếu còn chỗ)");
-    full_ = new QPushButton("Cả khung");
+    oneToOne_->setToolTip(LC_TR("Đặt cỡ vùng bằng số điểm ảnh thật của Output (giữ nguyên vị trí nếu còn chỗ)"));
+    full_ = new QPushButton(LC_TR("Cả khung"));
     full_->setObjectName("mapFull");
     row->addWidget(oneToOne_);
     row->addWidget(full_);
@@ -383,12 +384,12 @@ MappingWindow::MappingWindow(Project& project, RenderEngine& engine, InspectorPa
         s = s.boundedTo(ch);
         const QRect now = mapping::toPixels(c.crop, ch);
         const QRect r(std::clamp(now.x(), 0, ch.width() - s.width()), std::clamp(now.y(), 0, ch.height() - s.height()), s.width(), s.height());
-        inspector_.setOutputCrop(i, mapping::toCrop(r, ch), "Mapping: khớp 1:1", -1);
+        inspector_.setOutputCrop(i, mapping::toCrop(r, ch), LC_TR("Mapping: khớp 1:1"), -1);
     });
     connect(full_, &QPushButton::clicked, this, [this] {
         const int i = canvas_->selected();
         if (i >= 0 && inspector_.outputConfig(i).crop != QRectF(0, 0, 1, 1))
-            inspector_.setOutputCrop(i, QRectF(0, 0, 1, 1), "Mapping: cả khung", -1);
+            inspector_.setOutputCrop(i, QRectF(0, 0, 1, 1), LC_TR("Mapping: cả khung"), -1);
     });
 
     imageTimer_.setInterval(100);
@@ -439,9 +440,9 @@ void MappingWindow::sync() {
     for (int k = 0; k < 4; ++k) spin_[k]->setEnabled(has && !locked_);
     oneToOne_->setEnabled(has && !locked_);
     full_->setEnabled(has && !locked_);
-    note_->setText(locked_ ? "🔒 Đang KHOÁ VẬN HÀNH: chỉ xem, không sửa được."
-                           : "Thay đổi tác động NGAY lên Output đang phát. Kéo để di chuyển, kéo mép/góc để đổi cỡ; "
-                             "mũi tên nhích 1 px (Shift: 10 px); Esc huỷ lần kéo; Ctrl+Z hoàn tác.");
+    note_->setText(locked_ ? LC_TR("🔒 Đang KHOÁ VẬN HÀNH: chỉ xem, không sửa được.")
+                           : LC_TR("Thay đổi tác động NGAY lên Output đang phát. Kéo để di chuyển, kéo mép/góc để đổi cỡ; "
+                             "mũi tên nhích 1 px (Shift: 10 px); Esc huỷ lần kéo; Ctrl+Z hoàn tác."));
     note_->setStyleSheet(locked_ ? "color:#ff6b6b;font-weight:bold" : "color:#8a90a2");
     {
         QSignalBlocker b(outCombo_);
@@ -466,11 +467,11 @@ void MappingWindow::sync() {
     QSize shown = r.size();
     if ((c.rotation / 90) % 2) shown.transpose();
     QString verdict;
-    if (shown == px) verdict = "<span style='color:#81c784'>1:1 đúng điểm ảnh</span>";
-    else if (c.scale == ScaleMode::Pixel) verdict = "<span style='color:#ffb74d'>1:1 nhưng khác cỡ: bị cắt bớt hoặc có viền đen</span>";
-    else verdict = QString("<span style='color:#ffb74d'>bị co giãn (kiểu %1)</span>")
+    if (shown == px) verdict = LC_TR("<span style='color:#81c784'>1:1 đúng điểm ảnh</span>");
+    else if (c.scale == ScaleMode::Pixel) verdict = LC_TR("<span style='color:#ffb74d'>1:1 nhưng khác cỡ: bị cắt bớt hoặc có viền đen</span>");
+    else verdict = QString(LC_TR("<span style='color:#ffb74d'>bị co giãn (kiểu %1)</span>"))
                        .arg(c.scale == ScaleMode::Fit ? "Fit" : c.scale == ScaleMode::Fill ? "Fill" : "Stretch");
-    info_->setText(QString("Vùng %1×%2 px → Output %3×%4 px: %5").arg(shown.width()).arg(shown.height())
+    info_->setText(QString(LC_TR("Vùng %1×%2 px → Output %3×%4 px: %5")).arg(shown.width()).arg(shown.height())
                        .arg(px.width()).arg(px.height()).arg(verdict));
 }
 
@@ -484,7 +485,7 @@ void MappingWindow::applySpin(int field, int value) {
     else if (field == 2) r.setWidth(std::clamp(value, 1, std::max(1, ch.width() - r.x())));
     else r.setHeight(std::clamp(value, 1, std::max(1, ch.height() - r.y())));
     if (r != mapping::toPixels(inspector_.outputConfig(i).crop, ch))
-        inspector_.setOutputCrop(i, mapping::toCrop(r, ch), "Mapping: sửa vùng output", 960000000 + i * 4 + field);
+        inspector_.setOutputCrop(i, mapping::toCrop(r, ch), LC_TR("Mapping: sửa vùng output"), 960000000 + i * 4 + field);
     else
         sync();                                            // gia tri bi gioi han: hien lai so that
 }

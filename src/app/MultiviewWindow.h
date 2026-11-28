@@ -1,5 +1,6 @@
 #pragma once
 #include "render/Engine.h"
+#include "core/I18n.h"
 #include <QImage>
 #include <QRect>
 #include <QString>
@@ -54,7 +55,7 @@ protected:
 
 private:
     void relayout();
-    void showNotice(const QString& text);
+    void showNotice(const i18n::Text& text);
     void placeButton();
     void storeGeometry() const;                      // bo qua khi dang toan man hinh
 

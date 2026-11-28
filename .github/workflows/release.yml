@@ -1,6 +1,7 @@
 name: Release (Windows installer)
 
-# Chay tay hoac khi dat tag v*: dung bo cai NSIS + ban ZIP mang theo, KHONG tu phat hanh len dau (chi tai len artifact).
+# Chay tay hoac khi dat tag v*: dung bo cai (Velopack boc NSIS, tu cap nhat) + ban ZIP mang theo, KHONG tu phat hanh len dau (chi tai len artifact).
+# Artifact LumaCast-releases = cac file can dinh kem vao GitHub Release de may da cai tu cap nhat duoc. CHUA chay thu tren GitHub.
 # Truoc khi ban: doc THIRD-PARTY-NOTICES.txt va docs/SPEC.md muc 5.1 (NDI). Bo cai khong kem runtime NDI (cmake/CheckNoNdi.cmake chan).
 on:
   workflow_dispatch:
@@ -29,6 +30,20 @@ jobs:
         run: |
           Invoke-WebRequest https://www.gnu.org/licenses/lgpl-3.0.txt -OutFile licenses/LGPL-3.0.txt
           Invoke-WebRequest https://www.gnu.org/licenses/lgpl-2.1.txt -OutFile licenses/LGPL-2.1.txt
+      - name: Thu vien Velopack (kiem tra SHA-256)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/velopack/velopack/releases/download/1.2.161/velopack_libc_1.2.161.zip -OutFile velopack.zip
+          if ((Get-FileHash velopack.zip -Algorithm SHA256).Hash -ne "31DE8F2CF05A47BD5328A9F98B0C41AEC1582156F6075F1058B26941F7F17C20") { throw "SHA-256 sai" }
+          Expand-Archive velopack.zip -DestinationPath C:\velopack\1.2.161
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Cong cu vpk va NSIS
+        shell: pwsh
+        run: |
+          dotnet tool install --tool-path C:\velopack\tools vpk --version 1.2.161
+          if (-not (Test-Path "C:\Program Files (x86)\NSIS\makensis.exe")) { choco install nsis -y }
       - name: Cau hinh + build
         shell: pwsh
         run: |
@@ -44,10 +59,16 @@ jobs:
           ctest --test-dir build -R "^(license|package)$" --output-on-failure
       - name: Dong goi
         shell: pwsh
-        run: cpack --config build/CPackConfig.cmake -C Release -B build/pkg
+        run: |
+          cpack --config build/CPackConfig.cmake -C Release -B build/pkg
+          cmake "-DBUILD_DIR=$PWD/build" "-DSOURCE_DIR=$PWD" -P cmake/Package.cmake
       - uses: actions/upload-artifact@v4
         with:
           name: LumaCast-windows
           path: |
             build/pkg/*.exe
             build/pkg/*.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LumaCast-releases
+          path: build/pkg/releases/*

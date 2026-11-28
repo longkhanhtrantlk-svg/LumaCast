@@ -1,4 +1,5 @@
 #include "live/Camera.h"
+#include "core/I18n.h"
 #include "live/CameraFake.h"
 #include "live/LiveSource.h"
 #include <QMutex>
@@ -13,14 +14,14 @@ auto& g_override = *new std::shared_ptr<CameraBackend>;
 std::shared_ptr<CameraBackend> makeDefault() {
     if (qgetenv("LUMACAST_CAMERA_BACKEND") == "fake") {
         auto f = std::make_shared<FakeCameraBackend>();
-        f->addDevice("fake:cam1", "Camera mẫu 1", {{1280, 720, 30}, {640, 480, 30}, {1920, 1080, 30}});
-        f->addDevice("fake:cam2", "Camera mẫu 2", {{640, 480, 15}});
+        f->addDevice("fake:cam1", LC_TR("Camera mẫu 1"), {{1280, 720, 30}, {640, 480, 30}, {1920, 1080, 30}});
+        f->addDevice("fake:cam2", LC_TR("Camera mẫu 2"), {{640, 480, 15}});
         return f;
     }
 #ifdef _WIN32
     if (auto b = createMediaFoundationCamera()) return b;
 #endif
-    return createUnavailableCameraBackend("Camera chưa được hỗ trợ trên nền tảng này (hiện chỉ Windows qua Media Foundation)");
+    return createUnavailableCameraBackend(LC_TR("Camera chưa được hỗ trợ trên nền tảng này (hiện chỉ Windows qua Media Foundation)"));
 }
 } // namespace
 

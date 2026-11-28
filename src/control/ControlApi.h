@@ -1,6 +1,7 @@
 #pragma once
 #include "control/HttpServer.h"
 #include "control/Osc.h"
+#include "core/I18n.h"
 #include "core/Project.h"
 #include "core/Transition.h"
 #include "render/Engine.h"
@@ -18,11 +19,12 @@ namespace lc {
 struct CmdResult {
     int status = 200;
     QString code = "ok";                 // ma may doc duoc: ok, channel_not_found, scene_not_found, bad_request...
-    QString message;                     // mo ta cho nguoi (tieng Viet)
+    QString message;                     // mo ta cho nguoi (theo ngon ngu giao dien)
+    QString logMessage;                  // ban tieng Viet cua message, de ghi log
     QJsonObject data;
     bool ok() const { return status < 300; }
     static CmdResult success(QJsonObject d = {}) { CmdResult r; r.data = std::move(d); return r; }
-    static CmdResult error(int status, const QString& code, const QString& msg) { CmdResult r; r.status = status; r.code = code; r.message = msg; return r; }
+    static CmdResult error(int status, const QString& code, const i18n::Text& msg) { CmdResult r; r.status = status; r.code = code; r.message = msg.shown; r.logMessage = msg.source; return r; }
 };
 
 // Lop dieu khien ngoai khong gan voi mang: lenh (1-based nhu giao dien), trang thai JSON, dinh tuyen HTTP, anh xa OSC.
@@ -79,7 +81,8 @@ public:
 
     int rejectedCount() const { return rejected_; }
     void resetLogLimiter() { logWindowStart_ = 0; logInWindow_ = 0; logSuppressed_ = 0; }
-    void noteRejected(const QString& who, const QString& what);   // ghi log co gioi han tan suat + dem
+    void noteRejected(const QString& who, const i18n::Text& what);   // ghi log (ban tieng Viet) co gioi han tan suat + dem; bao giao dien
+    void noteRejected(const QString& who, const QString& what) { noteRejected(who, i18n::Text{what, what}); }
 
 signals:
     void commandRejected(const QString& reason);

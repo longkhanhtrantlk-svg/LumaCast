@@ -1,4 +1,5 @@
 #include "Features.h"
+#include "core/I18n.h"
 #include <QCoreApplication>
 #include <QDebug>
 #include <QFile>
@@ -26,7 +27,7 @@ QString Entitlements::featureName(Feature f) {
     case Feature::Plugins: return "plug-in";
     case Feature::Ndi: return "NDI";
     case Feature::Camera: return "camera/capture";
-    case Feature::ExternalControl: return "điều khiển ngoài (HTTP/OSC)";
+    case Feature::ExternalControl: return LC_TR("điều khiển ngoài (HTTP/OSC)");
     case Feature::Timeline: return "timeline/keyframe";
     }
     return "?";
@@ -35,17 +36,17 @@ QString Entitlements::featureName(Feature f) {
 QString Entitlements::summary() const {
     QString s;
     if (!restricted()) {
-        s = sourcePath.isEmpty() ? "Không giới hạn tính năng (không có file giấy phép)" : QString("Gói %1 — mở đủ tính năng").arg(edition);
+        s = sourcePath.isEmpty() ? LC_TR("Không giới hạn tính năng (không có file giấy phép)") : QString(LC_TR("Gói %1 — mở đủ tính năng")).arg(edition);
     } else {
         QStringList off;
         for (Feature f : {Feature::Plugins, Feature::Ndi, Feature::Camera, Feature::ExternalControl, Feature::Timeline})
             if (!allows(f)) off << featureName(f);
-        s = QString("Gói %1").arg(edition);
-        if (maxOutputs > 0) s += QString(" — tối đa %1 Output").arg(maxOutputs);
-        if (!off.isEmpty()) s += " — không có: " + off.join(", ");
+        s = QString(LC_TR("Gói %1")).arg(edition);
+        if (maxOutputs > 0) s += QString(LC_TR(" — tối đa %1 Output")).arg(maxOutputs);
+        if (!off.isEmpty()) s += LC_TR(" — không có: ") + off.join(", ");
     }
-    if (!licensee.isEmpty()) s += QString(" — cấp cho: %1").arg(licensee);
-    if (!error.isEmpty()) s += QString(" [lỗi file giấy phép: %1 → không khoá gì]").arg(error);
+    if (!licensee.isEmpty()) s += QString(LC_TR(" — cấp cho: %1")).arg(licensee);
+    if (!error.isEmpty()) s += QString(LC_TR(" [lỗi file giấy phép: %1 → không khoá gì]")).arg(error);
     return s;
 }
 
@@ -63,20 +64,20 @@ Entitlements Entitlements::load(const QString& path) {
     Entitlements e;
     e.sourcePath = path;
     QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) { e.error = "không đọc được file"; return e; }
+    if (!f.open(QIODevice::ReadOnly)) { e.error = LC_TR("không đọc được file"); return e; }
     QJsonParseError pe;
     const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &pe);
-    if (!doc.isObject()) { e.error = "không phải JSON hợp lệ: " + pe.errorString(); return e; }
+    if (!doc.isObject()) { e.error = LC_TR("không phải JSON hợp lệ: ") + pe.errorString(); return e; }
     const QJsonObject o = doc.object();
-    if (o.contains("version") && o["version"].toInt() != 1) { e.error = "phiên bản file giấy phép không biết"; return e; }
+    if (o.contains("version") && o["version"].toInt() != 1) { e.error = LC_TR("phiên bản file giấy phép không biết"); return e; }
     const QString ed = o["edition"].toString().trimmed().toLower();
-    if (ed.isEmpty()) { e.error = "thiếu 'edition'"; return e; }
+    if (ed.isEmpty()) { e.error = LC_TR("thiếu 'edition'"); return e; }
     Entitlements r = preset(ed);
     r.sourcePath = path;
     r.licensee = o["licensee"].toString();
     if (o.contains("maxOutputs")) {
         const int m = o["maxOutputs"].toInt(-1);
-        if (m < 0) { e.error = "'maxOutputs' phải là số nguyên ≥ 0"; return e; }
+        if (m < 0) { e.error = LC_TR("'maxOutputs' phải là số nguyên ≥ 0"); return e; }
         r.maxOutputs = m;
     }
     const QJsonObject fe = o["features"].toObject();
@@ -105,6 +106,7 @@ const Entitlements& Entitlements::current() {
         for (const QString& p : searchPaths()) {
             if (!QFileInfo::exists(p)) continue;
             gCur = load(p);
+            i18n::SourceScope logLanguage;
             qInfo().noquote() << "Giấy phép:" << gCur.summary() << "(" << p << ")";
             break;
         }

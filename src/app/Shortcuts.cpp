@@ -1,4 +1,5 @@
 #include "Shortcuts.h"
+#include "core/I18n.h"
 #include <QDebug>
 #include <QShortcut>
 #include <QWidget>
@@ -11,6 +12,8 @@ KeyMap defaults() {
     KeyMap m;
     m.insert("lock", QKeySequence(Qt::CTRL | Qt::Key_L));
     m.insert("blackAll", QKeySequence(Qt::Key_B));
+    m.insert("slide.next", QKeySequence(Qt::Key_PageDown));     // but trinh chieu (CTL-02)
+    m.insert("slide.prev", QKeySequence(Qt::Key_PageUp));
     for (int i = 0; i < LiveAction::kPreviewCount; ++i)
         m.insert(QString("preview.%1").arg(i + 1), QKeySequence(Qt::Key_1 + i));
     return m;
@@ -27,27 +30,29 @@ QString reservedReason(const QKeySequence& k) {
     const QKeyCombination c = k[0];
     const int key = c.key();
     const Qt::KeyboardModifiers mods = c.keyboardModifiers() & ~Qt::KeypadModifier;
-    if (key == Qt::Key_Space) return "Space luôn là TAKE";
-    if (key == Qt::Key_Return || key == Qt::Key_Enter) return "Enter luôn là CUT";
-    if (key == Qt::Key_Tab || key == Qt::Key_Backtab) return "Tab dùng để chuyển ô trong cửa sổ";
+    if (key == Qt::Key_Space) return LC_TR("Space luôn là TAKE");
+    if (key == Qt::Key_Return || key == Qt::Key_Enter) return LC_TR("Enter luôn là CUT");
+    if (key == Qt::Key_Tab || key == Qt::Key_Backtab) return LC_TR("Tab dùng để chuyển ô trong cửa sổ");
     if (key == Qt::Key_Shift || key == Qt::Key_Control || key == Qt::Key_Alt || key == Qt::Key_Meta || key == Qt::Key_unknown)
-        return "Cần một phím thật, không chỉ phím bổ trợ";
+        return LC_TR("Cần một phím thật, không chỉ phím bổ trợ");
     if (mods == Qt::NoModifier && (key == Qt::Key_Escape || key == Qt::Key_Delete || key == Qt::Key_Backspace))
-        return "Phím này dùng trong Timeline / hộp thoại";
+        return LC_TR("Phím này dùng trong Timeline / hộp thoại");
     if (mods == Qt::ControlModifier && (key == Qt::Key_C || key == Qt::Key_V || key == Qt::Key_A))
-        return "Phím này dùng để sao chép / dán / chọn tất cả";
+        return LC_TR("Phím này dùng để sao chép / dán / chọn tất cả");
     if ((mods == Qt::ControlModifier && (key == Qt::Key_O || key == Qt::Key_S || key == Qt::Key_Z || key == Qt::Key_Y || key == Qt::Key_Q)) ||
         (mods == (Qt::ControlModifier | Qt::ShiftModifier) && (key == Qt::Key_S || key == Qt::Key_Z)))
-        return "Phím này thuộc menu (Mở / Lưu / Hoàn tác / Làm lại / Thoát)";
+        return LC_TR("Phím này thuộc menu (Mở / Lưu / Hoàn tác / Làm lại / Thoát)");
     for (auto standard : {QKeySequence::Open, QKeySequence::Save, QKeySequence::SaveAs, QKeySequence::Undo, QKeySequence::Redo, QKeySequence::Quit})
         for (const QKeySequence& s : QKeySequence::keyBindings(standard))
-            if (s == k) return "Phím này thuộc menu (Mở / Lưu / Hoàn tác / Làm lại / Thoát)";
-    if (mods == Qt::ControlModifier && key == Qt::Key_M) return "Ctrl+M mở cửa sổ Mapping trực quan";
-    if (mods == Qt::ControlModifier && (key == Qt::Key_F1 || key == Qt::Key_F2 || key == Qt::Key_F3)) return "Ctrl+F1 / F2 / F3 đổi bố cục khung";
-    if (mods == Qt::NoModifier && key == Qt::Key_F9) return "F9 ẩn / hiện cột phải";
-    if (mods == Qt::NoModifier && key == Qt::Key_F11) return "F11 phóng toàn màn hình Multiview";
+            if (s == k) return LC_TR("Phím này thuộc menu (Mở / Lưu / Hoàn tác / Làm lại / Thoát)");
+    if (mods == Qt::ControlModifier && key == Qt::Key_M) return LC_TR("Ctrl+M mở cửa sổ Mapping trực quan");
+    if (mods == Qt::ControlModifier && (key == Qt::Key_F1 || key == Qt::Key_F2 || key == Qt::Key_F3)) return LC_TR("Ctrl+F1 / F2 / F3 đổi bố cục khung");
+    if (mods == Qt::NoModifier && key == Qt::Key_F9) return LC_TR("F9 ẩn / hiện cột phải");
+    if (mods == Qt::NoModifier && key == Qt::Key_F11) return LC_TR("F11 phóng toàn màn hình Multiview");
     if (mods == Qt::AltModifier && (key == Qt::Key_F || key == Qt::Key_E || key == Qt::Key_V || key == Qt::Key_C || key == Qt::Key_H || key == Qt::Key_F4))
-        return "Phím này mở menu hoặc đóng cửa sổ";
+        return LC_TR("Phím này mở menu hoặc đóng cửa sổ");
+    if (i18n::current() == Language::English && mods == Qt::AltModifier && key == Qt::Key_S)      // menu "&Settings"
+        return LC_TR("Phím này mở menu hoặc đóng cửa sổ");
     return {};
 }
 
@@ -105,7 +110,7 @@ ShortcutBinder::ShortcutBinder(QWidget* window, std::function<void(const LiveAct
 void ShortcutBinder::add(const QKeySequence& key, const LiveAction& a) {
     auto* s = new QShortcut(key, window_);
     // Giu phim: lenh bat/tat (FTB, Den/Dung/Mau, khoa) khong lap de khong nhap nhay; cac phim co tu truoc giu hanh vi cu.
-    s->setAutoRepeat(a.kind != LiveAction::Ftb && a.kind != LiveAction::Lock && a.kind != LiveAction::OutputBlack &&
+    s->setAutoRepeat(a.kind != LiveAction::SlideNext && a.kind != LiveAction::SlidePrev && a.kind != LiveAction::Ftb && a.kind != LiveAction::Lock && a.kind != LiveAction::OutputBlack &&
                      a.kind != LiveAction::OutputFreeze && a.kind != LiveAction::OutputPattern);
     QObject::connect(s, &QShortcut::activated, this, [this, a] { run_(a); });
     shortcuts_ << s;

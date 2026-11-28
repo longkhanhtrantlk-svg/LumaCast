@@ -15,10 +15,10 @@ NDI® (Network Device Interface) là nhãn hiệu đã đăng ký của Vizrt ND
 | `docs/PROJECT-FORMAT.md` | Đặc tả định dạng file project (phiên bản 1) |
 | `docs/TEST-PLAN.md` | Test tự động, checklist thử tay trên Windows, benchmark |
 | `docs/TEST-WINDOWS.md` | Hướng dẫn build và chạy trên Windows |
-| `THIRD-PARTY-NOTICES.txt` | Giấy phép thư viện bên thứ ba (Qt, FFmpeg, NDI®) — đi kèm bộ cài |
+| `THIRD-PARTY-NOTICES.txt`, `THIRD-PARTY-NOTICES.en.txt` | Giấy phép thư viện bên thứ ba (Qt, FFmpeg, NDI®), tiếng Việt và tiếng Anh — đi kèm bộ cài |
 
 ## Build
-Linux (de phat trien / chay test): `apt install qt6-base-dev libqt6opengl6-dev libavcodec-dev libavformat-dev libswscale-dev libswresample-dev libavutil-dev`
+Linux (de phat trien / chay test): `apt install qt6-base-dev libqt6opengl6-dev qt6-tools-dev qt6-l10n-tools libavcodec-dev libavformat-dev libswscale-dev libswresample-dev libavutil-dev`
 Windows (muc tieu): Qt 6 + FFmpeg qua vcpkg (`vcpkg install ffmpeg:x64-windows` hoac manifest `vcpkg.json` -- ban LGPL, **khong bat feature gpl/nonfree**), roi:
 
     cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -34,16 +34,31 @@ Phim tat (kenh dang chon): `1..9` chon Preview, `Space` = TAKE, `Enter` = CUT (x
 ## Phím tắt và MIDI
 Mở *Cài đặt > Phím tắt và MIDI…* (bị khoá khi đang Khoá vận hành). Cấu hình lưu **theo máy** (`QSettings`), không nằm trong file project.
 
-- **Lệnh gán được:** CUT, TAKE, FTB, BLACK ALL, chọn Preview 1–9, Đen/Dừng/Mẫu từng Output, và Khoá vận hành (chỉ phím tắt, chỉ để khoá).
-- **Mặc định giữ nguyên như trước:** Space = TAKE, Enter = CUT, B = BLACK ALL, 1–9 = Preview, Ctrl+L = khoá. FTB và Đen/Dừng/Mẫu chưa gán.
+- **Lệnh gán được:** CUT, TAKE, FTB, BLACK ALL, chọn Preview 1–9, PowerPoint slide tiếp/trước (chỉ phím tắt), Đen/Dừng/Mẫu từng Output, và Khoá vận hành (chỉ phím tắt, chỉ để khoá).
+- **Mặc định:** Space = TAKE, Enter = CUT, B = BLACK ALL, 1–9 = Preview, Ctrl+L = khoá, PageDown / PageUp = slide PowerPoint tiếp / trước. FTB và Đen/Dừng/Mẫu chưa gán.
 - **Phím giữ chỗ cho giao diện:** **Ctrl+F1 / F2 / F3** (đổi bố cục) và **F9** (ẩn/hiện cột phải) không gán được cho lệnh khác. Nếu trước đây đã gán một trong các phím này cho lệnh live, phím gán đó bị bỏ qua khi mở (ghi vào log): gán lại phím khác.
-- **Space và Enter cố định:** luôn là TAKE/CUT, không gán cho lệnh khác. TAKE và CUT có thể thêm một phím phụ (vd. PageDown cho bút trình chiếu).
+- **Space và Enter cố định:** luôn là TAKE/CUT, không gán cho lệnh khác. TAKE và CUT có thể thêm một phím phụ. PageDown/PageUp mặc định dành cho slide PowerPoint: muốn dùng chúng cho TAKE/CUT thì gỡ ở hai dòng *PowerPoint* trước (cấu hình đã gán từ trước được giữ nguyên, dòng *PowerPoint* trùng phím tự bỏ trống).
 - Trùng phím hoặc phím đã dùng cho menu/Timeline thì hộp thoại báo lỗi và không lưu. *Khôi phục phím mặc định* trả về như ban đầu.
 - **MIDI** (Windows, API `winmm`, mặc định **tắt**): tích *Bật điều khiển MIDI*, chọn thiết bị, bấm **Học** ở dòng lệnh rồi nhấn nút trên thiết bị. Nhận Note On, CC (tính khi giá trị vượt lên từ dưới 64) và Program Change.
 - Nút MIDI tác động lên **kênh và hiệu ứng đang chọn** trên giao diện. Theo cùng quy tắc an toàn với HTTP/OSC: **chọn Preview từ MIDI không bao giờ đổi Program** (kể cả khi AUTO đang bật — khác phím 1–9), bị từ chối khi đang chuyển cảnh; vẫn chạy khi Khoá vận hành; không khoá/mở khoá được.
 - Rút thiết bị: thanh trạng thái báo *MIDI: chưa nối*; cắm lại thì tự nối sau khoảng 1 giây (rút rồi cắm lại quá nhanh mà nút không ăn: bấm *Kết nối lại*). Trong lúc hộp thoại mở, nút MIDI không điều khiển chương trình.
 - Gói giấy phép không có điều khiển ngoài thì MIDI cũng không mở.
 - **Chưa thử với thiết bị MIDI thật** (`docs/TEST-PLAN.md`: T-MIDI). Chưa có: đèn LED phản hồi, núm/fader điều khiển liên tục (T-bar, âm lượng), nhiều thiết bị cùng lúc.
+
+## Trình chiếu PowerPoint trên cùng máy
+LumaCast bắt hình **cửa sổ slideshow** và coi nó như một nguồn: đặt vào Scene, ghép overlay/logo, chuyển cảnh, mapping ra LED như video. Không cần máy thứ hai, màn hình thứ hai hay driver màn ảo.
+
+1. Trong PowerPoint: *Slide Show > Set Up Slide Show > Browsed by an individual (window)*, lưu file. (Để chế độ mặc định thì slideshow chiếm toàn màn hình và có thể nhảy thẳng ra LED.)
+2. Trong LumaCast: nút **Thêm slideshow PowerPoint** trên khung *Scenes* (hoặc *File > Thêm slideshow PowerPoint / cửa sổ...*) > *Slideshow PowerPoint (tự nhận)*. Thêm trước hay sau khi bấm F5 đều được, và dùng chung cho mọi file trình chiếu.
+3. Bấm **F5**, **phóng to** cửa sổ slideshow cho nét nhất, rồi quay lại LumaCast. Cửa sổ có thể nằm phía sau LumaCast nhưng **đừng thu nhỏ**.
+
+- **Chuyển slide:** thao tác trong PowerPoint như thường. Khi **LumaCast đang được chọn**, **PageDown / PageUp** (hầu hết bút trình chiếu gửi hai phím này) chuyển slide PowerPoint, kể cả khi Khoá vận hành; thanh trạng thái hiện số slide hoặc lý do không chuyển được. Space vẫn là TAKE. Cửa sổ khác đang được chọn thì bút không tới PowerPoint.
+- **Cẩn thận nút tắt màn hình của bút:** nhiều bút gửi phím **B**, mà trong LumaCast B là **BLACK ALL**. Không muốn vậy thì đổi hoặc gỡ phím BLACK ALL trong *Phím tắt và MIDI*.
+- **Hình:** tự cắt đúng vùng slide (bỏ thanh tiêu đề, thanh cuộn, viền đen). Độ nét theo cỡ cửa sổ: màn laptop 1920×1080, cửa sổ phóng to cho khoảng 1760×990.
+- **Giữ hình:** thu nhỏ hoặc đóng slideshow thì LED **giữ slide cuối** (không đen), ô Scene báo trạng thái; mở lại thì tự nối.
+- **Chưa có:** tiếng của PowerPoint đi thẳng ra thiết bị mặc định của Windows (không qua mixer của LumaCast); không có Presenter View, xem trước slide kế tiếp hay ghi chú; cần PowerPoint bản cài trên máy (chạy cùng mức quyền với LumaCast).
+- Cũng chọn được **một cửa sổ khác** đang mở (cần Windows 10 1903 trở lên).
+- Đã thử trên một máy Windows 11 với PowerPoint thật, một màn hình (hiệu ứng chạy khi cửa sổ bị che). **Chưa thử:** video trong slide, kèm Output toàn màn hình ra LED, bút trình chiếu thật (`docs/TEST-PLAN.md`: T-PPT).
 
 ## Mapping trực quan
 - Mở bằng **Ctrl+M**, menu *View > Mapping trực quan…* hoặc nút ở tab *Output*. Cửa sổ vẽ hình Program của một Kênh cùng vùng cắt của từng Output thuộc Kênh đó.
@@ -57,6 +72,24 @@ Mở *Cài đặt > Phím tắt và MIDI…* (bị khoá khi đang Khoá vận h
 - **Video lên Program thì phát lại từ đầu** (CUT/TAKE/AUTO/T-bar/MIDI/HTTP, ngay khi bắt đầu chuyển). Ở Preview video **vẫn chạy**. Hai Scene dùng chung một video thì chuyển qua lại không giật về đầu. Bỏ chọn *Phát lại khi lên Program* (Timeline) để video của Scene đó không bị tua. Một file đang ở cả Preview và Program thì Preview hiện đúng đoạn Program đang phát.
 - **Đóng cửa sổ Output** (nút X, Alt+F4) chỉ ẩn nó; bảng *Outputs* hiện nút **Mở lại**. Nếu bố cục đang ẩn bảng *Outputs* thì nút **⚠ Output đã đóng — Mở lại** hiện ở thanh trạng thái.
 - Mở project **thiếu hoặc hỏng file ảnh/video**: project vẫn mở, chỗ đó hiện hình *THIẾU FILE*, có thông báo liệt kê. Lưu không làm mất tham chiếu; chép file về rồi mở lại.
+
+## Ngôn ngữ: Tiếng Việt / English
+- Đổi ở **Cài đặt → Ngôn ngữ (Language)**; có tác dụng ở **lần mở app sau** (không khởi động lại giữa buổi diễn). Mặc định Tiếng Việt. Khoá vận hành chặn mục này.
+- Thứ tự ưu tiên: lựa chọn trong app (`ui/language` trong cài đặt của máy) → ngôn ngữ chọn lúc cài (bộ cài ghi `ui/installLanguage`; bản đóng gói khác có thể đặt file `install-language.txt` cạnh `lumacast.exe`) → Tiếng Việt.
+- Dịch: menu, nút, tooltip, hộp thoại, thông báo, lỗi của điều khiển ngoài và trang điều khiển web. **Log giữ tiếng Việt; file project không đổi định dạng** (mở được ở cả hai ngôn ngữ). Tên mặc định của đối tượng mới (Scene, overlay…) theo ngôn ngữ lúc tạo. Giữ nguyên Preview, Program, CUT, TAKE, FTB.
+- Nút chuẩn của Qt (OK, Cancel, Yes, No) vẫn là tiếng Anh ở cả hai ngôn ngữ.
+- **Thêm chữ mới:** viết tiếng Việt trong mã, bọc `LC_TR("…")` (xem `src/core/I18n.h`), thêm `<message>` vào `translations/lumacast_en.ts`. `ctest -R i18n` báo chữ còn thiếu hoặc viết thẳng.
+
+## Cài đặt và tự cập nhật (Windows)
+- **Bộ cài** `LumaCast-Setup-x.y.z.exe`: hỏi Tiếng Việt / English ngay đầu, trang thông báo bên thứ ba theo ngôn ngữ đó, cài vào `%LocalAppData%\LumaCast` (theo người dùng, không cần quyền quản trị). Visual C++ runtime đi kèm cạnh `lumacast.exe`, bộ cài không tải gì từ mạng. Không cài khi LumaCast đang chạy. Máy còn bản cài cũ trong Program Files thì được đề nghị gỡ. Gỡ cài: Windows Settings → Apps → LumaCast.
+- **Cập nhật trong phần mềm:** mở LumaCast 20 giây thì tự kiểm tra; có bản mới thì hiện nút ở thanh trạng thái. **Help → Kiểm tra cập nhật…** để tải (ưu tiên phần thay đổi) rồi bấm **Cập nhật và mở lại** (có hỏi lại; project được lưu trước).
+- **An toàn khi diễn:** không bao giờ tự tải, tự cài hay tự khởi động lại; đang Khoá vận hành thì không kiểm tra, không nhắc, không cài; tắt tự kiểm tra được; mất mạng không ảnh hưởng gì.
+- **Quay về bản trước:** nút trong hộp thoại cập nhật; nếu bản mới mở không nổi: lối tắt *LumaCast - Quay ve ban truoc* ở menu Start. Bản mới thoát bất thường ngay lần đầu thì lần sau LumaCast đề nghị quay về.
+- **Đừng để file của mình trong thư mục cài** (`%LocalAppData%\LumaCast`): nó bị thay toàn bộ khi cập nhật và bị xoá khi gỡ. Hộp lưu project mở sẵn ở Documents và từ chối lưu vào thư mục cài. `license.json`, plug-in tự thêm đặt trong `%AppData%\LumaCast`.
+- **Nơi lấy bản mới:** GitHub Releases của kho `longkhanhtrantlk-svg/LumaCast` (đổi được bằng khoá cài đặt `update/source` hoặc biến `LUMACAST_UPDATE_SOURCE`: URL hoặc thư mục).
+- **Đóng gói:** cần thư viện `velopack_libc` 1.2.161 ở `C:\velopack\1.2.161`, .NET 8 SDK và `dotnet tool install --tool-path C:\velopack\tools vpk --version 1.2.161`. Chạy `build_lumacast.bat` rồi `package_lumacast.bat [x.y.z]`. Muốn phát hành: tự tạo GitHub Release và đính kèm các file trong `build\pkg\releases` (lệnh đóng gói không đăng gì lên mạng). Giữ thư mục `releases` giữa các lần để có gói phần thay đổi.
+
+- **Icon:** bản vẽ gốc `resources/icon/lumacast.svg` (không nền, khung vuông sát hình); `lumacast.ico` (16–256 px) dùng chung cho `lumacast.exe`, cửa sổ, lối tắt và bộ cài. Đổi icon: thay file SVG rồi chạy `python -I resources/icon/make_icon.py` (cần Pillow và Microsoft Edge) và build lại.
 
 ## Giao diện: nút biểu tượng, kéo thả
 - **Nút phụ chỉ còn biểu tượng:** rê chuột để xem tên (kèm phím tắt theo phím bạn đặt); nút bị mờ thì dòng nhắc nói **vì sao** (đang khoá, playlist trống, chưa chọn layer…). CUT, TAKE, AUTO, BLACK ALL, FTB vẫn giữ chữ. Các hộp thoại (Cài đặt, Màn hình, Mapping…) vẫn dùng nút chữ.
@@ -154,7 +187,7 @@ Mở bằng nút hình màn hình trên bảng *Outputs*, hoặc *Cài đặt > 
 - **HAP** (Hap, Hap Alpha, Hap Q): upload khoi DXT thang len GPU, khong giai ma CPU. `LUMACAST_HAP=0` tat.
 - **Upload bat dong bo qua PBO** (`LUMACAST_NO_PBO=1` tat), thumbnail monitor doc bat dong bo, bo shader hieu chinh khi Output khong hieu chinh.
 - **Benchmark lap lai duoc:** `lumacast --benchmark "outputs=4,size=3840x2160,source=synthetic-yuv,seconds=10" --bench-json ket_qua.json` (p50/p99/roi khung tung giai doan; so tren llvmpipe KHONG dai dien GPU that - `docs/TEST-PLAN.md` muc 4). `GET /api/state` -> `engine.stages`.
-- **Phat hanh:** `cpack --config build/CPackConfig.cmake -C Release` -> NSIS + ZIP (Qt qua windeployqt, FFmpeg DLL; **khong kem NDI**, co rao chan `cmake/CheckNoNdi.cmake`). `THIRD-PARTY-NOTICES.txt` (Qt/FFmpeg LGPL lien ket dong). Help > Gioi thieu co dong "NDI® is a registered trademark of Vizrt NDI AB.". CI: `.github/workflows/ci.yml`, `release.yml` (chua chay tren GitHub).
+- **Phat hanh:** `package_lumacast.bat` -> bo cai Velopack boc NSIS; `cpack --config build/CPackConfig.cmake -C Release` -> ZIP mang theo (Qt qua windeployqt, FFmpeg DLL; **khong kem NDI**, co rao chan `cmake/CheckNoNdi.cmake`). `THIRD-PARTY-NOTICES.txt` (Qt/FFmpeg LGPL lien ket dong). Help > Gioi thieu co dong "NDI® is a registered trademark of Vizrt NDI AB.". CI: `.github/workflows/ci.yml`, `release.yml` (chua chay tren GitHub).
 - **Co tinh nang theo goi** doc tu `license.json` (mau `license.example.json`; khong co file = khong khoa gi). Chinh sach phan goi chua chot (`docs/SPEC.md` muc 5, cau hoi mo 6).
 - **Chua kiem chung:** D3D11VA that, hieu nang 4 Output 4K tren GPU that, PBO co loi that tren GPU that khong, trinh cai tren Windows sach, CI tren GitHub (T-HWDEC, T-HAP, T-PERF, T-INST, T-LIC).
 

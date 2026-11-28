@@ -32,6 +32,7 @@ void rememberProject(QSettings& st, const QString& path);
 struct StartupDecision {
     QString path;                                        // project can mo (rong = chay binh thuong)
     QString notice;                                      // thong bao cho nguoi dung (rong = khong co)
+    QString noticeLog;                                   // cung noi dung bang tieng Viet, de ghi log
 };
 // hasExplicitConfig: nguoi dung da chi dinh cau hinh qua dong lenh (-o/-m/--wall/--save) -> khong tu mo.
 StartupDecision decideStartupProject(QSettings& st, bool hasExplicitConfig);

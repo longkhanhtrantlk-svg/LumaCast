@@ -1,0 +1,46 @@
+LumaCast — THIRD-PARTY NOTICES
+==============================
+(This is a technical notice for correct packaging, NOT legal advice. The publisher is responsible for checking the terms of the versions in use.)
+
+LumaCast is the author's own source code. The Windows release links DYNAMICALLY to the libraries below, so that users can replace those DLLs
+with another build of the same library (an LGPL condition).
+
+1. Qt 6 (Qt Core, Gui, Widgets, OpenGL, Network)
+   - License: GNU Lesser General Public License v3 (LGPLv3) — qt.io/licensing. No GPL-only or commercial Qt modules are used.
+   - Use: DYNAMIC LINKING (Qt6Core.dll, Qt6Gui.dll, Qt6Widgets.dll, Qt6OpenGL.dll, Qt6Network.dll + platforms/, styles/ produced by windeployqt); Qt is not modified.
+   - Qt source code and the license text: https://www.qt.io/download-open-source , https://code.qt.io/ . Full LGPLv3 text: the "licenses/" folder of the installation.
+   - Users may replace the Qt DLLs in the install folder with another compatible Qt build (same minor version). Reverse engineering to debug such a replacement is not forbidden.
+   - Distributing Qt STATICALLY linked, or using GPL-only modules, requires a separate commercial Qt license — LumaCast does NOT do this.
+
+2. FFmpeg (libavformat, libavcodec, libswscale, libswresample, libavutil)
+   - License: GNU Lesser General Public License v2.1 or later (LGPL-2.1+) WHEN built WITHOUT --enable-gpl and WITHOUT --enable-nonfree.
+   - The release uses FFmpeg from vcpkg (port "ffmpeg", gpl/nonfree features off), DYNAMICALLY linked (avcodec-*.dll, avformat-*.dll, ...).
+     At run time the Help ▸ About box shows the libavutil license string; the "release" test suite with LUMACAST_REQUIRE_LGPL=1 fails if FFmpeg is not LGPL.
+   - Source code / information: https://ffmpeg.org/legal.html , https://ffmpeg.org/download.html . Full text: licenses/ffmpeg-copyright.
+   - Patents covering some codecs (H.264/HEVC...) are the responsibility of the publisher in each country; D3D11VA hardware decoding uses the user's driver.
+   - FFmpeg's "hap" decoder is only a fallback; LumaCast's direct HAP path (src/media/Hap.cpp) was written by the author from the public specification and copies no FFmpeg code.
+
+3. Snappy / HAP
+   - src/media/Hap.cpp contains a Snappy (raw) decompressor WRITTEN FROM SCRATCH from the public format description in order to read HAP frames. No code from the Snappy library is used.
+   - HAP is a format by Vidvox (hap.video) with a public specification. The name "HAP" belongs to its owner.
+
+4. NDI® — NOT INCLUDED (a release built with LUMACAST_ENABLE_NDI=OFF contains no NDI code at all)
+   - NDI® is a registered trademark of Vizrt NDI AB.   (this line also appears in Help ▸ About)
+   - LumaCast does NOT contain, statically link or distribute the NDI SDK or runtime (Processing.NDI.Lib.x64.dll / libndi). NDI is loaded DYNAMICALLY at run time if the user
+     installs NDI Tools / NDI Runtime from https://ndi.video . Without the runtime NDI turns itself off and everything else keeps working.
+   - Before selling a commercial edition with NDI: read the latest NDI terms and register with NDI if required (see docs/SPEC.md section 5.1).
+   - The installer has a check: if the packaging folder contains Processing.NDI.Lib* / libndi* files, installation FAILS (cmake/CheckNoNdi.cmake).
+
+5. Operating system components / tools (their source is not included)
+   - Windows APIs: WASAPI (audio), Media Foundation (camera), Direct3D 11 Video Acceleration (hardware decoding) — called through the operating system.
+   - Microsoft Visual C++ Redistributable (vcruntime140*.dll, msvcp140*.dll): redistributed under the Visual Studio redistribution terms, the Windows installer places these files next to lumacast.exe.
+
+6. Velopack (self-update; the Windows build ships velopack_libc.dll, and Update.exe produced by the vpk packaging tool)
+   - License: MIT — https://github.com/velopack/velopack (full text: https://github.com/velopack/velopack/blob/master/LICENSE).
+   - Used only to download and install new LumaCast versions from the configured update location.
+
+7. A release package must contain the following in the install folder:
+   [x] THIRD-PARTY-NOTICES.txt and THIRD-PARTY-NOTICES.en.txt (this file)
+   [x] licenses/ with the full LGPL-3.0 and LGPL-2.1 texts and the "copyright" files of qtbase + ffmpeg (provided by vcpkg; CMake copies them on install)
+   [x] Qt and FFmpeg DLLs as SEPARATE FILES (not merged or compressed into the exe)
+   [x] NO Processing.NDI.Lib*.dll

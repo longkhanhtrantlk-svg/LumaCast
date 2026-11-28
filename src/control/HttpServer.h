@@ -85,7 +85,7 @@ private:
     void dropConn(QTcpSocket* s);
     void sweep();
     void respond(QTcpSocket* s, const HttpResponse& r, bool head = false);
-    void fail(QTcpSocket* s, int status, const QByteArray& code, const QByteArray& message);
+    void fail(QTcpSocket* s, int status, const QByteArray& code, const QString& message);
     bool parseAndDispatch(QTcpSocket* s, Conn& c);
 
     QTcpServer server_;

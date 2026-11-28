@@ -1,4 +1,5 @@
 #include "FFmpegSource.h"
+#include "core/I18n.h"
 #include <QDebug>
 #include <QFileInfo>
 #include <chrono>
@@ -320,23 +321,23 @@ void FFmpegSource::run() {
     };
 
     if (avformat_open_input(&fmt, path_.toUtf8().constData(), nullptr, nullptr) < 0) {
-        setError("Khong mo duoc file: " + path_);
+        setError(LC_TR("Khong mo duoc file: ") + path_);
         return cleanup();
     }
     if (avformat_find_stream_info(fmt, nullptr) < 0) {
-        setError("Khong doc duoc thong tin stream");
+        setError(LC_TR("Khong doc duoc thong tin stream"));
         return cleanup();
     }
     const int vs = av_find_best_stream(fmt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
     if (vs < 0) {
-        setError("Khong co stream video");
+        setError(LC_TR("Khong co stream video"));
         return cleanup();
     }
     AVStream* st = fmt->streams[vs];
     if (fmt->duration > 0) duration_ = double(fmt->duration) / AV_TIME_BASE;
     const AVCodec* codec = avcodec_find_decoder(st->codecpar->codec_id);
     if (!codec) {
-        setError("Khong ho tro codec");
+        setError(LC_TR("Khong ho tro codec"));
         return cleanup();
     }
 
@@ -394,7 +395,7 @@ void FFmpegSource::run() {
             if (!ok) qInfo().noquote() << QString("Giải mã phần cứng không dùng được cho '%1' (%2) → phần mềm").arg(name_, why);
         }
         if (!ok && !openCodec(false, nullptr)) {
-            setError("Khong mo duoc decoder");
+            setError(LC_TR("Khong mo duoc decoder"));
             return cleanup();
         }
     }
@@ -415,7 +416,7 @@ void FFmpegSource::run() {
     };
     auto fallbackToSoftware = [&](const char* reason) {   // loi phan cung giua chung: mo lai bang phan mem, ve dau file
         qWarning().noquote() << QString("Giải mã phần cứng lỗi '%1' (%2) → chuyển sang phần mềm").arg(name_, reason);
-        if (!openCodec(false, nullptr)) { setError("Khong mo duoc decoder (phan mem)"); stop_ = true; return; }
+        if (!openCodec(false, nullptr)) { setError(LC_TR("Khong mo duoc decoder (phan mem)")); stop_ = true; return; }
         hwActive_ = false;
         restartReq_ = true;
     };

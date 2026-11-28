@@ -1,4 +1,5 @@
 #include "ControlApi.h"
+#include "core/I18n.h"
 #include "live/LiveSource.h"
 #include "render/NdiOutput.h"
 #include "control/ControlPage.h"
@@ -48,7 +49,7 @@ const char* healthId(OutputHealth h) {
 bool readOptBool(const QJsonObject& b, const QString& key, std::optional<bool>& out, CmdResult& err) {
     out.reset();
     if (!b.contains(key) || b[key].isNull()) return true;
-    if (!b[key].isBool()) { err = CmdResult::error(400, "bad_request", QString("'%1' phải là true/false").arg(key)); return false; }
+    if (!b[key].isBool()) { err = CmdResult::error(400, "bad_request", LC_BOTH(QString(LC_TR("'%1' phải là true/false")).arg(key))); return false; }
     out = b[key].toBool();
     return true;
 }
@@ -60,7 +61,7 @@ bool oscBool(const QVariant& v, std::optional<bool>& out, CmdResult& err) {
     case QMetaType::Bool: out = v.toBool(); return true;
     case QMetaType::Int: case QMetaType::LongLong: out = v.toInt() != 0; return true;
     case QMetaType::Double: out = std::abs(v.toDouble()) > 1e-9; return true;
-    default: err = CmdResult::error(400, "bad_request", "tham số OSC phải là số hoặc T/F"); return false;
+    default: err = CmdResult::error(400, "bad_request", LC_BOTH(LC_TR("tham số OSC phải là số hoặc T/F"))); return false;
     }
 }
 
@@ -114,15 +115,15 @@ void ControlApi::sampleFps() {
     }
 }
 
-void ControlApi::noteRejected(const QString& who, const QString& what) {
+void ControlApi::noteRejected(const QString& who, const i18n::Text& what) {
     ++rejected_;
-    emit commandRejected(what);
+    emit commandRejected(what.shown);
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     if (now - logWindowStart_ > 10000) {                      // cua so 10 s: toi da 20 dong log, tranh bi lam ngap file log
         if (logSuppressed_ > 0) qWarning().noquote() << QString("Điều khiển ngoài: đã bỏ qua %1 dòng log từ chối do quá nhiều").arg(logSuppressed_);
         logWindowStart_ = now; logInWindow_ = 0; logSuppressed_ = 0;
     }
-    if (logInWindow_ < 20) { ++logInWindow_; qWarning().noquote() << QString("Điều khiển ngoài: TỪ CHỐI %1 (từ %2)").arg(what, who); }
+    if (logInWindow_ < 20) { ++logInWindow_; qWarning().noquote() << QString("Điều khiển ngoài: TỪ CHỐI %1 (từ %2)").arg(what.source, who); }
     else ++logSuppressed_;
 }
 
@@ -130,7 +131,7 @@ void ControlApi::noteRejected(const QString& who, const QString& what) {
 
 std::shared_ptr<Channel> ControlApi::chan(int n, CmdResult& err) const {
     if (n < 1 || n > int(channels_.size())) {
-        err = CmdResult::error(404, "channel_not_found", QString("Không có kênh %1 (có %2 kênh)").arg(n).arg(channels_.size()));
+        err = CmdResult::error(404, "channel_not_found", LC_BOTH(QString(LC_TR("Không có kênh %1 (có %2 kênh)")).arg(n).arg(channels_.size())));
         return nullptr;
     }
     return channels_[n - 1];
@@ -142,8 +143,8 @@ CmdResult ControlApi::setPreview(int channel, int scene) {
     if (!c) return err;
     const auto& list = chScenes_[channel - 1];
     if (scene < 1 || scene > int(list.size()))
-        return CmdResult::error(404, "scene_not_found", QString("Không có Scene %1 (kênh %2 có %3 Scene)").arg(scene).arg(channel).arg(list.size()));
-    if (c->inTransition() && !c->autoTransition()) return CmdResult::error(409, "transition_in_progress", "Kênh đang chuyển cảnh");
+        return CmdResult::error(404, "scene_not_found", LC_BOTH(QString(LC_TR("Không có Scene %1 (kênh %2 có %3 Scene)")).arg(scene).arg(channel).arg(list.size())));
+    if (c->inTransition() && !c->autoTransition()) return CmdResult::error(409, "transition_in_progress", LC_BOTH(LC_TR("Kênh đang chuyển cảnh")));
     const int idx = scene - 1;
     engine_.post([c, idx](double) { c->setPreview(idx); });       // chi Preview; Program khong bao gio doi
     return CmdResult::success({{"channel", channel}, {"preview", scene}});
@@ -153,7 +154,7 @@ CmdResult ControlApi::cut(int channel) {
     CmdResult err;
     auto c = chan(channel, err);
     if (!c) return err;
-    if (c->preview < 0) return CmdResult::error(409, "no_preview", "Kênh chưa có Scene ở Preview");
+    if (c->preview < 0) return CmdResult::error(409, "no_preview", LC_BOTH(LC_TR("Kênh chưa có Scene ở Preview")));
     engine_.post([c](double now) { c->cut(now); });
     return CmdResult::success({{"channel", channel}});
 }
@@ -166,18 +167,18 @@ CmdResult ControlApi::take(int channel, const QJsonObject& o) {
     spec.duration = 1.0;
     QString type = "fade";
     if (o.contains("type")) {
-        if (!o["type"].isString()) return CmdResult::error(400, "bad_request", "'type' phải là chuỗi");
+        if (!o["type"].isString()) return CmdResult::error(400, "bad_request", LC_BOTH(LC_TR("'type' phải là chuỗi")));
         type = o["type"].toString().toLower();
     }
     if (o.contains("duration")) {
-        if (!o["duration"].isDouble()) return CmdResult::error(400, "bad_request", "'duration' phải là số (giây)");
+        if (!o["duration"].isDouble()) return CmdResult::error(400, "bad_request", LC_BOTH(LC_TR("'duration' phải là số (giây)")));
         spec.duration = o["duration"].toDouble();
     }
-    if (!(spec.duration >= 0.1 && spec.duration <= 10.0)) return CmdResult::error(400, "bad_request", "'duration' phải trong khoảng 0,1–10 giây");
+    if (!(spec.duration >= 0.1 && spec.duration <= 10.0)) return CmdResult::error(400, "bad_request", LC_BOTH(LC_TR("'duration' phải trong khoảng 0,1–10 giây")));
     if (o.contains("easing")) {
         const QString e = o["easing"].toString().toLower();
         if (!o["easing"].isString() || (e != "linear" && e != "easeinout" && e != "easein" && e != "easeout"))
-            return CmdResult::error(400, "bad_request", "'easing' phải là linear | easeinout | easein | easeout");
+            return CmdResult::error(400, "bad_request", LC_BOTH(LC_TR("'easing' phải là linear | easeinout | easein | easeout")));
         spec.easing = e == "linear" ? Easing::Linear : e == "easein" ? Easing::EaseIn : e == "easeout" ? Easing::EaseOut : Easing::EaseInOut;
     }
     static const QMap<QString, TransitionType> kBuiltin = {
@@ -189,17 +190,17 @@ CmdResult ControlApi::take(int channel, const QJsonObject& o) {
     } else {
         QString id;
         if (type == "plugin") {
-            if (!o["plugin"].isString()) return CmdResult::error(400, "bad_request", "type=plugin cần trường 'plugin' (id)");
+            if (!o["plugin"].isString()) return CmdResult::error(400, "bad_request", LC_BOTH(LC_TR("type=plugin cần trường 'plugin' (id)")));
             id = o["plugin"].toString();
         } else if (type == "push" || type == "slide" || type == "zoom" || type == "luma") {
             id = "builtin." + type;
         } else if (type == "stinger") {
-            return CmdResult::error(400, "unsupported", "Stinger chưa hỗ trợ qua điều khiển ngoài");
+            return CmdResult::error(400, "unsupported", LC_BOTH(LC_TR("Stinger chưa hỗ trợ qua điều khiển ngoài")));
         } else {
-            return CmdResult::error(400, "bad_request", "Kiểu chuyển không hợp lệ: " + type.left(40));
+            return CmdResult::error(400, "bad_request", LC_BOTH(LC_TR("Kiểu chuyển không hợp lệ: ") + type.left(40)));
         }
         auto def = engine_.registry().find(id);
-        if (!def || def->kind != EffectDef::Transition) return CmdResult::error(400, "unknown_plugin", "Không có Transition: " + id.left(60));
+        if (!def || def->kind != EffectDef::Transition) return CmdResult::error(400, "unknown_plugin", LC_BOTH(LC_TR("Không có Transition: ") + id.left(60)));
         spec.type = TransitionType::Plugin;
         spec.pluginId = id;
         if (o.contains("params") && o["params"].isObject()) spec.params = o["params"].toObject().toVariantMap();
@@ -211,8 +212,8 @@ CmdResult ControlApi::takeWith(int channel, const TransitionSpec& spec) {
     CmdResult err;
     auto c = chan(channel, err);
     if (!c) return err;
-    if (c->preview < 0) return CmdResult::error(409, "no_preview", "Kênh chưa có Scene ở Preview");
-    if (c->inTransition()) return CmdResult::error(409, "transition_in_progress", "Kênh đang chuyển cảnh");
+    if (c->preview < 0) return CmdResult::error(409, "no_preview", LC_BOTH(LC_TR("Kênh chưa có Scene ở Preview")));
+    if (c->inTransition()) return CmdResult::error(409, "transition_in_progress", LC_BOTH(LC_TR("Kênh đang chuyển cảnh")));
     engine_.post([c, spec](double now) { c->startTransition(spec, now); });
     return CmdResult::success({{"channel", channel}});
 }
@@ -221,7 +222,7 @@ CmdResult ControlApi::ftb(int channel, std::optional<bool> on, double seconds) {
     CmdResult err;
     auto c = chan(channel, err);
     if (!c) return err;
-    if (!(seconds >= 0.1 && seconds <= 10.0)) return CmdResult::error(400, "bad_request", "'duration' phải trong khoảng 0,1–10 giây");
+    if (!(seconds >= 0.1 && seconds <= 10.0)) return CmdResult::error(400, "bad_request", LC_BOTH(LC_TR("'duration' phải trong khoảng 0,1–10 giây")));
     engine_.post([c, on, seconds](double) { if (!on || *on != c->ftbTarget.load()) c->toggleFtb(seconds); });
     return CmdResult::success({{"channel", channel}});
 }
@@ -237,7 +238,7 @@ CmdResult ControlApi::audioVolume(int channel, double linear) {
     CmdResult err;
     auto c = chan(channel, err);
     if (!c) return err;
-    if (!std::isfinite(linear) || linear < 0.0 || linear > 2.0) return CmdResult::error(400, "bad_request", "Âm lượng phải trong khoảng 0–2 (1 = nguyên gốc) hoặc -60..+6 dB");
+    if (!std::isfinite(linear) || linear < 0.0 || linear > 2.0) return CmdResult::error(400, "bad_request", LC_BOTH(LC_TR("Âm lượng phải trong khoảng 0–2 (1 = nguyên gốc) hoặc -60..+6 dB")));
     const float v = float(linear);
     engine_.post([c, v](double) { c->volume = v; });
     return CmdResult::success({{"channel", channel}, {"volume", std::round(linear * 1000) / 1000}});
@@ -268,7 +269,7 @@ CmdResult ControlApi::audioInfo() {
 }
 CmdResult ControlApi::outputFlag(int output, OutFlag f, std::optional<bool> on) {
     if (output < 1 || output > engine_.outputCount())
-        return CmdResult::error(404, "output_not_found", QString("Không có Output %1 (có %2 Output)").arg(output).arg(engine_.outputCount()));
+        return CmdResult::error(404, "output_not_found", LC_BOTH(QString(LC_TR("Không có Output %1 (có %2 Output)")).arg(output).arg(engine_.outputCount())));
     OutputSink* sink = engine_.output(output - 1);
     engine_.post([sink, f, on](double) {
         std::atomic<bool>& a = f == OutFlag::Black ? sink->black : f == OutFlag::Freeze ? sink->freeze : sink->testPattern;
@@ -292,14 +293,14 @@ CmdResult ControlApi::blackAll(std::optional<bool> on) {
 
 CmdResult ControlApi::sceneTransport(int scene, Transport t, double seconds) {
     if (scene < 1 || scene > int(scenes_.size()))
-        return CmdResult::error(404, "scene_not_found", QString("Không có Scene %1 (có %2 Scene)").arg(scene).arg(scenes_.size()));
+        return CmdResult::error(404, "scene_not_found", LC_BOTH(QString(LC_TR("Không có Scene %1 (có %2 Scene)")).arg(scene).arg(scenes_.size())));
     auto sc = scenes_[scene - 1];
     switch (t) {
     case Transport::Play: engine_.post([sc](double now) { sc->clock.play(now, sc->duration); }); break;
     case Transport::Pause: engine_.post([sc](double) { sc->clock.pause(); }); break;
     case Transport::Stop: engine_.post([sc](double) { sc->clock.stop(); }); break;
     case Transport::Seek:
-        if (!std::isfinite(seconds) || seconds < 0 || seconds > 86400) return CmdResult::error(400, "bad_request", "'time' phải là số giây ≥ 0");
+        if (!std::isfinite(seconds) || seconds < 0 || seconds > 86400) return CmdResult::error(400, "bad_request", LC_BOTH(LC_TR("'time' phải là số giây ≥ 0")));
         engine_.post([sc, seconds](double) { sc->clock.seek(std::min(seconds, sc->duration)); });
         break;
     }
@@ -311,15 +312,15 @@ CmdResult ControlApi::playlistControl(int channel, PlaylistAct act, int item) {
     auto c = chan(channel, err);
     if (!c) return err;
     const auto& items = c->playlist.data.items;             // chi UI thread sua danh sach
-    if (items.empty()) return CmdResult::error(409, "playlist_empty", "Kênh chưa có mục nào trong playlist");
+    if (items.empty()) return CmdResult::error(409, "playlist_empty", LC_BOTH(LC_TR("Kênh chưa có mục nào trong playlist")));
     int id = 0;
     if (item != 0) {
         if (item < 1 || item > int(items.size()))
-            return CmdResult::error(404, "item_not_found", QString("Playlist có %1 mục").arg(items.size()));
+            return CmdResult::error(404, "item_not_found", LC_BOTH(QString(LC_TR("Playlist có %1 mục")).arg(items.size())));
         id = items[size_t(item - 1)].id;
     }
     if ((act == PlaylistAct::Next || act == PlaylistAct::Prev) && c->playlist.state() == Playlist::State::Stopped)
-        return CmdResult::error(409, "playlist_stopped", "Playlist đang dừng");
+        return CmdResult::error(409, "playlist_stopped", LC_BOTH(LC_TR("Playlist đang dừng")));
     engine_.post([c, act, id](double now) {
         switch (act) {
         case PlaylistAct::Play: c->playlist.play(*c, now, id); break;
@@ -357,9 +358,9 @@ CmdResult ControlApi::liveSources() {
 
 CmdResult ControlApi::reconnectSource(int index) {
     if (index < 1 || index > int(sources_.size()))
-        return CmdResult::error(404, "source_not_found", QString("Không có nguồn %1 (có %2 nguồn)").arg(index).arg(sources_.size()));
+        return CmdResult::error(404, "source_not_found", LC_BOTH(QString(LC_TR("Không có nguồn %1 (có %2 nguồn)")).arg(index).arg(sources_.size())));
     auto* ls = dynamic_cast<LiveSource*>(sources_[size_t(index - 1)].get());
-    if (!ls) return CmdResult::error(400, "not_live", "Nguồn này không phải nguồn trực tiếp (NDI/camera)");
+    if (!ls) return CmdResult::error(400, "not_live", LC_BOTH(LC_TR("Nguồn này không phải nguồn trực tiếp (NDI/camera)")));
     ls->reconnect();
     return CmdResult::success({{"source", index}});
 }
@@ -475,7 +476,7 @@ void ControlApi::addRoute(const QByteArray& method, const QString& pattern, bool
 void ControlApi::buildDefaultRoutes() {
     auto idx = [](const QString& s, int& v, CmdResult& err) {
         if (parseIndex(s, v)) return true;
-        err = CmdResult::error(400, "bad_request", "Chỉ số phải là số nguyên");
+        err = CmdResult::error(400, "bad_request", LC_BOTH(LC_TR("Chỉ số phải là số nguyên")));
         return false;
     };
     addRoute("GET", "/api/ping", false, [](const QStringList&, const QJsonObject&) { return CmdResult::success({{"pong", true}}); });
@@ -484,7 +485,7 @@ void ControlApi::buildDefaultRoutes() {
         int n; CmdResult e;
         if (!idx(p[0], n, e)) return e;
         if (!b["scene"].isDouble() || b["scene"].toDouble() != std::floor(b["scene"].toDouble()) || std::abs(b["scene"].toDouble()) > 1e6)
-            return CmdResult::error(400, "bad_request", "Cần trường số nguyên 'scene' (từ 1)");
+            return CmdResult::error(400, "bad_request", LC_BOTH(LC_TR("Cần trường số nguyên 'scene' (từ 1)")));
         return setPreview(n, int(b["scene"].toDouble()));
     });
     addRoute("POST", "/api/channels/{n}/cut", false, [this, idx](const QStringList& p, const QJsonObject&) {
@@ -500,7 +501,7 @@ void ControlApi::buildDefaultRoutes() {
         if (!idx(p[0], n, e)) return e;
         if (!readOptBool(b, "on", on, e)) return e;
         double d = 1.0;
-        if (b.contains("duration")) { if (!b["duration"].isDouble()) return CmdResult::error(400, "bad_request", "'duration' phải là số"); d = b["duration"].toDouble(); }
+        if (b.contains("duration")) { if (!b["duration"].isDouble()) return CmdResult::error(400, "bad_request", LC_BOTH(LC_TR("'duration' phải là số"))); d = b["duration"].toDouble(); }
         return ftb(n, on, d);
     });
     addRoute("POST", "/api/channels/{n}/mute", false, [this, idx](const QStringList& p, const QJsonObject& b) {
@@ -512,12 +513,12 @@ void ControlApi::buildDefaultRoutes() {
         int n; CmdResult e;
         if (!idx(p[0], n, e)) return e;
         if (b.contains("db")) {
-            if (!b["db"].isDouble()) return CmdResult::error(400, "bad_request", "'db' phải là số");
+            if (!b["db"].isDouble()) return CmdResult::error(400, "bad_request", LC_BOTH(LC_TR("'db' phải là số")));
             const double db = b["db"].toDouble();
-            if (!std::isfinite(db) || db < -60.0 || db > 6.0) return CmdResult::error(400, "bad_request", "'db' phải trong khoảng -60..+6");
+            if (!std::isfinite(db) || db < -60.0 || db > 6.0) return CmdResult::error(400, "bad_request", LC_BOTH(LC_TR("'db' phải trong khoảng -60..+6")));
             return audioVolume(n, db <= -60.0 ? 0.0 : std::pow(10.0, db / 20.0));
         }
-        if (!b["volume"].isDouble()) return CmdResult::error(400, "bad_request", "Cần trường số 'volume' (0–2) hoặc 'db'");
+        if (!b["volume"].isDouble()) return CmdResult::error(400, "bad_request", LC_BOTH(LC_TR("Cần trường số 'volume' (0–2) hoặc 'db'")));
         return audioVolume(n, b["volume"].toDouble());
     });
     for (const auto& [name, act] : {std::pair<const char*, PlaylistAct>{"play", PlaylistAct::Play}, {"pause", PlaylistAct::Pause},
@@ -529,7 +530,7 @@ void ControlApi::buildDefaultRoutes() {
             if (act == PlaylistAct::Play && b.contains("item")) {
                 const double v = b["item"].toDouble(0.5);
                 if (!b["item"].isDouble() || v != std::floor(v) || v < 1 || v > 1e6)
-                    return CmdResult::error(400, "bad_request", "'item' phải là số nguyên từ 1");
+                    return CmdResult::error(400, "bad_request", LC_BOTH(LC_TR("'item' phải là số nguyên từ 1")));
                 item = int(v);
             }
             return playlistControl(n, act, item);
@@ -558,7 +559,7 @@ void ControlApi::buildDefaultRoutes() {
     addRoute("POST", "/api/scenes/{n}/seek", false, [this, idx](const QStringList& p, const QJsonObject& b) {
         int n; CmdResult e;
         if (!idx(p[0], n, e)) return e;
-        if (!b["time"].isDouble()) return CmdResult::error(400, "bad_request", "Cần trường số 'time' (giây)");
+        if (!b["time"].isDouble()) return CmdResult::error(400, "bad_request", LC_BOTH(LC_TR("Cần trường số 'time' (giây)")));
         return sceneTransport(n, Transport::Seek, b["time"].toDouble());
     });
 }
@@ -578,7 +579,7 @@ HttpResponse ControlApi::reply(const CmdResult& r) {
 
 HttpResponse ControlApi::errorReply(int status, const QString& code, const QString& msg, const HttpRequest& req) {
     noteRejected(req.peer.toString(), QString("%1 %2 → %3 %4").arg(QString::fromLatin1(req.method), QString::fromUtf8(req.path).left(80)).arg(status).arg(code));
-    return reply(CmdResult::error(status, code, msg));
+    return reply(CmdResult::error(status, code, i18n::Text{msg, msg}));
 }
 
 HttpResponse ControlApi::page() {
@@ -593,19 +594,19 @@ HttpResponse ControlApi::page() {
 HttpResponse ControlApi::handleHttp(const HttpRequest& req) {
     const QByteArray host = req.header("host");
     if (strictHost_ && !host.isEmpty() && !isLoopbackHost(host))
-        return errorReply(403, "bad_host", "Host không hợp lệ", req);
+        return errorReply(403, "bad_host", LC_TR("Host không hợp lệ"), req);
     const QByteArray origin = req.header("origin");
     if (!origin.isEmpty() && !sameOrigin(origin, host))
-        return errorReply(403, "bad_origin", "Origin không được phép (chống CSRF)", req);
+        return errorReply(403, "bad_origin", LC_TR("Origin không được phép (chống CSRF)"), req);
 
     if (req.path == "/") {
-        if (req.method != "GET" && req.method != "HEAD") return errorReply(405, "method_not_allowed", "Chỉ hỗ trợ GET", req);
+        if (req.method != "GET" && req.method != "HEAD") return errorReply(405, "method_not_allowed", LC_TR("Chỉ hỗ trợ GET"), req);
         return page();
     }
-    if (!req.path.startsWith("/api/")) return errorReply(404, "not_found", "Không tìm thấy", req);
+    if (!req.path.startsWith("/api/")) return errorReply(404, "not_found", LC_TR("Không tìm thấy"), req);
 
     // xac thuc (hang thoi gian)
-    if (requireToken_ && token_.isEmpty()) return errorReply(401, "token_required", "Máy chủ yêu cầu token nhưng chưa đặt", req);
+    if (requireToken_ && token_.isEmpty()) return errorReply(401, "token_required", LC_TR("Máy chủ yêu cầu token nhưng chưa đặt"), req);
     if (!token_.isEmpty()) {
         const QByteArray auth = req.header("authorization").trimmed();
         const int sp = auth.indexOf(' ');
@@ -613,14 +614,14 @@ HttpResponse ControlApi::handleHttp(const HttpRequest& req) {
         const QByteArray given = schemeOk ? auth.mid(sp + 1).trimmed() : QByteArray();
         const bool eq = constantTimeEquals(given, token_);
         if (!schemeOk || !eq) {
-            HttpResponse r = errorReply(401, "unauthorized", "Thiếu hoặc sai token (Authorization: Bearer ...)", req);
+            HttpResponse r = errorReply(401, "unauthorized", LC_TR("Thiếu hoặc sai token (Authorization: Bearer ...)"), req);
             r.headers.append(std::make_pair(QByteArray("WWW-Authenticate"), QByteArray("Bearer")));
             return r;
         }
     }
 
     if (req.path == "/api/events") {
-        if (req.method != "GET") return errorReply(405, "method_not_allowed", "Chỉ hỗ trợ GET", req);
+        if (req.method != "GET") return errorReply(405, "method_not_allowed", LC_TR("Chỉ hỗ trợ GET"), req);
         HttpResponse r;
         r.sse = true;
         r.body = "retry: 2000\nevent: state\ndata: " + stateJson() + "\n\n";
@@ -645,25 +646,25 @@ HttpResponse ControlApi::handleHttp(const HttpRequest& req) {
     }
     if (!hit) {
         if (!allow.isEmpty()) {
-            HttpResponse r = errorReply(405, "method_not_allowed", "Phương thức không được hỗ trợ cho đường dẫn này", req);
+            HttpResponse r = errorReply(405, "method_not_allowed", LC_TR("Phương thức không được hỗ trợ cho đường dẫn này"), req);
             r.headers.append(std::make_pair(QByteArray("Allow"), allow.join(", ").toLatin1()));
             return r;
         }
-        return errorReply(404, "not_found", "Không có đường dẫn này", req);
+        return errorReply(404, "not_found", LC_TR("Không có đường dẫn này"), req);
     }
-    if (hit->edit && locked()) return errorReply(423, "locked", "Đang khoá vận hành: lệnh sửa cấu hình bị từ chối", req);
+    if (hit->edit && locked()) return errorReply(423, "locked", LC_TR("Đang khoá vận hành: lệnh sửa cấu hình bị từ chối"), req);
 
     QJsonObject body;
     if (req.method == "POST" && !req.body.trimmed().isEmpty()) {
         QJsonParseError pe;
         const QJsonDocument doc = QJsonDocument::fromJson(req.body, &pe);
         if (pe.error != QJsonParseError::NoError || !doc.isObject())
-            return errorReply(400, "invalid_json", "Nội dung phải là một đối tượng JSON hợp lệ", req);
+            return errorReply(400, "invalid_json", LC_TR("Nội dung phải là một đối tượng JSON hợp lệ"), req);
         body = doc.object();
     }
     CmdResult r;
     try { r = hit->fn(params, body); }
-    catch (...) { r = CmdResult::error(500, "internal_error", "Lỗi nội bộ"); }
+    catch (...) { r = CmdResult::error(500, "internal_error", LC_BOTH(LC_TR("Lỗi nội bộ"))); }
     if (!r.ok()) {
         noteRejected(req.peer.toString(), QString("%1 %2 → %3 %4").arg(QString::fromLatin1(req.method), QString::fromUtf8(req.path).left(80)).arg(r.status).arg(r.code));
     }
@@ -674,7 +675,7 @@ HttpResponse ControlApi::handleHttp(const HttpRequest& req) {
 
 CmdResult ControlApi::handleOsc(const OscMessage& m) {
     const QStringList a = m.address.split('/', Qt::SkipEmptyParts);
-    auto bad = [&](const QString& why) { return CmdResult::error(400, "bad_request", why); };
+    auto bad = [&](const i18n::Text& why) { return CmdResult::error(400, "bad_request", why); };
     auto argInt = [&](int k, int& out) {
         if (k >= m.args.size()) return false;
         const QVariant& v = m.args[k];
@@ -685,7 +686,7 @@ CmdResult ControlApi::handleOsc(const OscMessage& m) {
         }
         return false;
     };
-    if (a.size() < 2 || a[0] != "lumacast") return CmdResult::error(404, "unknown_address", "Địa chỉ OSC phải bắt đầu bằng /lumacast/");
+    if (a.size() < 2 || a[0] != "lumacast") return CmdResult::error(404, "unknown_address", LC_BOTH(LC_TR("Địa chỉ OSC phải bắt đầu bằng /lumacast/")));
     CmdResult err;
     std::optional<bool> on;
 
@@ -693,14 +694,14 @@ CmdResult ControlApi::handleOsc(const OscMessage& m) {
         if (!oscBool(m.args.value(0), on, err)) return err;
         return blackAll(on);
     }
-    if (a.size() != 4) return CmdResult::error(404, "unknown_address", "Địa chỉ OSC không hợp lệ: " + m.address.left(60));
+    if (a.size() != 4) return CmdResult::error(404, "unknown_address", LC_BOTH(LC_TR("Địa chỉ OSC không hợp lệ: ") + m.address.left(60)));
     int n;
-    if (!parseIndex(a[2], n)) return bad("Chỉ số trong địa chỉ phải là số nguyên");
+    if (!parseIndex(a[2], n)) return bad(LC_BOTH(LC_TR("Chỉ số trong địa chỉ phải là số nguyên")));
     const QString& act = a[3];
     if (a[1] == "channel") {
         if (act == "preview") {
             int s;
-            if (!argInt(0, s)) return bad("preview cần một số nguyên (số Scene, từ 1)");
+            if (!argInt(0, s)) return bad(LC_BOTH(LC_TR("preview cần một số nguyên (số Scene, từ 1)")));
             return setPreview(n, s);
         }
         if (act == "cut") return cut(n);
@@ -709,7 +710,7 @@ CmdResult ControlApi::handleOsc(const OscMessage& m) {
             return audioMute(n, on);
         }
         if (act == "volume") {
-            if (m.args.isEmpty() || !(m.args[0].typeId() == QMetaType::Double || m.args[0].typeId() == QMetaType::Int)) return bad("volume cần một số (0–2, 1 = nguyên gốc)");
+            if (m.args.isEmpty() || !(m.args[0].typeId() == QMetaType::Double || m.args[0].typeId() == QMetaType::Int)) return bad(LC_BOTH(LC_TR("volume cần một số (0–2, 1 = nguyên gốc)")));
             return audioVolume(n, m.args[0].toDouble());
         }
         if (act == "ftb") {
@@ -728,7 +729,7 @@ CmdResult ControlApi::handleOsc(const OscMessage& m) {
     } else if (a[1] == "playlist") {
         if (act == "play") {
             int item = 0;
-            if (!m.args.isEmpty() && (!argInt(0, item) || item < 1)) return bad("play nhận số mục (từ 1) hoặc không tham số");
+            if (!m.args.isEmpty() && (!argInt(0, item) || item < 1)) return bad(LC_BOTH(LC_TR("play nhận số mục (từ 1) hoặc không tham số")));
             return playlistControl(n, PlaylistAct::Play, item);
         }
         if (act == "pause") return playlistControl(n, PlaylistAct::Pause);
@@ -746,11 +747,11 @@ CmdResult ControlApi::handleOsc(const OscMessage& m) {
         if (act == "pause") return sceneTransport(n, Transport::Pause);
         if (act == "stop") return sceneTransport(n, Transport::Stop);
         if (act == "seek") {
-            if (m.args.isEmpty() || !(m.args[0].typeId() == QMetaType::Double || m.args[0].typeId() == QMetaType::Int)) return bad("seek cần một số giây");
+            if (m.args.isEmpty() || !(m.args[0].typeId() == QMetaType::Double || m.args[0].typeId() == QMetaType::Int)) return bad(LC_BOTH(LC_TR("seek cần một số giây")));
             return sceneTransport(n, Transport::Seek, m.args[0].toDouble());
         }
     }
-    return CmdResult::error(404, "unknown_address", "Địa chỉ OSC không hợp lệ: " + m.address.left(60));
+    return CmdResult::error(404, "unknown_address", LC_BOTH(LC_TR("Địa chỉ OSC không hợp lệ: ") + m.address.left(60)));
 }
 
 } // namespace lc

@@ -1,4 +1,5 @@
 #include "MultiviewWindow.h"
+#include "core/I18n.h"
 #include "Text.h"
 #include "Ui.h"
 #include "Theme.h"
@@ -76,17 +77,17 @@ bool MultiviewWindow::toggleFullScreen() {
         return true;
     }
     if (screenHasFullscreenOutput(screen())) {
-        showNotice("Màn hình này đang có Output toàn màn hình — hãy kéo cửa sổ Multiview sang màn hình khác");
+        showNotice(LC_BOTH(LC_TR("Màn hình này đang có Output toàn màn hình — hãy kéo cửa sổ Multiview sang màn hình khác")));
         return false;
     }
     showFullScreen();
     return true;
 }
 
-void MultiviewWindow::showNotice(const QString& text) {
-    notice_ = text;
+void MultiviewWindow::showNotice(const i18n::Text& text) {
+    notice_ = text.shown;
     noticeUntilMs_ = QDateTime::currentMSecsSinceEpoch() + 6000;
-    qWarning().noquote() << "Multiview:" << text;
+    qWarning().noquote() << "Multiview:" << text.source;
     update();
 }
 
@@ -101,7 +102,7 @@ void MultiviewWindow::refresh(int selectedChannel, const std::vector<std::vector
     // Man hinh duoc cam lai / Output chuyen sang man dang xem: roi toan man hinh, khong che man LED.
     if (isFullScreen() && screenHasFullscreenOutput(screen())) {
         toggleFullScreen();
-        showNotice("Đã thoát toàn màn hình: màn hình này vừa có Output toàn màn hình");
+        showNotice(LC_BOTH(LC_TR("Đã thoát toàn màn hình: màn hình này vừa có Output toàn màn hình")));
     }
     const bool minimized = parentWidget() && parentWidget()->window()->isMinimized();
     engine_.setSceneThumbChannel(minimized ? -1 : channel_);
@@ -128,7 +129,7 @@ void MultiviewWindow::refresh(int selectedChannel, const std::vector<std::vector
         g.scene = pg;
         g.mark = Mark::Program;
         g.onAir = ch.ftbAmount < 1.0f;
-        g.title = "PGM · " + prefix + nameAt(sceneNames, c, pg) + (ch.inTransition() ? "  (đang chuyển)" : "");
+        g.title = "PGM · " + prefix + nameAt(sceneNames, c, pg) + (ch.inTransition() ? LC_TR("  (đang chuyển)") : "");
         g.image = mf.program;
         tiles.push_back(std::move(v));                    // thu tu giong cua so chinh: Preview trai, Program phai
         tiles.push_back(std::move(g));
@@ -208,7 +209,7 @@ void MultiviewWindow::paintEvent(QPaintEvent*) {
     p.setPen(note.isEmpty() ? QColor(0xd0, 0xd4, 0xe0) : QColor(colors::kWarn));
     QString head = note;
     if (head.isEmpty() && channel_ < channels)
-        head = QString("Scene của kênh %1: %2  —  bấm = đưa vào Preview; Space = TAKE, Enter = CUT")
+        head = QString(LC_TR("Scene của kênh %1: %2  —  bấm = đưa vào Preview; Space = TAKE, Enter = CUT"))
                    .arg(channel_ + 1).arg(project_.channels[size_t(channel_)]->name);
     const QRect headRect(10, 0, std::max(0, fullBtn_->x() - 20), kHeader);
     p.drawText(headRect, Qt::AlignVCenter | Qt::AlignLeft, p.fontMetrics().elidedText(head, Qt::ElideRight, headRect.width()));
@@ -227,7 +228,7 @@ void MultiviewWindow::paintEvent(QPaintEvent*) {
         const QRect picture = t.rect.adjusted(kBorder, kBorder, -kBorder, -kLabel);
         if (t.image.isNull()) {
             p.setPen(QColor(0x66, 0x6b, 0x7a));
-            p.drawText(picture, Qt::AlignCenter, t.scene < 0 ? "Chưa có hình" : "…");
+            p.drawText(picture, Qt::AlignCenter, t.scene < 0 ? LC_TR("Chưa có hình") : "…");
         } else {
             const QSize s = t.image.size().scaled(picture.size(), Qt::KeepAspectRatio);
             p.drawImage(QRect(QPoint(picture.center().x() - s.width() / 2, picture.center().y() - s.height() / 2), s), t.image);
@@ -286,7 +287,7 @@ void MultiviewWindow::hideEvent(QHideEvent* e) {
 void MultiviewWindow::changeEvent(QEvent* e) {
     QWidget::changeEvent(e);
     if (e->type() != QEvent::WindowStateChange) return;
-    fullBtn_->setToolTip(isFullScreen() ? "Thoát toàn màn hình (Esc)" : text::mvFullScreen());
+    fullBtn_->setToolTip(isFullScreen() ? LC_TR("Thoát toàn màn hình (Esc)") : text::mvFullScreen());
     placeButton();
 }
 

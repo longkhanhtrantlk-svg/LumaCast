@@ -1,5 +1,6 @@
 // Backend MIDI vao bang winmm (Windows), khong them thu vien. He khac: khong co cong nao.
 #include "Midi.h"
+#include "core/I18n.h"
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -48,10 +49,10 @@ public:
                 delete ctx;
                 in_ = nullptr;
             }
-            if (error) *error = r == MMSYSERR_ALLOCATED ? QString("đang được chương trình khác dùng") : errorText(r);
+            if (error) *error = r == MMSYSERR_ALLOCATED ? QString(LC_TR("đang được chương trình khác dùng")) : errorText(r);
             return false;
         }
-        if (error) *error = "không còn thấy thiết bị";
+        if (error) *error = LC_TR("không còn thấy thiết bị");
         return false;
     }
 
@@ -84,7 +85,7 @@ private:
 
     static QString errorText(MMRESULT r) {
         wchar_t buf[MAXERRORLENGTH] = {};
-        if (midiInGetErrorTextW(r, buf, MAXERRORLENGTH) != MMSYSERR_NOERROR) return QString("lỗi winmm %1").arg(r);
+        if (midiInGetErrorTextW(r, buf, MAXERRORLENGTH) != MMSYSERR_NOERROR) return QString(LC_TR("lỗi winmm %1")).arg(r);
         return QString::fromWCharArray(buf);
     }
 
@@ -98,7 +99,7 @@ class NullMidiBackend : public MidiBackend {
 public:
     QStringList inputs() override { return {}; }
     bool open(const QString&, Handler, QString* error) override {
-        if (error) *error = "MIDI chỉ hỗ trợ trên Windows";
+        if (error) *error = LC_TR("MIDI chỉ hỗ trợ trên Windows");
         return false;
     }
     void close() override {}

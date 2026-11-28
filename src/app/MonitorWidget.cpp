@@ -1,4 +1,5 @@
 #include "MonitorWidget.h"
+#include "core/I18n.h"
 #include <QPainter>
 
 namespace lc {
@@ -40,7 +41,7 @@ void MonitorWidget::paintEvent(QPaintEvent*) {
 
     if (img_.isNull()) {
         p.setPen(QColor(0x66, 0x6b, 0x7a));
-        p.drawText(imageArea(), Qt::AlignCenter, "Chưa có hình");
+        p.drawText(imageArea(), Qt::AlignCenter, LC_TR("Chưa có hình"));
     } else {
         p.drawImage(imageRect(), img_);
     }

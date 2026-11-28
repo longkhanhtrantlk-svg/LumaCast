@@ -1,8 +1,10 @@
 // Phan "dau vao" cua MainWindow: phim tat tu dat (UI-07) va MIDI (CTL-01). Tach rieng de MainWindow.cpp gon.
 #include "MainWindow.h"
+#include "core/I18n.h"
 #include "InputDialog.h"
 #include "LockButton.h"
 #include "Text.h"
+#include "live/SlideRemote.h"
 #include "core/AppSettings.h"
 #include <QAction>
 #include <QDoubleSpinBox>
@@ -22,11 +24,16 @@ void MainWindow::setupInput(QMenu* settingsMenu) {
         updateControlStatus();
         if (midi_->config().enabled) showMessage("MIDI: " + midi_->statusText());
     });
+    slides_ = new SlideRemote(this);
+    connect(slides_, &SlideRemote::stepped, this, [this](int, bool ok, int position, int count, const QString& error) {
+        if (!ok) showMessage(error);
+        else if (position > 0 && count > 0) showMessage(QString("PowerPoint: slide %1/%2").arg(position).arg(count));
+    });
     binder_ = new ShortcutBinder(this, [this](const LiveAction& a) { runKeyAction(a); });
     QSettings st = appSettings();
     applyKeys(shortcuts::load(st));
     midi_->apply(MidiConfig::load(st));
-    inputAct_ = settingsMenu->addAction("Phím tắt và MIDI…", this, [this] { openInputDialog(); });
+    inputAct_ = settingsMenu->addAction(LC_TR("Phím tắt và MIDI…"), this, [this] { openInputDialog(); });
 }
 
 void MainWindow::applyKeys(const KeyMap& keys) {
@@ -56,7 +63,7 @@ void MainWindow::updateKeyHints() {
 }
 
 void MainWindow::openInputDialog() {
-    if (locked_) { showMessage("Đang khoá vận hành: không đổi phím tắt/MIDI được"); return; }
+    if (locked_) { showMessage(LC_TR("Đang khoá vận hành: không đổi phím tắt/MIDI được")); return; }
     QStringList names;
     for (int i = 0; i < engine_.outputCount(); ++i) names << engine_.output(i)->config().name;
     InputDialog dlg(*midi_, names, binder_->map(), this);
@@ -91,6 +98,8 @@ void MainWindow::runKeyAction(const LiveAction& a) {
         button->setChecked(on);
         break;
     }
+    case LiveAction::SlideNext: slides_->step(+1); break;       // lenh live: dung duoc ca khi khoa van hanh
+    case LiveAction::SlidePrev: slides_->step(-1); break;
     case LiveAction::None: break;
     }
 }

@@ -1,14 +1,18 @@
 #pragma once
 #include "Shortcuts.h"
+#include "core/I18n.h"
 #include "core/ScreenSetup.h"
 #include "core/Types.h"
 #include "control/ControlService.h"
+#include "core/Update.h"
+#include <functional>
 #include "control/Midi.h"
 #include "render/Engine.h"
 #include "render/OutputSupervisor.h"
 #include "render/PluginManager.h"
 #include "core/Transition.h"
 #include "live/Camera.h"
+#include "live/WindowCapture.h"
 #include <QMainWindow>
 #include <QMap>
 #include <QTimer>
@@ -31,12 +35,15 @@ class QVBoxLayout;
 
 namespace lc {
 
+class UpdateDialog;
+
 class PlaylistPanel;
 class AudioPanel;
 class DockChrome;
 class InspectorPanel;
 class LockButton;
 class MappingWindow;
+class SlideRemote;
 class TimelineWidget;
 class MonitorWidget;
 class NowShowing;
@@ -83,7 +90,7 @@ public:
     ScreenSetup screenSetup() const;                                        // trang thai dang chay
     // Doi Output / khung hinh (mot buoc Hoan tac, bi Khoa van hanh chan, khong doi Preview/Program). allScenes[kenh] = dat MOI
     // Scene cua kenh theo khung hinh moi (khong thi chi Scene dang bang khung hinh cu).
-    bool applyScreenSetup(const ScreenSetup& after, const std::vector<char>& allScenes = {}, const QString& text = "Thiết lập màn hình");
+    bool applyScreenSetup(const ScreenSetup& after, const std::vector<char>& allScenes = {}, const QString& text = LC_TR("Thiết lập màn hình"));
     void setScreenState(const ScreenState& state);                          // goi boi Hoan tac/Lam lai
     ScreenDialog* createScreenDialog();                                     // hop thoai da noi voi cua so (nguoi goi huy)
     void showScreenSetup();
@@ -106,9 +113,12 @@ public:
     // (trang thai "khong kha dung"). Tra false khi bi khoa van hanh / du lieu sai.
     bool addNdiSource(const QString& name, const QString& url = {}, const QString& label = {});
     bool addCameraSource(const QString& deviceId, const QString& deviceName, CameraFormat fmt, const QString& label = {});
+    bool addWindowSource(const WindowTarget& target, const QString& label = {});   // SRC-09: slideshow PowerPoint / cua so khac
     bool addNdiOutput(const QString& name, int channel, QSize size, bool audio);   // khong hoan tac duoc; false neu loi
     void showAddNdiSource();
     void showAddCamera();
+    void showAddWindow();
+    SlideRemote& slides() { return *slides_; }                     // CTL-02: PageDown / PageUp -> PowerPoint
     void showAddNdiOutput();
     QString autosavePath() const;
     InspectorPanel* inspector() const { return inspector_; }
@@ -122,6 +132,16 @@ public:
     ControlApi& controlApi() { return *ctlApi_; }
     PlaylistPanel* playlistPanel() const { return playlist_; }
     void showStartupNotice(const QString& msg);    // thong bao khong chan (thanh trang thai) khi tu mo project that bai/thieu file
+    // ---- Tu cap nhat (MainWindowUpdate.cpp). Mac dinh khong co backend: main() moi dat, nen test khong cham mang. ----
+    void setUpdateBackend(std::shared_ptr<update::Backend> backend);
+    update::Service& updates() { return *updates_; }
+    void showUpdateDialog();
+    bool applyUpdate(bool rollback);               // xac nhan -> luu project -> goi trinh cap nhat -> dong; false = khong lam gi
+    void setUpdateConfirm(std::function<bool(const QString&)> f) { updateConfirm_ = std::move(f); }
+    // Hoi duong dan luu / canh bao (test thay bang ham gia)
+    void setSavePathAsker(std::function<QString(const QString& title, const QString& suggestion)> f) { askSavePath_ = std::move(f); }
+    void setWarningSink(std::function<void(const QString&)> f) { warnUser_ = std::move(f); }
+    QString defaultSavePath(const QString& fileName) const;       // trong Documents, khong phai thu muc lam viec
     void openSettings();
     // Phim tat tu dat (UI-07) va MIDI (CTL-01): xem MainWindowInput.cpp
     void openInputDialog();
@@ -155,6 +175,11 @@ private:
 
     void buildUi();
     void buildMenus();
+    void buildLanguageMenu(QMenu* settings);        // Cai dat -> Ngon ngu
+    void setupUpdates();                            // nut o thanh trang thai + backend rong
+    void refreshUpdateUi();
+    bool saveProjectNow();                          // luu XONG moi tra ve (truoc khi thoat de cap nhat)
+    bool refuseWipedPath(const QString& path);      // true = path nam trong thu muc cai (da canh bao)
     void buildDocks();
     void rebuildTransitionCombo();
     void rebuildPluginList();
@@ -240,19 +265,27 @@ private:
     QMenu* recentMenu_ = nullptr;
     std::vector<OutRow> outRows_;
     QVBoxLayout* outRowsLayout_ = nullptr;
-    QAction *addNdiAct_ = nullptr, *addCamAct_ = nullptr, *addNdiOutAct_ = nullptr;
+    QAction *addNdiAct_ = nullptr, *addCamAct_ = nullptr, *addNdiOutAct_ = nullptr, *addWinAct_ = nullptr;
     std::vector<std::vector<QString>> sceneNames_;     // theo kenh; snapshot de timer khong cham du lieu render thread
     QTimer fastTimer_, slowTimer_, autosaveTimer_;
     int lastProgram_ = -2, lastPreview_ = -2, lastChannel_ = -1;
     qint64 lastSlowMs_ = 0;
     bool lastStalled_ = false;
     bool askOnClose_ = true;
+    update::Service* updates_ = nullptr;
+    UpdateDialog* updateDlg_ = nullptr;
+    QPushButton* statusUpdate_ = nullptr;
+    QAction* updateAct_ = nullptr;
+    std::function<bool(const QString&)> updateConfirm_;
+    std::function<QString(const QString&, const QString&)> askSavePath_;
+    std::function<void(const QString&)> warnUser_;
     bool locked_ = false;
     ControlApi* ctlApi_ = nullptr;
     ControlService* ctl_ = nullptr;
     QLabel* ctlLabel_ = nullptr;
     PlaylistPanel* playlist_ = nullptr;
     QAction* settingsAct_ = nullptr;
+    QMenu* languageMenu_ = nullptr;
     QAction *screenAct_ = nullptr, *newAct_ = nullptr;
     QToolButton* screenBtn_ = nullptr;
     QAction *importAct_ = nullptr, *openAct_ = nullptr, *undoAct_ = nullptr, *redoAct_ = nullptr;
@@ -274,6 +307,7 @@ private:
     void setupInput(QMenu* settingsMenu);
     void runKeyAction(const LiveAction& a);
     MidiService* midi_ = nullptr;
+    SlideRemote* slides_ = nullptr;
     ShortcutBinder* binder_ = nullptr;
     QAction* inputAct_ = nullptr;
     MultiviewWindow* multiview_ = nullptr;

@@ -1,4 +1,5 @@
 #include "EffectDef.h"
+#include "core/I18n.h"
 #include <QJsonArray>
 #include <QRegularExpression>
 #include <algorithm>
@@ -53,18 +54,18 @@ bool parseManifest(const QJsonObject& m, const QString& shader, EffectDef& out, 
     EffectDef d;
     d.id = m["id"].toString();
     static const QRegularExpression idRe("^[a-z0-9][a-z0-9._-]*$");
-    if (!idRe.match(d.id).hasMatch()) return fail("id khong hop le (chi chu thuong, so, '.', '_', '-'): '" + d.id + "'");
+    if (!idRe.match(d.id).hasMatch()) return fail(LC_TR("id khong hop le (chi chu thuong, so, '.', '_', '-'): '") + d.id + "'");
     d.name = m["name"].toString(d.id);
     d.description = m["description"].toString();
     d.author = m["author"].toString();
     d.version = m["version"].toString("1.0.0");
     const int api = m["apiVersion"].toInt(0);
-    if (api != kPluginApiVersion) return fail(QString("apiVersion %1 khong ho tro (can %2)").arg(api).arg(kPluginApiVersion));
+    if (api != kPluginApiVersion) return fail(QString(LC_TR("apiVersion %1 khong ho tro (can %2)")).arg(api).arg(kPluginApiVersion));
     const QString type = m["type"].toString();
     if (type == "effect") d.kind = EffectDef::Effect;
     else if (type == "transition") d.kind = EffectDef::Transition;
-    else return fail("type phai la 'effect' hoac 'transition'");
-    if (shader.trimmed().isEmpty()) return fail("file shader rong");
+    else return fail(LC_TR("type phai la 'effect' hoac 'transition'"));
+    if (shader.trimmed().isEmpty()) return fail(LC_TR("file shader rong"));
     d.glsl = shader;
 
     const QJsonArray params = m["params"].toArray();
@@ -73,8 +74,8 @@ bool parseManifest(const QJsonObject& m, const QString& shader, EffectDef& out, 
         ParamDef p;
         p.name = o["name"].toString();
         const QString where = QString("params[%1] '%2': ").arg(i).arg(p.name);
-        if (!validIdentifier(p.name)) return fail(where + "ten khong hop le hoac trung ten du phong");
-        for (const auto& e : d.params) if (e.name == p.name) return fail(where + "trung ten tham so");
+        if (!validIdentifier(p.name)) return fail(where + LC_TR("ten khong hop le hoac trung ten du phong"));
+        for (const auto& e : d.params) if (e.name == p.name) return fail(where + LC_TR("trung ten tham so"));
         p.label = o["label"].toString(p.name);
         const QString t = o["type"].toString("float");
         const QJsonValue def = o["default"];
@@ -98,13 +99,21 @@ bool parseManifest(const QJsonObject& m, const QString& shader, EffectDef& out, 
         } else if (t == "choice") {
             p.type = ParamDef::Choice;
             for (const auto& c : o["choices"].toArray()) p.choices << c.toString();
-            if (p.choices.size() < 2) return fail(where + "choice can it nhat 2 lua chon");
+            if (p.choices.size() < 2) return fail(where + LC_TR("choice can it nhat 2 lua chon"));
             int idx = def.isString() ? p.choices.indexOf(def.toString()) : def.toInt(0);
             p.def = std::clamp(idx, 0, int(p.choices.size()) - 1);
         } else {
-            return fail(where + "type khong biet: " + t);
+            return fail(where + LC_TR("type khong biet: ") + t);
         }
         d.params.push_back(p);
+    }
+    // Chu cua plug-in: ban dich co trong bang (plug-in di kem) thi dung, khong co thi giu nguyen.
+    auto shown = [](const QString& s) { return s.isEmpty() ? s : i18n::translate(s.toUtf8().constData()); };
+    d.name = shown(d.name);
+    d.description = shown(d.description);
+    for (ParamDef& p : d.params) {
+        p.label = shown(p.label);
+        for (QString& c : p.choices) c = shown(c);
     }
     out = std::move(d);
     return true;

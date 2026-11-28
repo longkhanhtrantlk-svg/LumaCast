@@ -116,6 +116,12 @@ Làm trên nhánh `m6-perf-release` (từ `main` đã gồm M4b, M5a, M5b, M5c).
 - **Nghiệm thu:** NFR-01/02/03 đạt trên máy mục tiêu (**chưa đo — cần GPU thật**); cài đặt sạch trên Windows chưa có Qt/FFmpeg (**chưa thử**). Phần đã kiểm chứng trên Linux: shader YUV đúng, HAP đúng, đường dự phòng, công cụ benchmark, bộ file cài đặt, rào chặn NDI, kiểm tra giấy phép (bắt được FFmpeg GPL ở máy dev).
 - **Phụ thuộc:** M4a, M5*. **Rủi ro:** R2/R3 (cần số đo thật), R7 (NDI: xem `SPEC.md` 5.1; M6 đã thêm ghi nhận + rào chặn, vẫn cần bạn xác nhận điều khoản).
 
+### Slideshow PowerPoint trên cùng máy (28/11/2026, theo nhu cầu sự kiện) · **phần mã xong; còn thử trên màn LED**
+- [x] **SRC-09** bắt cửa sổ slideshow làm nguồn (Windows Graphics Capture), tự nhận và cắt vùng slide.
+- [x] **CTL-02** PageDown/PageUp trong LumaCast chuyển slide PowerPoint.
+- [ ] Thử trên Windows với file có video, bút trình chiếu thật, màn LED (T-PPT, T-PPT-KEY, T-PPT-FULL).
+- Cố ý để sau, chờ nhu cầu thật: cửa sổ xem slide kế tiếp/ghi chú; đưa tiếng của PowerPoint qua mixer; màn hình ảo (độ phân giải tuỳ ý, Presenter View).
+
 ### M7 — macOS · Kích cỡ: L
 - [ ] Lớp RHI (ưu tiên QRhi/Metal) thay phần GPU hiện tại; kiểm chứng nhiều Output trên máy Mac thật.
 - **Điều kiện bắt đầu:** bạn xác nhận cần macOS (hiện: cần nhưng chưa gấp).

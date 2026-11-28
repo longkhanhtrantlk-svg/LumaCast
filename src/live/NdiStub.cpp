@@ -1,5 +1,6 @@
 // Ban dich KHONG co NDI (LUMACAST_ENABLE_NDI=OFF): khong co ma nao nap/khai bao API cua NDI. Moi truy van NDI bao "khong co trong ban nay".
 #include "live/Ndi.h"
+#include "core/I18n.h"
 
 namespace lc {
 
@@ -20,7 +21,7 @@ std::shared_ptr<NdiBackend> createUnavailableNdiBackend(const QString& reason) {
 }
 
 std::shared_ptr<NdiBackend> createRealNdiBackend(QString* why) {
-    if (why) *why = "NDI không có trong bản LumaCast này";
+    if (why) *why = LC_TR("NDI không có trong bản LumaCast này");
     return nullptr;
 }
 

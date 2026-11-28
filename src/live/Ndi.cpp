@@ -1,4 +1,5 @@
 #include "live/Ndi.h"
+#include "core/I18n.h"
 #include "live/LiveSource.h"
 #include "live/NdiFake.h"
 #include <QMutex>
@@ -14,15 +15,15 @@ auto& g_override = *new std::shared_ptr<NdiBackend>;
 
 std::shared_ptr<NdiBackend> makeDefault() {
     if (qEnvironmentVariableIntValue("LUMACAST_NDI_DISABLE") == 1)
-        return createUnavailableNdiBackend("NDI đã bị tắt (LUMACAST_NDI_DISABLE=1)");
+        return createUnavailableNdiBackend(LC_TR("NDI đã bị tắt (LUMACAST_NDI_DISABLE=1)"));
     if (qgetenv("LUMACAST_NDI_BACKEND") == "fake") {
         auto f = std::make_shared<FakeNdiBackend>();
-        f->addSource("LUMACAST-DEMO (Mẫu thử)", {});
+        f->addSource(LC_TR("LUMACAST-DEMO (Mẫu thử)"), {});
         return f;
     }
     QString why;
     if (auto b = createRealNdiBackend(&why)) return b;
-    return createUnavailableNdiBackend(why.isEmpty() ? "Chưa cài NDI Runtime" : why);
+    return createUnavailableNdiBackend(why.isEmpty() ? LC_TR("Chưa cài NDI Runtime") : why);
 }
 } // namespace
 

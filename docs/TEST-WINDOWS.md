@@ -52,6 +52,13 @@ Build khong can NDI SDK (runtime duoc nap dong luc chay). Camera dung Media Foun
 4. Neu NDI crash/khong hien nguon: ABI trong `src/live/NdiRuntime.cpp` chua doi chieu voi header NDI cua ban - gui log `%AppData%\LumaCast\logs\lumacast.log` (dong "NDI Runtime nap tu ...").
 5. Khong co phan cung: `set LUMACAST_NDI_BACKEND=fake` va `set LUMACAST_CAMERA_BACKEND=fake` cho nguon gia de xem giao dien.
 
+## 5c2. Test slideshow PowerPoint (SRC-09, CTL-02)
+1. PowerPoint: *Slide Show > Set Up Slide Show > Browsed by an individual (window)*.
+2. LumaCast: *File > Them slideshow PowerPoint / cua so...* -> muc dau tien -> Them. Quay lai PowerPoint, bam F5, phong to cua so.
+3. Chon LumaCast, nhap dup Scene -> TAKE; bam PageDown/PageUp (hoac but trinh chieu). Cua so slideshow de phia sau, dung thu nho (T-PPT, T-PPT-KEY).
+4. Khong co PowerPoint: `set LUMACAST_WINDOW_BACKEND=fake` de xem giao dien voi cua so gia.
+5. PowerPoint dang bat hop thoai (vd. kich hoat ban quyen) thi khong nhan lenh chuyen slide: dong hop thoai.
+
 ## 5d. Hieu nang va phat hanh (M6)
 **Giai ma phan cung / shader YUV / HAP (T-HWDEC, T-HAP):** log o `%AppData%\LumaCast\logs\lumacast.log` co dong `Video '<ten>': giai ma D3D11VA (phan cung) -> nv12 -> shader` (hoac `phan mem -> yuv420p -> shader`, `HAP (DXT1) -> GPU truc tiep`). So CPU (Task Manager) giua `lumacast.exe -m clip4k.mp4` (mac dinh), `--hwdec off`, `--no-gpu-yuv`. Khong co D3D11VA -> dong `Giai ma phan cung khong dung duoc ... -> phan mem` va van phat.
 **Benchmark (T-PERF):** `build\lumacast.exe --benchmark "outputs=4,size=3840x2160,source=file:C:\clip4k.mp4,hwdec=1,seconds=60" --bench-json b4.json`; so sanh `hwdec=0`, `gpucolor=0`, va `set LUMACAST_NO_PBO=1`. Ghi GPU/driver/Windows. Xem `docs/TEST-PLAN.md` muc 4.

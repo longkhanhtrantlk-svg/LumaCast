@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGL Network)
+find_package(Qt6 REQUIRED COMPONENTS LinguistTools)   # lrelease: bien dich translations/*.ts
 find_package(Qt6 QUIET COMPONENTS Test)      # chi cho test Multiview (go phim that qua he phim tat cua Qt)
 # FFmpeg: Linux/macOS dung pkg-config; Windows dung vcpkg (`vcpkg install ffmpeg:x64-windows`, ban LGPL, lien ket dong).
 find_package(PkgConfig QUIET)
@@ -57,6 +58,8 @@ else()
 endif()
 
 add_library(lumacast_core STATIC
+  src/core/I18n.h src/core/I18n.cpp
+  src/core/Update.h src/core/Update.cpp src/core/UpdateVelopack.cpp
   src/core/Channel.cpp
   src/core/Overlay.h src/core/Overlay.cpp
   src/core/CountdownAlarm.h src/core/CountdownAlarm.cpp
@@ -102,6 +105,10 @@ add_library(lumacast_core STATIC
   src/live/Camera.h src/live/Camera.cpp
   src/live/CameraFake.h src/live/CameraFake.cpp
   src/live/CameraMF.cpp
+  src/live/WindowCapture.h src/live/WindowCapture.cpp
+  src/live/WindowCaptureFake.h src/live/WindowCaptureFake.cpp
+  src/live/WindowCaptureWgc.cpp
+  src/live/SlideRemote.h src/live/SlideRemote.cpp src/live/SlideRemotePpt.cpp
   src/audio/AudioDrift.h
   src/render/NdiOutput.h src/render/NdiOutput.cpp
   src/control/HttpServer.h src/control/HttpServer.cpp
@@ -113,13 +120,37 @@ add_library(lumacast_core STATIC
   src/control/Midi.h src/control/Midi.cpp src/control/MidiWinmm.cpp
 )
 target_include_directories(lumacast_core PUBLIC src)
+# Ngon ngu giao dien: chu goc tieng Viet; ban tieng Anh bien dich vao file thuc thi (resource :/i18n/lumacast_en.qm)
+set(LC_QM ${CMAKE_CURRENT_BINARY_DIR}/lumacast_en.qm)
+add_custom_command(OUTPUT ${LC_QM}
+  COMMAND Qt6::lrelease -silent ${CMAKE_CURRENT_SOURCE_DIR}/translations/lumacast_en.ts -qm ${LC_QM}
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/translations/lumacast_en.ts VERBATIM)
+set_source_files_properties(${LC_QM} PROPERTIES QT_RESOURCE_ALIAS lumacast_en.qm)
+qt_add_resources(lumacast_core lumacast_i18n PREFIX /i18n FILES ${LC_QM})
 if(NOT LUMACAST_ENABLE_NDI)
   target_compile_definitions(lumacast_core PUBLIC LUMACAST_NO_NDI=1)
+endif()
+# Tu cap nhat (Velopack): can thu vien velopack_libc (giai nen vao mot thu muc co include/ va lib/). Khong co thi ban dich van chay,
+# chi khong tu cap nhat. LUMACAST_UPDATE_URL: noi lay ban moi mac dinh (kho GitHub, URL web hoac thu muc).
+set(LUMACAST_VELOPACK_DIR "C:/velopack/1.2.161" CACHE PATH "Thu muc velopack_libc (include/Velopack.h, lib/*.dll.lib)")
+set(LUMACAST_UPDATE_URL "https://github.com/longkhanhtrantlk-svg/LumaCast" CACHE STRING "Noi lay ban cap nhat mac dinh")
+set_source_files_properties(src/core/Update.cpp PROPERTIES COMPILE_DEFINITIONS "LUMACAST_UPDATE_URL=\"${LUMACAST_UPDATE_URL}\"")
+if(WIN32 AND EXISTS "${LUMACAST_VELOPACK_DIR}/include/Velopack.h" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+  set(LC_VELOPACK_DLL "${LUMACAST_VELOPACK_DIR}/lib/velopack_libc_win_x64_msvc.dll")
+  target_include_directories(lumacast_core PRIVATE "${LUMACAST_VELOPACK_DIR}/include")
+  target_link_libraries(lumacast_core PUBLIC "${LC_VELOPACK_DLL}.lib")
+  target_compile_definitions(lumacast_core PRIVATE LUMACAST_HAS_VELOPACK=1)
+  # thu vien nhap tro toi "velopack_libc.dll" (khac ten file trong goi tai ve) -> doi ten khi chep / cai
+  file(COPY_FILE "${LC_VELOPACK_DLL}" "${CMAKE_BINARY_DIR}/velopack_libc.dll" ONLY_IF_DIFFERENT)     # canh exe + file test
+  message(STATUS "Tu cap nhat: Velopack tai ${LUMACAST_VELOPACK_DIR}")
+else()
+  message(STATUS "Tu cap nhat: KHONG dich kem (khong thay ${LUMACAST_VELOPACK_DIR}/include/Velopack.h)")
 endif()
 target_link_libraries(lumacast_core PUBLIC Qt6::Core Qt6::Gui Qt6::OpenGL Qt6::Network ${LC_FFMPEG})
 if(WIN32)
   target_link_libraries(lumacast_core PUBLIC winmm ole32 avrt)   # winmm: timeBeginPeriod(1); ole32 + avrt: WASAPI (COM, MMCSS)
   target_link_libraries(lumacast_core PUBLIC mfplat mf mfreadwrite mfuuid)   # camera: Media Foundation (M5b); khong can Qt Multimedia
+  target_link_libraries(lumacast_core PUBLIC windowsapp d3d11 dxgi dwmapi oleaut32 user32)   # bat cua so (SRC-09) + PowerPoint qua COM (CTL-02)
 endif()
 
 add_library(lumacast_ui STATIC
@@ -149,14 +180,23 @@ add_library(lumacast_ui STATIC
   src/app/ScreenDialog.h src/app/ScreenDialog.cpp
   src/app/MainWindow.h src/app/MainWindow.cpp
   src/app/MainWindowInput.cpp
+  src/app/MainWindowUpdate.cpp
+  src/app/UpdateDialog.h src/app/UpdateDialog.cpp
   src/app/Shortcuts.h src/app/Shortcuts.cpp
   src/app/InputDialog.h src/app/InputDialog.cpp
 )
 target_include_directories(lumacast_ui PUBLIC src src/app)
 target_link_libraries(lumacast_ui PUBLIC lumacast_core Qt6::Widgets)
+# Icon (nguon: resources/icon/lumacast.svg; doi icon thi chay resources/icon/make_icon.py)
+qt_add_resources(lumacast_ui lumacast_icon PREFIX /icon BASE resources/icon FILES resources/icon/lumacast.ico)
 
 add_executable(lumacast src/app/main.cpp)
+if(WIN32)
+  target_sources(lumacast PRIVATE resources/icon/lumacast.rc)
+  set_source_files_properties(resources/icon/lumacast.rc PROPERTIES OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/resources/icon/lumacast.ico)
+endif()
 target_link_libraries(lumacast PRIVATE lumacast_ui)
+target_compile_definitions(lumacast PRIVATE LUMACAST_VERSION="${PROJECT_VERSION}")
 # plug-in mau (xem docs/PLUGIN-SDK.md) di kem file thuc thi: <exe>/plugins/
 add_custom_command(TARGET lumacast POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/plugins $<TARGET_FILE_DIR:lumacast>/plugins)
@@ -218,6 +258,11 @@ find_package(Qt6 REQUIRED COMPONENTS Test)                  # QTest::keyClick: b
 add_executable(lumacast_input_tests tests/test_input.cpp)
 target_link_libraries(lumacast_input_tests PRIVATE lumacast_ui Qt6::Test)
 add_test(NAME input COMMAND lumacast_input_tests)
+
+# Bat cua so slideshow (SRC-09) va chuyen slide PowerPoint (CTL-02)
+add_executable(lumacast_window_tests tests/test_window.cpp)
+target_link_libraries(lumacast_window_tests PRIVATE lumacast_ui Qt6::Test)
+add_test(NAME window COMMAND lumacast_window_tests)
 
 add_executable(lumacast_m5c_tests tests/test_m5c.cpp)
 target_link_libraries(lumacast_m5c_tests PRIVATE lumacast_ui)
@@ -289,7 +334,7 @@ add_test(NAME release COMMAND lumacast_release_tests)
 
 # ======================= M6: dong goi / cai dat / CPack =======================
 # Cai dat: lumacast + plug-in mau + tai lieu + giay phep. Windows: cai thang vao thu muc goc (exe + DLL canh nhau); he khac: bin/ + share/doc/lumacast.
-# Dong goi Windows:  cmake --build build --config Release && cpack --config build/CPackConfig.cmake -G NSIS   (hoac -G ZIP = ban mang theo)
+# Bo cai Windows (tu cap nhat): package_lumacast.bat -> cmake/Package.cmake (vpk + packaging/installer.nsi). CPack: ban ZIP mang theo.
 # KHONG BAO GIO kem runtime NDI (SPEC 5.1): buoc cuoi cua cai dat chay cmake/CheckNoNdi.cmake va dung neu thay.
 if(WIN32)
   set(LC_INSTALL_BIN ".")
@@ -299,8 +344,11 @@ else()
   set(LC_INSTALL_DOC "share/doc/lumacast")
 endif()
 install(TARGETS lumacast RUNTIME DESTINATION ${LC_INSTALL_BIN})
+if(LC_VELOPACK_DLL)
+  install(FILES "${LC_VELOPACK_DLL}" DESTINATION ${LC_INSTALL_BIN} RENAME velopack_libc.dll)
+endif()
 install(DIRECTORY plugins/ DESTINATION ${LC_INSTALL_BIN}/plugins PATTERN "*.md" EXCLUDE)       # plug-in mau canh file thuc thi: <exe>/plugins/
-install(FILES THIRD-PARTY-NOTICES.txt README.md license.example.json DESTINATION ${LC_INSTALL_DOC})
+install(FILES THIRD-PARTY-NOTICES.txt THIRD-PARTY-NOTICES.en.txt README.md license.example.json DESTINATION ${LC_INSTALL_DOC})
 install(DIRECTORY docs/ DESTINATION ${LC_INSTALL_DOC}/docs)
 install(DIRECTORY licenses/ DESTINATION ${LC_INSTALL_DOC}/licenses)
 
@@ -314,6 +362,7 @@ if(WIN32)
       install(CODE "
         execute_process(COMMAND [[$<TARGET_FILE:Qt6::windeployqt>]] [[$<TARGET_FILE:lumacast>]]
                         --dir \"\${CMAKE_INSTALL_PREFIX}\" --plugindir \"\${CMAKE_INSTALL_PREFIX}/plugins\" --no-translations --no-opengl-sw
+                        --no-compiler-runtime
                         RESULT_VARIABLE _lc_wdq_rc OUTPUT_VARIABLE _lc_wdq_out ERROR_VARIABLE _lc_wdq_err)
         message(STATUS \"windeployqt: \${_lc_wdq_out}\")
         if(_lc_wdq_rc)
@@ -323,6 +372,15 @@ if(WIN32)
     else()
       message(WARNING "Khong co target Qt6::windeployqt - chay windeployqt tay truoc khi dong goi")
     endif()
+  endif()
+  # --- Visual C++ runtime: chep DLL CANH exe (app-local) de may sach khong co mang van cai va chay duoc ---
+  if(MSVC)
+    set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP TRUE)
+    include(InstallRequiredSystemLibraries)
+    if(NOT CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS)
+      message(FATAL_ERROR "Khong tim thay DLL Visual C++ runtime de dong goi (can thanh phan Redist cua Visual Studio)")
+    endif()
+    install(FILES ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS} DESTINATION ${LC_INSTALL_BIN})
   endif()
   # --- FFmpeg: DLL + cac DLL phu thuoc (zlib...) canh exe; tim trong thu muc bin cua vcpkg/FFmpeg ---
   set(LUMACAST_FFMPEG_BIN_DIR "" CACHE PATH "Thu muc chua avcodec-*.dll, avformat-*.dll... (mac dinh: ../bin cua FFMPEG_LIBRARY_DIRS / vcpkg)")
@@ -380,27 +438,9 @@ set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "LumaCast - LED Display Controller")
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "LumaCast")
 set(CPACK_PACKAGE_EXECUTABLES "lumacast" "LumaCast")
-set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/THIRD-PARTY-NOTICES.txt")      # trang dau cua trinh cai: thong bao ben thu ba (chua co EULA rieng)
 set(CPACK_PACKAGE_FILE_NAME "LumaCast-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}")
-set(LUMACAST_INSTALLER "NSIS" CACHE STRING "Trinh cai dat Windows: NSIS (mac dinh) | WIX | ZIP (ban mang theo)")
-set_property(CACHE LUMACAST_INSTALLER PROPERTY STRINGS NSIS WIX ZIP)
 if(WIN32)
-  if(LUMACAST_INSTALLER STREQUAL "ZIP")
-    set(CPACK_GENERATOR "ZIP")
-  else()
-    set(CPACK_GENERATOR "${LUMACAST_INSTALLER};ZIP")
-  endif()
-  set(CPACK_NSIS_DISPLAY_NAME "LumaCast")
-  set(CPACK_NSIS_PACKAGE_NAME "LumaCast")
-  set(CPACK_NSIS_INSTALLED_ICON_NAME "lumacast.exe")
-  set(CPACK_NSIS_EXECUTABLES_DIRECTORY ".")                   # exe nam o goc thu muc cai dat (mac dinh CPack tim trong bin/)
-  set(CPACK_NSIS_MODIFY_PATH OFF)
-  set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
-  set(CPACK_NSIS_MUI_FINISHPAGE_RUN "lumacast.exe")
-  set(CPACK_NSIS_CREATE_ICONS_EXTRA "CreateShortCut '$DESKTOP\\\\LumaCast.lnk' '$INSTDIR\\\\lumacast.exe'")
-  set(CPACK_NSIS_DELETE_ICONS_EXTRA "Delete '$DESKTOP\\\\LumaCast.lnk'")
-  set(CPACK_WIX_UPGRADE_GUID "0F3A7C1E-5B7D-4C55-9B6B-6A3C2B2C8D11")                 # GUID co dinh cho WiX (doi neu fork)
-  set(CPACK_WIX_PROGRAM_MENU_FOLDER "LumaCast")
+  set(CPACK_GENERATOR "ZIP")
 else()
   set(CPACK_GENERATOR "TGZ")
 endif()
@@ -408,11 +448,37 @@ include(CPack)
 
 enable_testing()
 add_test(NAME package COMMAND ${CMAKE_COMMAND} -DBUILD_DIR=${CMAKE_BINARY_DIR} -DSOURCE_DIR=${CMAKE_SOURCE_DIR} -P ${CMAKE_SOURCE_DIR}/cmake/TestInstall.cmake)
+add_test(NAME installer COMMAND ${CMAKE_COMMAND} -DBUILD_DIR=${CMAKE_BINARY_DIR} -DSOURCE_DIR=${CMAKE_SOURCE_DIR} -P ${CMAKE_SOURCE_DIR}/cmake/TestInstaller.cmake)
 
 add_executable(lumacast_license_tests tests/test_license.cpp)
 target_link_libraries(lumacast_license_tests PRIVATE lumacast_ui)
 target_compile_definitions(lumacast_license_tests PRIVATE LUMACAST_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 add_test(NAME license COMMAND lumacast_license_tests)
+
+# Dot 6: ngon ngu giao dien (bang dich day du, khong sot chu, giao dien tieng Anh)
+add_executable(lumacast_i18n_tests tests/test_i18n.cpp)
+target_link_libraries(lumacast_i18n_tests PRIVATE lumacast_ui)
+target_compile_definitions(lumacast_i18n_tests PRIVATE LUMACAST_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+add_test(NAME i18n COMMAND lumacast_i18n_tests)
+# nhan tieng Anh dai hon khong duoc lam vo bo cuc
+add_test(NAME layout_en COMMAND lumacast_layout_tests en)
+
+# Tu cap nhat (backend gia, khong dung mang)
+add_executable(lumacast_update_tests tests/test_update.cpp)
+target_link_libraries(lumacast_update_tests PRIVATE lumacast_ui Qt6::Test)
+target_compile_definitions(lumacast_update_tests PRIVATE LUMACAST_EXE="$<TARGET_FILE:lumacast>")
+add_dependencies(lumacast_update_tests lumacast)
+add_test(NAME update COMMAND lumacast_update_tests)
+# thu tay T-UPD: goi backend that trong mot ban da cai (khong cai kem, khong phai ctest)
+add_executable(lumacast_update_probe tests/update_probe.cpp)
+target_link_libraries(lumacast_update_probe PRIVATE lumacast_core)
+
+# Icon ung dung: du cac co, dung hinh, nam trong lumacast.exe (khong mo cua so)
+add_executable(lumacast_icon_tests tests/test_icon.cpp)
+target_link_libraries(lumacast_icon_tests PRIVATE lumacast_ui)
+target_compile_definitions(lumacast_icon_tests PRIVATE LUMACAST_EXE="$<TARGET_FILE:lumacast>")
+add_dependencies(lumacast_icon_tests lumacast)
+add_test(NAME icon COMMAND lumacast_icon_tests)
 
 # Dot 4 + 5: tieng nhac dem nguoc, keo tha, dai "Dang hien", keo overlay / hinh, tooltip
 add_executable(lumacast_ux_tests tests/test_ux.cpp)

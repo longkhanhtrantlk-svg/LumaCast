@@ -3,7 +3,14 @@
 #include <QPainterPath>
 #include <QPixmap>
 
+static void initIconResource() { Q_INIT_RESOURCE(lumacast_icon); }     // thu vien tinh: phai goi, va goi ngoai namespace
+
 namespace lc {
+
+QIcon appIcon() {
+    initIconResource();
+    return QIcon(QStringLiteral(":/icon/lumacast.ico"));
+}
 
 namespace {
 // Ve tren luoi 16x16.
@@ -27,6 +34,11 @@ void draw(QPainter& p, Glyph g, const QColor& c) {
     case Glyph::Camera:
         p.drawRoundedRect(QRectF(1.5, 4.5, 9.5, 8), 1.5, 1.5);
         fill({{11, 8.5}, {15, 5.5}, {15, 11.5}});
+        break;
+    case Glyph::Window:                                   // cua so co thanh tieu de + tam giac chieu
+        p.drawRoundedRect(QRectF(1.5, 2.5, 13, 11), 1.5, 1.5);
+        p.drawLine(QPointF(1.5, 5.8), QPointF(14.5, 5.8));
+        fill({{6.2, 7.6}, {11, 9.8}, {6.2, 12}});
         break;
     case Glyph::Ndi:                                      // nguon tu mang: cham + hai vong song
         p.setBrush(c);

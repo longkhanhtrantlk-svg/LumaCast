@@ -1,5 +1,6 @@
 #pragma once
 #include "control/ControlApi.h"
+#include "core/I18n.h"
 #include "control/LiveActions.h"
 #include "core/Transition.h"
 #include <QMap>
@@ -112,7 +113,7 @@ private:
     MidiDecoder decoder_;
     std::function<Target()> target_;
     QTimer pollTimer_;
-    QString status_ = "MIDI đang tắt";
+    QString status_ = LC_TR("MIDI đang tắt");
     quint64 generation_ = 0;            // bo thong diep con xep hang tu cong da dong
     bool open_ = false;
     bool suspended_ = false;

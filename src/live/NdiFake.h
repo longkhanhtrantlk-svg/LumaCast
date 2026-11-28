@@ -1,5 +1,6 @@
 #pragma once
 #include "live/Ndi.h"
+#include "core/I18n.h"
 #include <atomic>
 #include <map>
 #include <mutex>
@@ -31,7 +32,7 @@ public:
     ~FakeNdiBackend() override;
     QString id() const override { return "fake"; }
     bool available() const override { return !unavailable_; }
-    QString unavailableReason() const override { return unavailable_ ? "Backend NDI giả: đang giả lập chưa cài NDI Runtime" : QString(); }
+    QString unavailableReason() const override { return unavailable_ ? LC_TR("Backend NDI giả: đang giả lập chưa cài NDI Runtime") : QString(); }
     std::vector<NdiSourceInfo> listSources(int waitMs) override;
     LiveOpenResult openReceiver(const QString& name, const QString& url) override;
     std::unique_ptr<NdiSender> createSender(const QString& name, QString* err) override;

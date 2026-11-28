@@ -1,4 +1,5 @@
 #include "Engine.h"
+#include "core/I18n.h"
 #include "audio/AudioPlan.h"
 #include "core/Features.h"
 #include "render/FrameStats.h"
@@ -360,12 +361,12 @@ void RenderEngine::run() {
     QOpenGLContext ctx;
     ctx.setFormat(QSurfaceFormat::defaultFormat());
     if (!ctx.create() || !ctx.makeCurrent(surface_.get())) {
-        error_ = "Khong tao duoc context OpenGL 3.3 core";
+        error_ = LC_TR("Khong tao duoc context OpenGL 3.3 core");
         return;
     }
     Compositor comp;
     if (!comp.init()) {
-        error_ = "Khong khoi tao duoc shader";
+        error_ = LC_TR("Khong khoi tao duoc shader");
         return;
     }
     TargetPool pool(comp.gl());

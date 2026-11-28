@@ -1,5 +1,6 @@
 #pragma once
 #include <QString>
+#include "core/I18n.h"
 #include <functional>
 #include <memory>
 #include <vector>
@@ -39,7 +40,7 @@ public:
     ~NullAudioDevice() override;
     bool start(RenderFn fn, QString* err = nullptr) override;
     void stop() override;
-    QString name() const override { return "Null (không phát ra loa)"; }
+    QString name() const override { return LC_TR("Null (không phát ra loa)"); }
     double latencySeconds() const override { return 0.02; }
     uint64_t consumedFrames() const;
 private:

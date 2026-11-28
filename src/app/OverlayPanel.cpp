@@ -1,4 +1,5 @@
 #include "OverlayPanel.h"
+#include "core/I18n.h"
 #include "DragList.h"
 #include "Text.h"
 #include "Theme.h"
@@ -64,11 +65,11 @@ enum Field { FName, FText, FSize, FOutlineWidth, FX, FY, FW, FH, FOpacity, FFade
 constexpr int kDragMergeBase = 600000000;        // + so lan keo: moi lan keo mot buoc Hoan tac
 constexpr int kTestToneId = -1000;               // tieng "Nghe thu": khong bi dong ho tu dong tat
 
-const char* typeLabel(OverlayType t) {
+QString typeLabel(OverlayType t) {
     switch (t) {
-    case OverlayType::Title: return "Tiêu đề";
-    case OverlayType::Ticker: return "Chữ chạy";
-    case OverlayType::Countdown: return "Đếm ngược";
+    case OverlayType::Title: return LC_TR("Tiêu đề");
+    case OverlayType::Ticker: return LC_TR("Chữ chạy");
+    case OverlayType::Countdown: return LC_TR("Đếm ngược");
     case OverlayType::Logo: return "Logo";
     }
     return "";
@@ -88,7 +89,7 @@ void setSwatch(QPushButton* b, const QColor& c) {
     p.fillRect(pm.rect(), c);
     p.end();
     b->setIcon(QIcon(pm));
-    b->setToolTip(QString("%1, đậm đặc %2%").arg(c.name()).arg(int(std::lround(c.alphaF() * 100))));
+    b->setToolTip(QString(LC_TR("%1, đậm đặc %2%")).arg(c.name()).arg(int(std::lround(c.alphaF() * 100))));
 }
 
 // Chu ten: tu cat bot bang dau ... theo be rong.
@@ -407,7 +408,7 @@ OverlayPanel::OverlayPanel(Project& project, RenderEngine& engine, QUndoStack* u
         add->addWidget(addBtn_[i]);
         connect(addBtn_[i], &QPushButton::clicked, this, [this, t] {
             if (t != OverlayType::Logo) { addOverlay(t); return; }
-            const QString f = QFileDialog::getOpenFileName(this, "Chọn logo", QString(), "Ảnh (*.png *.webp *.gif *.jpg *.jpeg *.bmp)");
+            const QString f = QFileDialog::getOpenFileName(this, LC_TR("Chọn logo"), QString(), LC_TR("Ảnh (*.png *.webp *.gif *.jpg *.jpeg *.bmp)"));
             if (!f.isEmpty()) addLogo(f);
         });
     }
@@ -522,20 +523,20 @@ QWidget* OverlayPanel::buildProps() {
     name_ = new QLineEdit;
     name_->setObjectName("ovName");
     name_->setMaxLength(120);
-    form_->addRow("Tên", name_);
+    form_->addRow(LC_TR("Tên"), name_);
     text_ = new QPlainTextEdit;
     text_->setObjectName("ovText");
     text_->setMaximumHeight(70);
     text_->setTabChangesFocus(true);
-    form_->addRow("Nội dung", text_);
+    form_->addRow(LC_TR("Nội dung"), text_);
 
     image_ = new QLineEdit;
     image_->setObjectName("ovImage");
     image_->setReadOnly(true);
-    auto* pick = ui::iconButton(Glyph::Folder, "ovImageBtn", "Chọn ảnh logo…");
+    auto* pick = ui::iconButton(Glyph::Folder, "ovImageBtn", LC_TR("Chọn ảnh logo…"));
     imageRow_ = row({image_});
     imageRow_->layout()->addWidget(pick);
-    form_->addRow("Ảnh", imageRow_);
+    form_->addRow(LC_TR("Ảnh"), imageRow_);
 
     font_ = new QFontComboBox;
     font_->setObjectName("ovFont");
@@ -543,57 +544,57 @@ QWidget* OverlayPanel::buildProps() {
     font_->setMinimumContentsLength(6);
     form_->addRow("Font", font_);
     fontSize_ = ispin("ovFontSize", 4, 2000, " px");
-    bold_ = new QCheckBox("Đậm");
+    bold_ = new QCheckBox(LC_TR("Đậm"));
     bold_->setObjectName("ovBold");
-    italic_ = new QCheckBox("Nghiêng");
+    italic_ = new QCheckBox(LC_TR("Nghiêng"));
     italic_->setObjectName("ovItalic");
-    form_->addRow("Cỡ", fontSize_);
+    form_->addRow(LC_TR("Cỡ"), fontSize_);
     styleRow_ = row({bold_, italic_});
     form_->addRow(QString(), styleRow_);
 
-    color_ = new QPushButton("Chữ");
+    color_ = new QPushButton(LC_TR("Chữ"));
     color_->setObjectName("ovColor");
-    outlineColor_ = new QPushButton("Viền");
+    outlineColor_ = new QPushButton(LC_TR("Viền"));
     outlineColor_->setObjectName("ovOutlineColor");
-    bgColor_ = new QPushButton("Nền");
+    bgColor_ = new QPushButton(LC_TR("Nền"));
     bgColor_->setObjectName("ovBgColor");
     for (QPushButton* b : {color_, outlineColor_, bgColor_}) {
         b->setProperty("swatch", true);
         b->setMinimumWidth(48);
     }
-    form_->addRow("Màu", row({color_, outlineColor_, bgColor_}));
+    form_->addRow(LC_TR("Màu"), row({color_, outlineColor_, bgColor_}));
     outlineWidth_ = dspin("ovOutlineWidth", 0, 50, 1, 1);
     outlineWidth_->setSuffix(" px");
-    outlineWidth_->setSpecialValueText("không viền");
-    form_->addRow("Viền", outlineWidth_);
+    outlineWidth_->setSpecialValueText(LC_TR("không viền"));
+    form_->addRow(LC_TR("Viền"), outlineWidth_);
     align_ = new QComboBox;
     align_->setObjectName("ovAlign");
-    align_->addItems({"Trái", "Giữa", "Phải"});
-    form_->addRow("Căn", align_);
+    align_->addItems({LC_TR("Trái"), LC_TR("Giữa"), LC_TR("Phải")});
+    form_->addRow(LC_TR("Căn"), align_);
 
     const char* rectName[4] = {"ovX", "ovY", "ovW", "ovH"};
-    const char* prefix[4] = {"x ", "y ", "rộng ", "cao "};
+    const QString prefix[4] = {"x ", "y ", LC_TR("rộng "), LC_TR("cao ")};
     for (int i = 0; i < 4; ++i) {
         rect_[i] = dspin(rectName[i], i < 2 ? -4 : 0.005, 8, 0.01, 3);
         rect_[i]->setPrefix(prefix[i]);
     }
     posRow_ = row({rect_[0], rect_[1]});
     sizeRow_ = row({rect_[2], rect_[3]});
-    form_->addRow("Vị trí", posRow_);
-    form_->addRow("Kích thước", sizeRow_);
+    form_->addRow(LC_TR("Vị trí"), posRow_);
+    form_->addRow(LC_TR("Kích thước"), sizeRow_);
     opacity_ = dspin("ovOpacity", 0, 1, 0.05, 2);
-    form_->addRow("Độ đậm", opacity_);
+    form_->addRow(LC_TR("Độ đậm"), opacity_);
     fade_ = dspin("ovFade", 0, 10, 0.1, 1);
     fade_->setSuffix(" s");
-    fade_->setSpecialValueText("cắt ngay");
-    form_->addRow("Mờ dần", fade_);
+    fade_->setSpecialValueText(LC_TR("cắt ngay"));
+    form_->addRow(LC_TR("Mờ dần"), fade_);
     speed_ = dspin("ovSpeed", 1, 5000, 10, 0);
     speed_->setSuffix(" px/s");
-    form_->addRow("Tốc độ", speed_);
-    minutes_ = ispin("ovMinutes", 0, kMaxCountdownSeconds / 60, " phút");
-    seconds_ = ispin("ovSeconds", 0, 59, " giây");
+    form_->addRow(LC_TR("Tốc độ"), speed_);
+    minutes_ = ispin("ovMinutes", 0, kMaxCountdownSeconds / 60, LC_TR(" phút"));
+    seconds_ = ispin("ovSeconds", 0, 59, LC_TR(" giây"));
     durationRow_ = row({minutes_, seconds_});
-    form_->addRow("Thời lượng", durationRow_);
+    form_->addRow(LC_TR("Thời lượng"), durationRow_);
 
     // ---- tieng nhac cua dem nguoc ----
     alert_ = new QCheckBox(text::ovAlertOn());
@@ -620,50 +621,50 @@ QWidget* OverlayPanel::buildProps() {
 
     // ---- noi tin hieu ----
     connect(name_, &QLineEdit::textEdited, this, [this](const QString& s) {
-        editCurrent([s](OverlayDef& d) { d.name = s; }, "Đổi tên lớp phủ", FName);
+        editCurrent([s](OverlayDef& d) { d.name = s; }, LC_TR("Đổi tên lớp phủ"), FName);
     });
     connect(text_, &QPlainTextEdit::textChanged, this, [this] {
         const QString s = text_->toPlainText().left(kMaxOverlayText);
-        editCurrent([s](OverlayDef& d) { d.text = s; }, "Sửa chữ lớp phủ", FText);
+        editCurrent([s](OverlayDef& d) { d.text = s; }, LC_TR("Sửa chữ lớp phủ"), FText);
     });
     connect(pick, &QPushButton::clicked, this, [this] { chooseImage(); });
     connect(font_, &QComboBox::textActivated, this, [this] {      // chi khi NGUOI DUNG chon (khong phai khi hop tu nap font)
         const QString fam = font_->currentFont().family();
-        editCurrent([fam](OverlayDef& d) { d.font = fam; }, "Đổi font lớp phủ");
+        editCurrent([fam](OverlayDef& d) { d.font = fam; }, LC_TR("Đổi font lớp phủ"));
     });
     connect(fontSize_, &QSpinBox::valueChanged, this, [this](int n) {
-        editCurrent([n](OverlayDef& d) { d.fontSize = n; }, "Đổi cỡ chữ", FSize);
+        editCurrent([n](OverlayDef& d) { d.fontSize = n; }, LC_TR("Đổi cỡ chữ"), FSize);
     });
-    connect(bold_, &QCheckBox::toggled, this, [this](bool on) { editCurrent([on](OverlayDef& d) { d.bold = on; }, "Đổi chữ đậm"); });
-    connect(italic_, &QCheckBox::toggled, this, [this](bool on) { editCurrent([on](OverlayDef& d) { d.italic = on; }, "Đổi chữ nghiêng"); });
-    connect(color_, &QPushButton::clicked, this, [this] { pickColor(&OverlayDef::color, "Màu chữ"); });
-    connect(outlineColor_, &QPushButton::clicked, this, [this] { pickColor(&OverlayDef::outlineColor, "Màu viền"); });
-    connect(bgColor_, &QPushButton::clicked, this, [this] { pickColor(&OverlayDef::background, "Màu nền (alpha 0 = không nền)"); });
+    connect(bold_, &QCheckBox::toggled, this, [this](bool on) { editCurrent([on](OverlayDef& d) { d.bold = on; }, LC_TR("Đổi chữ đậm")); });
+    connect(italic_, &QCheckBox::toggled, this, [this](bool on) { editCurrent([on](OverlayDef& d) { d.italic = on; }, LC_TR("Đổi chữ nghiêng")); });
+    connect(color_, &QPushButton::clicked, this, [this] { pickColor(&OverlayDef::color, LC_TR("Màu chữ")); });
+    connect(outlineColor_, &QPushButton::clicked, this, [this] { pickColor(&OverlayDef::outlineColor, LC_TR("Màu viền")); });
+    connect(bgColor_, &QPushButton::clicked, this, [this] { pickColor(&OverlayDef::background, LC_TR("Màu nền (alpha 0 = không nền)")); });
     connect(outlineWidth_, &QDoubleSpinBox::valueChanged, this, [this](double x) {
-        editCurrent([x](OverlayDef& d) { d.outlineWidth = float(x); }, "Đổi độ dày viền", FOutlineWidth);
+        editCurrent([x](OverlayDef& d) { d.outlineWidth = float(x); }, LC_TR("Đổi độ dày viền"), FOutlineWidth);
     });
     connect(align_, &QComboBox::currentIndexChanged, this, [this](int i) {
-        editCurrent([i](OverlayDef& d) { d.align = OverlayAlign(i); }, "Đổi căn lề");
+        editCurrent([i](OverlayDef& d) { d.align = OverlayAlign(i); }, LC_TR("Đổi căn lề"));
     });
     for (int i = 0; i < 4; ++i)
         connect(rect_[i], &QDoubleSpinBox::valueChanged, this, [this, i](double x) {
             editCurrent([i, x](OverlayDef& d) {
                 QRectF& r = d.rect;
                 if (i == 0) r.moveLeft(x); else if (i == 1) r.moveTop(x); else if (i == 2) r.setWidth(x); else r.setHeight(x);
-            }, "Đổi vị trí/kích thước lớp phủ", FX + i);
+            }, LC_TR("Đổi vị trí/kích thước lớp phủ"), FX + i);
         });
     connect(opacity_, &QDoubleSpinBox::valueChanged, this, [this](double x) {
-        editCurrent([x](OverlayDef& d) { d.opacity = float(x); }, "Đổi độ đậm lớp phủ", FOpacity);
+        editCurrent([x](OverlayDef& d) { d.opacity = float(x); }, LC_TR("Đổi độ đậm lớp phủ"), FOpacity);
     });
     connect(fade_, &QDoubleSpinBox::valueChanged, this, [this](double x) {
-        editCurrent([x](OverlayDef& d) { d.fade = float(x); }, "Đổi thời gian mờ dần", FFade);
+        editCurrent([x](OverlayDef& d) { d.fade = float(x); }, LC_TR("Đổi thời gian mờ dần"), FFade);
     });
     connect(speed_, &QDoubleSpinBox::valueChanged, this, [this](double x) {
-        editCurrent([x](OverlayDef& d) { d.speed = x; }, "Đổi tốc độ chữ chạy", FSpeed);
+        editCurrent([x](OverlayDef& d) { d.speed = x; }, LC_TR("Đổi tốc độ chữ chạy"), FSpeed);
     });
     auto duration = [this] {
         const int s = std::clamp(minutes_->value() * 60 + seconds_->value(), 1, kMaxCountdownSeconds);
-        editCurrent([s](OverlayDef& d) { d.seconds = s; }, "Đổi thời lượng đếm ngược", FDuration);
+        editCurrent([s](OverlayDef& d) { d.seconds = s; }, LC_TR("Đổi thời lượng đếm ngược"), FDuration);
     };
     connect(minutes_, &QSpinBox::valueChanged, this, duration);
     connect(seconds_, &QSpinBox::valueChanged, this, duration);
@@ -791,7 +792,7 @@ void OverlayPanel::syncProps() {
     form_->setRowVisible(durationRow_, countdown);
     form_->setRowVisible(align_, d->type != OverlayType::Ticker);
     if (auto* l = qobject_cast<QLabel*>(form_->labelForField(text_)))
-        l->setText(countdown ? "Chữ trước" : "Nội dung");
+        l->setText(countdown ? LC_TR("Chữ trước") : LC_TR("Nội dung"));
 
     if (name_->text() != d->name) name_->setText(d->name);
     if (text_->toPlainText() != d->text) {            // chi ghi khi khac: khong lam nhay con tro luc dang go
@@ -843,11 +844,11 @@ void OverlayPanel::refreshLive() {
 
     QString warning;
     if (has && cur->type == OverlayType::Logo && !QFileInfo::exists(cur->image))
-        warning = "⚠ Không tìm thấy file logo: " + cur->image;
+        warning = LC_TR("⚠ Không tìm thấy file logo: ") + cur->image;
     else if (has && cur->type != OverlayType::Logo && !cur->font.isEmpty() && !QFontDatabase::hasFamily(cur->font))
-        warning = QString("⚠ Máy này không có font “%1”, đang dùng font thay thế.").arg(cur->font);
+        warning = QString(LC_TR("⚠ Máy này không có font “%1”, đang dùng font thay thế.")).arg(cur->font);
     else if (has && preview_->clipped(*cur, curFrame.secondsLeft, project_.channels[size_t(ch_)]->size))
-        warning = "⚠ Chữ không vừa hộp nên bị cắt: tăng chiều rộng/cao hoặc giảm cỡ chữ.";
+        warning = LC_TR("⚠ Chữ không vừa hộp nên bị cắt: tăng chiều rộng/cao hoặc giảm cỡ chữ.");
     warn_->setText(warning);
     warn_->setVisible(!warning.isEmpty());
 
@@ -967,14 +968,14 @@ int OverlayPanel::add(OverlayDef d) {
     for (int n = 2; taken(d.name); ++n) d.name = QString("%1 %2").arg(base).arg(n);
     std::vector<OverlayDef> after = defs_;
     after.push_back(d);
-    editDefs(std::move(after), "Thêm " + QString(typeLabel(d.type)).toLower());
+    editDefs(std::move(after), LC_TR("Thêm ") + QString(typeLabel(d.type)).toLower());
     reload(d.id);
     return d.id;
 }
 
 void OverlayPanel::chooseImage() {
-    const QString f = QFileDialog::getOpenFileName(this, "Chọn logo", QString(), "Ảnh (*.png *.webp *.gif *.jpg *.jpeg *.bmp)");
-    if (!f.isEmpty()) editCurrent([f](OverlayDef& d) { d.image = QFileInfo(f).absoluteFilePath(); }, "Đổi ảnh logo");
+    const QString f = QFileDialog::getOpenFileName(this, LC_TR("Chọn logo"), QString(), LC_TR("Ảnh (*.png *.webp *.gif *.jpg *.jpeg *.bmp)"));
+    if (!f.isEmpty()) editCurrent([f](OverlayDef& d) { d.image = QFileInfo(f).absoluteFilePath(); }, LC_TR("Đổi ảnh logo"));
 }
 
 void OverlayPanel::pickColor(QColor OverlayDef::*field, const QString& title) {
@@ -983,7 +984,7 @@ void OverlayPanel::pickColor(QColor OverlayDef::*field, const QString& title) {
     const int id = d->id;
     const QColor c = QColorDialog::getColor(d->*field, this, title, QColorDialog::ShowAlphaChannel);
     if (!c.isValid() || currentId() != id) return;
-    editCurrent([field, c](OverlayDef& e) { e.*field = c; }, "Đổi màu lớp phủ");
+    editCurrent([field, c](OverlayDef& e) { e.*field = c; }, LC_TR("Đổi màu lớp phủ"));
 }
 
 void OverlayPanel::removeCurrent() { removeId(currentId()); }

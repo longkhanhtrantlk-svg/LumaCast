@@ -1,4 +1,5 @@
 #include "PlaylistPanel.h"
+#include "core/I18n.h"
 #include "DragList.h"
 #include "Text.h"
 #include "Theme.h"
@@ -100,28 +101,28 @@ PlaylistPanel::PlaylistPanel(Project& project, RenderEngine& engine, QUndoStack*
     remove_ = ui::iconButton(Glyph::Remove, "plRemove", text::plRemove());
     ui::setWhy(remove_, text::plNoSelectionWhy());
     itemSeconds_ = secondsSpin("plItemSeconds", 0, kPlaylistMaxSeconds, 1);
-    itemSeconds_->setSpecialValueText("Tự động");
-    itemSeconds_->setToolTip("Thời lượng riêng của mục đang chọn. Tự động: video chuyển khi phát hết, còn lại dùng thời lượng ảnh");
+    itemSeconds_->setSpecialValueText(LC_TR("Tự động"));
+    itemSeconds_->setToolTip(LC_TR("Thời lượng riêng của mục đang chọn. Tự động: video chuyển khi phát hết, còn lại dùng thời lượng ảnh"));
     for (QWidget* w : std::initializer_list<QWidget*>{addScene_, addFile_, remove_}) items->addWidget(w);
     items->addSpacing(12);
-    items->addWidget(new QLabel("Thời lượng mục"));
+    items->addWidget(new QLabel(LC_TR("Thời lượng mục")));
     items->addWidget(itemSeconds_);
     items->addStretch();
     ev->addLayout(items);
 
     auto* opts = new QHBoxLayout;
     imageSeconds_ = secondsSpin("plImageSeconds", kPlaylistMinSeconds, kPlaylistMaxSeconds, 1);
-    imageSeconds_->setToolTip("Thời gian giữ mỗi ảnh/Scene không phải video (tính sau khi chuyển vào xong)");
-    loop_ = new QCheckBox("Lặp lại");
+    imageSeconds_->setToolTip(LC_TR("Thời gian giữ mỗi ảnh/Scene không phải video (tính sau khi chuyển vào xong)"));
+    loop_ = new QCheckBox(LC_TR("Lặp lại"));
     loop_->setObjectName("plLoop");
     trans_ = new QComboBox;
     trans_->setObjectName("plTransition");
     transSeconds_ = secondsSpin("plTransSeconds", 0.1, 10, 0.1);
-    opts->addWidget(new QLabel("Thời lượng ảnh"));
+    opts->addWidget(new QLabel(LC_TR("Thời lượng ảnh")));
     opts->addWidget(imageSeconds_);
     opts->addWidget(loop_);
     opts->addSpacing(12);
-    opts->addWidget(new QLabel("Hiệu ứng"));
+    opts->addWidget(new QLabel(LC_TR("Hiệu ứng")));
     opts->addWidget(trans_);
     opts->addWidget(transSeconds_);
     opts->addStretch();
@@ -152,7 +153,7 @@ PlaylistPanel::PlaylistPanel(Project& project, RenderEngine& engine, QUndoStack*
         }
         if (ch->scenes.size() > 1) {
             menu.addSeparator();
-            menu.addAction("Tất cả Scene", this, [this, ch] { addScenes(ch->scenes); });
+            menu.addAction(LC_TR("Tất cả Scene"), this, [this, ch] { addScenes(ch->scenes); });
         }
         menu.exec(addScene_->mapToGlobal(QPoint(0, addScene_->height())));
     });
@@ -169,19 +170,19 @@ PlaylistPanel::PlaylistPanel(Project& project, RenderEngine& engine, QUndoStack*
             changed = changed || d.items[size_t(r)].seconds != s;
             d.items[size_t(r)].seconds = s;
         }
-        if (changed) edit(d, "Thời lượng mục playlist", key);
+        if (changed) edit(d, LC_TR("Thời lượng mục playlist"), key);
     });
     connect(imageSeconds_, &QDoubleSpinBox::valueChanged, this, [this](double s) {
         PlaylistData d = channel()->playlist.data;
         if (d.imageSeconds == s) return;
         d.imageSeconds = s;
-        edit(d, "Thời lượng ảnh playlist", "image");
+        edit(d, LC_TR("Thời lượng ảnh playlist"), "image");
     });
     connect(loop_, &QCheckBox::toggled, this, [this](bool on) {
         PlaylistData d = channel()->playlist.data;
         if (d.loop == on) return;
         d.loop = on;
-        edit(d, "Lặp lại playlist");
+        edit(d, LC_TR("Lặp lại playlist"));
     });
     connect(trans_, &QComboBox::currentIndexChanged, this, [this] {
         PlaylistData d = channel()->playlist.data;
@@ -195,13 +196,13 @@ PlaylistPanel::PlaylistPanel(Project& project, RenderEngine& engine, QUndoStack*
         } else {
             return;
         }
-        edit(d, "Hiệu ứng playlist");
+        edit(d, LC_TR("Hiệu ứng playlist"));
     });
     connect(transSeconds_, &QDoubleSpinBox::valueChanged, this, [this](double s) {
         PlaylistData d = channel()->playlist.data;
         if (std::abs(d.transitionSeconds - s) < 1e-9) return;
         d.transitionSeconds = s;
-        edit(d, "Thời gian chuyển playlist", "trans");
+        edit(d, LC_TR("Thời gian chuyển playlist"), "trans");
     });
 
     connect(&timer_, &QTimer::timeout, this, [this] { queryItemInfo(); tick(); });
@@ -271,11 +272,11 @@ QString PlaylistPanel::itemText(int row, const PlaylistData& d, bool current) co
     }
     QString time;
     if (it.seconds > 0) time = QString("%1 s").arg(it.seconds, 0, 'g', 4);
-    else if (info.clip > 0) time = QString("video, hết thì chuyển (%1)").arg(clockText(info.clip));
-    else time = QString("%1 s (tự động)").arg(d.imageSeconds, 0, 'g', 4);
+    else if (info.clip > 0) time = QString(LC_TR("video, hết thì chuyển (%1)")).arg(clockText(info.clip));
+    else time = QString(LC_TR("%1 s (tự động)")).arg(d.imageSeconds, 0, 'g', 4);
     QString text = QString("%1 %2  %3  —  %4").arg(current ? "▶" : "  ").arg(row + 1, 2, 10, QChar('0')).arg(it.scene->name, time);
-    if (info.missing) text += "   ⚠ Scene đã bị gỡ (sẽ bỏ qua)";
-    if (info.broken) text += "   ⚠ lỗi media (sẽ bỏ qua)";
+    if (info.missing) text += LC_TR("   ⚠ Scene đã bị gỡ (sẽ bỏ qua)");
+    if (info.broken) text += LC_TR("   ⚠ lỗi media (sẽ bỏ qua)");
     return text;
 }
 
@@ -350,14 +351,14 @@ void PlaylistPanel::tick() {
 
     QString text;
     if (state == Playlist::State::Stopped) {
-        text = d.items.empty() ? "Chưa có mục nào" : "Đã dừng";
+        text = d.items.empty() ? LC_TR("Chưa có mục nào") : LC_TR("Đã dừng");
     } else {
-        text = state == Playlist::State::Playing ? "▶ Đang chạy" : "⏸ Tạm dừng";
+        text = state == Playlist::State::Playing ? LC_TR("▶ Đang chạy") : LC_TR("⏸ Tạm dừng");
         for (size_t i = 0; i < d.items.size(); ++i)
             if (d.items[i].id == current)
-                text += QString(" · Mục %1/%2: %3").arg(i + 1).arg(d.items.size()).arg(d.items[i].scene->name);
+                text += QString(LC_TR(" · Mục %1/%2: %3")).arg(i + 1).arg(d.items.size()).arg(d.items[i].scene->name);
         const double left = ch->playlist.remaining();
-        if (left >= 0) text += " · còn " + clockText(left);
+        if (left >= 0) text += LC_TR(" · còn ") + clockText(left);
     }
     status_->setText(text);
     ui::setWhy(play_, d.items.empty() ? text::plEmptyWhy() : text::plPlayingWhy());
@@ -395,13 +396,13 @@ void PlaylistPanel::addScenes(const std::vector<std::shared_ptr<Scene>>& scenes)
         it.scene = s;
         d.items.push_back(it);
     }
-    edit(d, scenes.size() == 1 ? "Thêm vào playlist: " + scenes[0]->name : QString("Thêm %1 mục vào playlist").arg(scenes.size()));
+    edit(d, scenes.size() == 1 ? LC_TR("Thêm vào playlist: ") + scenes[0]->name : QString(LC_TR("Thêm %1 mục vào playlist")).arg(scenes.size()));
 }
 
 void PlaylistPanel::addFiles() {
     if (locked_ || !importFile) return;
     std::vector<std::shared_ptr<Scene>> added;
-    for (const QString& f : QFileDialog::getOpenFileNames(this, "Thêm file vào playlist", QString(), mediaFilter))
+    for (const QString& f : QFileDialog::getOpenFileNames(this, LC_TR("Thêm file vào playlist"), QString(), mediaFilter))
         if (auto s = importFile(f)) added.push_back(s);
     addScenes(added);
 }
@@ -411,7 +412,7 @@ void PlaylistPanel::removeSelected() {
     const auto rows = selectedRows();
     if (rows.empty()) return;
     for (auto it = rows.rbegin(); it != rows.rend(); ++it) d.items.erase(d.items.begin() + *it);
-    edit(d, "Bỏ mục khỏi playlist");
+    edit(d, LC_TR("Bỏ mục khỏi playlist"));
 }
 
 void PlaylistPanel::reorder(const std::vector<int>& rows, int before) {

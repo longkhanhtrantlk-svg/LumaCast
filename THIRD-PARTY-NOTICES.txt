@@ -33,9 +33,13 @@ bằng bản khác của cùng thư viện (điều kiện của LGPL).
 
 5. Thành phần hệ điều hành / công cụ (không kèm mã nguồn của họ)
    - Windows API: WASAPI (âm thanh), Media Foundation (camera), Direct3D 11 Video Acceleration (giải mã phần cứng) — gọi qua API hệ điều hành.
-   - Microsoft Visual C++ Redistributable (vcruntime140*.dll, msvcp140*.dll): phân phối lại theo điều khoản redistribution của Visual Studio, chỉ khi đóng gói kèm (windeployqt có thể sao chép).
+   - Microsoft Visual C++ Redistributable (vcruntime140*.dll, msvcp140*.dll): phân phối lại theo điều khoản redistribution của Visual Studio, bộ cài Windows chép kèm các file này cạnh lumacast.exe.
 
-6. Khi đóng gói bản phát hành, bắt buộc có trong thư mục cài đặt:
+6. Velopack (tự cập nhật; bản Windows có kèm velopack_libc.dll, Update.exe do công cụ đóng gói vpk tạo)
+   - Giấy phép: MIT — https://github.com/velopack/velopack (toàn văn: https://github.com/velopack/velopack/blob/master/LICENSE).
+   - Chỉ dùng để tải và cài bản mới của LumaCast từ nơi lấy bản cập nhật đã cấu hình.
+
+7. Khi đóng gói bản phát hành, bắt buộc có trong thư mục cài đặt:
    [x] THIRD-PARTY-NOTICES.txt (tệp này)
    [x] licenses/ chứa toàn văn LGPL-3.0, LGPL-2.1 và "copyright" của qtbase + ffmpeg (vcpkg cung cấp; CMake tự sao chép khi cài)
    [x] DLL Qt và FFmpeg ở dạng CÁC TỆP RIÊNG (không gộp / không nén vào exe)

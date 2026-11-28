@@ -1,4 +1,5 @@
 #include "Midi.h"
+#include "core/I18n.h"
 #include "core/Features.h"
 #include <QDebug>
 
@@ -27,7 +28,7 @@ MidiBinding MidiBinding::fromString(const QString& s) {
 QString MidiBinding::label() const {
     if (!valid()) return "—";
     const char* t = type == Note ? "Note" : type == Cc ? "CC" : "Program";
-    return QString("%1 %2 · kênh %3").arg(t).arg(number).arg(channel + 1);
+    return QString(LC_TR("%1 %2 · kênh %3")).arg(t).arg(number).arg(channel + 1);
 }
 
 MidiBinding MidiDecoder::press(quint8 status, quint8 d1, quint8 d2) {
@@ -103,10 +104,10 @@ void MidiService::apply(const MidiConfig& c) {
     closePort();
     cfg_ = c;
     pollTimer_.stop();
-    if (!cfg_.enabled) { setStatus("MIDI đang tắt"); return; }
+    if (!cfg_.enabled) { setStatus(LC_TR("MIDI đang tắt")); return; }
     if (!Entitlements::current().externalControl) {
         qWarning().noquote() << "MIDI không có trong gói giấy phép hiện tại: không mở cổng";
-        setStatus("MIDI không có trong gói giấy phép hiện tại");
+        setStatus(LC_TR("MIDI không có trong gói giấy phép hiện tại"));
         return;
     }
     pollTimer_.start(1000);
@@ -129,8 +130,8 @@ void MidiService::closePort() {
 
 void MidiService::tryOpen() {
     if (open_ || !backend_ || !cfg_.enabled) return;
-    if (cfg_.device.isEmpty()) { setStatus("Chưa chọn thiết bị MIDI"); return; }
-    if (!backend_->inputs().contains(cfg_.device)) { setStatus("Chưa thấy thiết bị MIDI \"" + cfg_.device + "\" — cắm vào là tự nối"); return; }
+    if (cfg_.device.isEmpty()) { setStatus(LC_TR("Chưa chọn thiết bị MIDI")); return; }
+    if (!backend_->inputs().contains(cfg_.device)) { setStatus(LC_TR("Chưa thấy thiết bị MIDI \"") + cfg_.device + LC_TR("\" — cắm vào là tự nối")); return; }
     const quint64 gen = ++generation_;
     QString err;
     const bool ok = backend_->open(cfg_.device, [this, gen](quint8 st, quint8 d1, quint8 d2) {
@@ -140,11 +141,11 @@ void MidiService::tryOpen() {
     if (ok) {
         open_ = true;
         qInfo().noquote() << "MIDI: đã nối" << cfg_.device;
-        setStatus("Đã nối: " + cfg_.device);
+        setStatus(LC_TR("Đã nối: ") + cfg_.device);
     } else {
-        const QString s = "Không mở được \"" + cfg_.device + "\"" + (err.isEmpty() ? QString() : ": " + err);
-        if (s != status_) qWarning().noquote() << "MIDI:" << s;     // thu lai moi giay: chi log mot lan
-        setStatus(s);
+        const i18n::Text s = LC_BOTH(LC_TR("Không mở được \"") + cfg_.device + "\"" + (err.isEmpty() ? QString() : ": " + err));
+        if (s.shown != status_) qWarning().noquote() << "MIDI:" << s.source;     // thu lai moi giay: chi log mot lan
+        setStatus(s.shown);
     }
 }
 
@@ -153,7 +154,7 @@ void MidiService::poll() {
     if (open_ && !backend_->inputs().contains(cfg_.device)) {
         closePort();
         qWarning().noquote() << "MIDI: mất thiết bị" << cfg_.device;
-        setStatus("Mất kết nối \"" + cfg_.device + "\" — cắm lại là tự nối");
+        setStatus(LC_TR("Mất kết nối \"") + cfg_.device + LC_TR("\" — cắm lại là tự nối"));
         return;
     }
     if (!open_) tryOpen();
@@ -190,11 +191,18 @@ CmdResult MidiService::run(const LiveAction& a) {
     case LiveAction::OutputFreeze: r = api_.outputFlag(a.index, ControlApi::OutFlag::Freeze, std::nullopt); break;
     case LiveAction::OutputPattern: r = api_.outputFlag(a.index, ControlApi::OutFlag::Pattern, std::nullopt); break;
     case LiveAction::Lock:
+    case LiveAction::SlideNext:
+    case LiveAction::SlidePrev:
     case LiveAction::None:
-        r = CmdResult::error(403, "not_allowed", "Lệnh này không điều khiển từ MIDI được");
+        r = CmdResult::error(403, "not_allowed", LC_BOTH(LC_TR("Lệnh này không điều khiển từ MIDI được")));
         break;
     }
-    if (!r.ok()) api_.noteRejected("MIDI", QString("MIDI %1 → %2: %3").arg(a.label(), r.code, r.message));
+    if (!r.ok()) {
+        i18n::Text what = LC_BOTH(QString("MIDI %1 → %2: ").arg(a.label(), r.code));
+        what.shown += r.message;
+        what.source += r.logMessage;
+        api_.noteRejected("MIDI", what);
+    }
     return r;
 }
 

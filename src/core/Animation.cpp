@@ -1,4 +1,5 @@
 #include "Animation.h"
+#include "core/I18n.h"
 #include "core/Transition.h"
 #include <algorithm>
 
@@ -11,12 +12,12 @@ const char* animPropId(AnimProp p) { return kPropIds[int(p)]; }
 
 QString animPropLabel(AnimProp p) {
     switch (p) {
-    case AnimProp::X: return "Vị trí X";
-    case AnimProp::Y: return "Vị trí Y";
-    case AnimProp::W: return "Rộng";
-    case AnimProp::H: return "Cao";
-    case AnimProp::Opacity: return "Độ mờ (alpha)";
-    case AnimProp::Rotation: return "Xoay (độ)";
+    case AnimProp::X: return LC_TR("Vị trí X");
+    case AnimProp::Y: return LC_TR("Vị trí Y");
+    case AnimProp::W: return LC_TR("Rộng");
+    case AnimProp::H: return LC_TR("Cao");
+    case AnimProp::Opacity: return LC_TR("Độ mờ (alpha)");
+    case AnimProp::Rotation: return LC_TR("Xoay (độ)");
     }
     return {};
 }
@@ -30,11 +31,11 @@ const char* interpId(Interp i) { return kInterpIds[int(i)]; }
 
 QString interpLabel(Interp i) {
     switch (i) {
-    case Interp::Linear: return "Tuyến tính";
-    case Interp::EaseIn: return "Êm lúc đầu";
-    case Interp::EaseOut: return "Êm lúc cuối";
-    case Interp::EaseInOut: return "Êm hai đầu";
-    case Interp::Hold: return "Giữ nguyên (nhảy bậc)";
+    case Interp::Linear: return LC_TR("Tuyến tính");
+    case Interp::EaseIn: return LC_TR("Êm lúc đầu");
+    case Interp::EaseOut: return LC_TR("Êm lúc cuối");
+    case Interp::EaseInOut: return LC_TR("Êm hai đầu");
+    case Interp::Hold: return LC_TR("Giữ nguyên (nhảy bậc)");
     }
     return {};
 }

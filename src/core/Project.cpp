@@ -1,7 +1,9 @@
 #include "Project.h"
+#include "core/I18n.h"
 #include "core/Features.h"
 #include "live/Camera.h"
 #include "live/LiveSource.h"
+#include "live/WindowCapture.h"
 #include "live/Ndi.h"
 #include "media/FFmpegSource.h"
 #include "media/StaticSources.h"
@@ -22,12 +24,12 @@ namespace lc {
 std::shared_ptr<Source> createSource(const SourceDef& d, QString* err) {
     auto fail = [&](const QString& m) -> std::shared_ptr<Source> { if (err) *err = m; return nullptr; };
     if (d.type == "video") {
-        if (!QFileInfo::exists(d.path)) return fail("Khong tim thay video: " + d.path);
+        if (!QFileInfo::exists(d.path)) return fail(LC_TR("Khong tim thay video: ") + d.path);
         return std::make_shared<FFmpegSource>(d.path);
     }
     if (d.type == "image") {
         auto s = ImageSource::fromFile(d.path);
-        return s ? std::shared_ptr<Source>(s) : fail("Khong doc duoc anh: " + d.path);
+        return s ? std::shared_ptr<Source>(s) : fail(LC_TR("Khong doc duoc anh: ") + d.path);
     }
     if (d.type == "color")
         return std::make_shared<ColorSource>(d.color, d.label.isEmpty() ? d.id : d.label);
@@ -36,16 +38,21 @@ std::shared_ptr<Source> createSource(const SourceDef& d, QString* err) {
                                              d.label.isEmpty() ? "test" : d.label);
     // Nguon truc tiep: KHONG bao gio that bai luc tao — thieu NDI Runtime/camera chi la trang thai cua nguon (project van mo duoc).
     if (d.type == "ndi") {
-        if (!Entitlements::current().ndi) return fail("NDI không có trong gói giấy phép hiện tại");
-        if (d.device.isEmpty()) return fail("Nguon NDI thieu ten");
+        if (!Entitlements::current().ndi) return fail(LC_TR("NDI không có trong gói giấy phép hiện tại"));
+        if (d.device.isEmpty()) return fail(LC_TR("Nguon NDI thieu ten"));
         return makeNdiSource(d.device, d.url, d.label);
     }
     if (d.type == "camera") {
-        if (!Entitlements::current().camera) return fail("Camera/capture không có trong gói giấy phép hiện tại");
-        if (d.device.isEmpty() && d.deviceName.isEmpty()) return fail("Nguon camera thieu thiet bi");
+        if (!Entitlements::current().camera) return fail(LC_TR("Camera/capture không có trong gói giấy phép hiện tại"));
+        if (d.device.isEmpty() && d.deviceName.isEmpty()) return fail(LC_TR("Nguon camera thieu thiet bi"));
         return makeCameraSource(d.device, d.deviceName, {std::max(0, d.size.width()), std::max(0, d.size.height()), std::max(0.0, d.fps)}, d.label);
     }
-    return fail("Loai nguon khong biet: " + d.type);
+    if (d.type == "window") {                          // cung goi tinh nang voi camera/capture
+        if (!Entitlements::current().camera) return fail(LC_TR("Camera/capture không có trong gói giấy phép hiện tại"));
+        if (d.device.isEmpty()) return fail(LC_TR("Nguon cua so thieu ten chuong trinh"));
+        return makeWindowSource({d.device, d.url, d.deviceName}, d.label);
+    }
+    return fail(LC_TR("Loai nguon khong biet: ") + d.type);
 }
 
 std::shared_ptr<Source> Project::addSource(SourceDef def, QString* err) {
@@ -208,6 +215,12 @@ bool saveProject(const Project& p, const QString& path, QString* err) {
             if (!d.url.isEmpty()) o["ndiUrl"] = d.url;
             if (!d.label.isEmpty()) o["label"] = d.label;
         }
+        if (d.type == "window") {                           // SRC-09 (tuy chon, khong tang version)
+            o["app"] = d.device;
+            if (!d.url.isEmpty()) o["windowClass"] = d.url;
+            if (!d.deviceName.isEmpty()) o["title"] = d.deviceName;
+            if (!d.label.isEmpty()) o["label"] = d.label;
+        }
         if (d.type == "camera") {
             o["device"] = d.device;
             o["deviceName"] = d.deviceName;
@@ -337,20 +350,20 @@ bool saveProject(const Project& p, const QString& path, QString* err) {
 bool loadProject(Project& out, const QString& path, QString* err) {
     auto fail = [&](const QString& m) { if (err) *err = m; return false; };
     QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return fail("Khong mo duoc file: " + f.errorString());
+    if (!f.open(QIODevice::ReadOnly)) return fail(LC_TR("Khong mo duoc file: ") + f.errorString());
     QJsonParseError pe;
     const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &pe);
-    if (doc.isNull() || !doc.isObject()) return fail("JSON loi: " + pe.errorString());
+    if (doc.isNull() || !doc.isObject()) return fail(LC_TR("JSON loi: ") + pe.errorString());
     const QJsonObject root = doc.object();
-    if (root["app"].toString() != "LumaCast") return fail("Khong phai file project LumaCast");
+    if (root["app"].toString() != "LumaCast") return fail(LC_TR("Khong phai file project LumaCast"));
     if (root["version"].toInt(0) < 1 || root["version"].toInt(0) > 1)
-        return fail(QString("Phien ban project %1 khong ho tro").arg(root["version"].toInt(0)));
+        return fail(QString(LC_TR("Phien ban project %1 khong ho tro")).arg(root["version"].toInt(0)));
 
     const QDir base = QFileInfo(path).absoluteDir();
     Project p;
     p.fps = root["fps"].toDouble(60.0);
     p.audioDevice = root["audio"].toObject()["device"].toString();
-    if (p.fps < 1 || p.fps > 240) return fail("fps khong hop le");
+    if (p.fps < 1 || p.fps > 240) return fail(LC_TR("fps khong hop le"));
     p.filePath = path;
 
     for (const QJsonValue& v : root["sources"].toArray()) {
@@ -359,12 +372,13 @@ bool loadProject(Project& out, const QString& path, QString* err) {
         d.id = o["id"].toString();
         d.type = o["type"].toString();
         d.label = o["label"].toString();
-        if (d.id.isEmpty()) return fail("Nguon thieu id");
-        for (const auto& e : p.sources) if (e.id == d.id) return fail("Trung id nguon: " + d.id);
+        if (d.id.isEmpty()) return fail(LC_TR("Nguon thieu id"));
+        for (const auto& e : p.sources) if (e.id == d.id) return fail(LC_TR("Trung id nguon: ") + d.id);
         if (o.contains("path")) d.path = QDir::cleanPath(base.absoluteFilePath(o["path"].toString()));
         if (o.contains("color")) d.color = QColor(o["color"].toString());
         d.size = QSize(o["width"].toInt(d.type == "camera" ? 0 : 1920), o["height"].toInt(d.type == "camera" ? 0 : 1080));
         if (d.type == "ndi") { d.device = o["ndiName"].toString(); d.url = o["ndiUrl"].toString(); }
+        if (d.type == "window") { d.device = o["app"].toString(); d.url = o["windowClass"].toString(); d.deviceName = o["title"].toString(); }
         if (d.type == "camera") {
             d.device = o["device"].toString();
             d.deviceName = o["deviceName"].toString();
@@ -374,12 +388,14 @@ bool loadProject(Project& out, const QString& path, QString* err) {
         }
         QString e;
         if (!p.addSource(d, &e)) {
-            if (d.type != "video" && d.type != "image") return fail(QString("Nguon '%1': %2").arg(d.id, e));
+            if (d.type != "video" && d.type != "image") return fail(QString(LC_TR("Nguon '%1': %2")).arg(d.id, e));
             // Thieu / hong file media: giu cho bang mot hinh bao loi. Giu nguyen mo ta (path) nen luu lai khong mat tham chieu,
             // chep file ve cho cu roi mo lai project la chay.
             d.source = std::make_shared<MissingSource>(d.path);
             p.addSource(d);
-            p.loadWarnings << QString("Thiếu hoặc không đọc được file: %1").arg(QDir::toNativeSeparators(d.path));
+            const i18n::Text w = LC_BOTH(QString(LC_TR("Thiếu hoặc không đọc được file: %1")).arg(QDir::toNativeSeparators(d.path)));
+                p.loadWarnings << w.shown;
+                p.loadWarningsLog << w.source;
         }
     }
 
@@ -388,7 +404,7 @@ bool loadProject(Project& out, const QString& path, QString* err) {
         auto s = std::make_shared<Scene>();
         s->name = o["name"].toString("Scene");
         s->size = QSize(o["width"].toInt(1920), o["height"].toInt(1080));
-        if (s->size.width() < 1 || s->size.height() < 1) return fail("Kich thuoc Scene khong hop le: " + s->name);
+        if (s->size.width() < 1 || s->size.height() < 1) return fail(LC_TR("Kich thuoc Scene khong hop le: ") + s->name);
         s->background = QColor(o["background"].toString("#ff000000"));
         {
             const double dur = o["duration"].toDouble(10.0);
@@ -404,7 +420,7 @@ bool loadProject(Project& out, const QString& path, QString* err) {
             const QString sid = lo["source"].toString();
             std::shared_ptr<Source> src;
             for (const auto& d : p.sources) if (d.id == sid) src = d.source;
-            if (!src) return fail(QString("Scene '%1': layer tham chieu nguon khong ton tai '%2'").arg(s->name, sid));
+            if (!src) return fail(QString(LC_TR("Scene '%1': layer tham chieu nguon khong ton tai '%2'")).arg(s->name, sid));
             Layer l;
             l.source = src;
             l.rect = QRectF(lo["x"].toDouble(0), lo["y"].toDouble(0), lo["w"].toDouble(1), lo["h"].toDouble(1));
@@ -463,7 +479,7 @@ bool loadProject(Project& out, const QString& path, QString* err) {
         c->size = QSize(o["width"].toInt(1920), o["height"].toInt(1080));
         for (const QJsonValue& iv : o["scenes"].toArray()) {
             const int i = iv.toInt(-1);
-            if (i < 0 || i >= int(p.scenes.size())) return fail(QString("Channel '%1': chi so scene sai: %2").arg(c->name).arg(i));
+            if (i < 0 || i >= int(p.scenes.size())) return fail(QString(LC_TR("Channel '%1': chi so scene sai: %2")).arg(c->name).arg(i));
             c->scenes.push_back(p.scenes[i]);
         }
         const int n = int(c->scenes.size());
@@ -479,7 +495,7 @@ bool loadProject(Project& out, const QString& path, QString* err) {
         if (o.contains("playlist")) c->playlist.data = playlistFromJson(o["playlist"].toObject(), p.scenes);
         p.channels.push_back(c);
     }
-    if (p.channels.empty()) return fail("Project khong co Channel nao");
+    if (p.channels.empty()) return fail(LC_TR("Project khong co Channel nao"));
 
     for (const QJsonValue& v : root["outputs"].toArray()) {
         const QJsonObject o = v.toObject();
@@ -492,18 +508,18 @@ bool loadProject(Project& out, const QString& path, QString* err) {
         }
         c.channel = o["channel"].toInt(0);
         if (c.channel < 0 || c.channel >= int(p.channels.size()))
-            return fail(QString("Output '%1': kenh %2 khong ton tai").arg(c.name).arg(c.channel + 1));
+            return fail(QString(LC_TR("Output '%1': kenh %2 khong ton tai")).arg(c.name).arg(c.channel + 1));
         c.screenIndex = o["screen"].toInt(-1);
         c.screenName = o["screenName"].toString();
         c.fullscreen = o["fullscreen"].toBool(false);
         c.size = QSize(o["width"].toInt(1920), o["height"].toInt(1080));
         if (c.kind == OutputKind::Ndi && (c.size.width() < 16 || c.size.height() < 16 || c.size.width() > 8192 || c.size.height() > 8192))
-            return fail("Output NDI '" + c.name + "': kich thuoc khong hop le");
+            return fail(LC_TR("Output NDI '") + c.name + LC_TR("': kich thuoc khong hop le"));
         c.scale = parseScale(o["scale"].toString());
         c.rotation = ((o["rotation"].toInt(0) % 360) + 360) % 360 / 90 * 90;
         const QJsonArray cr = o["crop"].toArray();
         if (cr.size() == 4) c.crop = QRectF(cr[0].toDouble(), cr[1].toDouble(), cr[2].toDouble(), cr[3].toDouble());
-        if (c.crop.width() <= 0 || c.crop.height() <= 0) return fail("Output '" + c.name + "': crop khong hop le");
+        if (c.crop.width() <= 0 || c.crop.height() <= 0) return fail("Output '" + c.name + LC_TR("': crop khong hop le"));
         if (const QJsonArray ar = o["area"].toArray(); ar.size() == 4) {
             const QRect r(ar[0].toInt(), ar[1].toInt(), ar[2].toInt(), ar[3].toInt());
             if (r.x() >= 0 && r.y() >= 0 && r.width() > 0 && r.height() > 0 && r.width() <= 16384 && r.height() <= 16384) c.area = r;
@@ -516,7 +532,7 @@ bool loadProject(Project& out, const QString& path, QString* err) {
         if (g.size() == 3) { c.cal.gainR = float(g[0].toDouble(1)); c.cal.gainG = float(g[1].toDouble(1)); c.cal.gainB = float(g[2].toDouble(1)); }
         p.outputs.push_back(c);
     }
-    if (p.outputs.empty()) return fail("Project khong co Output nao");
+    if (p.outputs.empty()) return fail(LC_TR("Project khong co Output nao"));
 
     out = std::move(p);
     return true;

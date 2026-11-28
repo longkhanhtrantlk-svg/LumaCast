@@ -121,7 +121,7 @@ static QPushButton* button(QWidget* w, const QString& text) {
 static void testActions() {
     bool roundTrip = true;
     for (const QString& id : LiveAction::allIds(3)) roundTrip = roundTrip && LiveAction::fromId(id).valid() && LiveAction::fromId(id).id() == id;
-    CHECK(roundTrip && LiveAction::allIds(3).size() == 5 + 9 + 9, "ma lenh: doc/ghi khop, 3 Output -> 23 lenh");
+    CHECK(roundTrip && LiveAction::allIds(3).size() == 7 + 9 + 9, "ma lenh: doc/ghi khop, 3 Output -> 25 lenh");
     bool bad = false;
     for (const char* id : {"", "preview.0", "preview.10", "output.0.black", "output.1.red", "output.x.black", "unlock", "preview.01"})
         bad = bad || LiveAction::fromId(id).valid();
@@ -152,7 +152,7 @@ static void testBindingAndDecoder() {
 static void testKeyStore(const QString& dir) {
     const KeyMap def = shortcuts::defaults();
     CHECK(def.value("blackAll") == QKeySequence(Qt::Key_B) && def.value("preview.9") == QKeySequence(Qt::Key_9) &&
-          def.value("lock") == QKeySequence(Qt::CTRL | Qt::Key_L) && def.size() == 11 && !def.contains("take") && !def.contains("cut") && !def.contains("ftb"),
+          def.value("lock") == QKeySequence(Qt::CTRL | Qt::Key_L) && def.size() == 13 &&!def.contains("take") && !def.contains("cut") && !def.contains("ftb"),
           "mac dinh y nhu truoc: Ctrl+L, B, 1-9 (TAKE/CUT la phim co dinh)");
     bool reserved = true;
     for (const QKeySequence& k : {QKeySequence(Qt::Key_Space), QKeySequence(Qt::Key_Return), QKeySequence(Qt::Key_Enter), QKeySequence(Qt::CTRL | Qt::Key_Space),
@@ -175,6 +175,7 @@ static void testKeyStore(const QString& dir) {
     m = def;
     m.remove("preview.1");
     m["output.2.black"] = QKeySequence(Qt::Key_1);
+    m.remove("slide.next");                                  // PageDown la mac dinh cua "slide tiep": nhuong cho TAKE
     m["take"] = QKeySequence(Qt::Key_PageDown);
     m["blackAll"] = QKeySequence(Qt::Key_F8);
     shortcuts::save(st, m);
@@ -321,6 +322,8 @@ int main(int argc, char** argv) {
     // ================= phim tu dat =================
     {
         KeyMap m = shortcuts::defaults();
+        m.remove("slide.next");
+        m.remove("slide.prev");
         m["take"] = QKeySequence(Qt::Key_PageDown);
         m["cut"] = QKeySequence(Qt::Key_PageUp);
         m["ftb"] = QKeySequence(Qt::Key_F2);

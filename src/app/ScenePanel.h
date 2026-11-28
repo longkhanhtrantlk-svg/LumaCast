@@ -73,7 +73,7 @@ private:
     QLabel *time_ = nullptr, *volumeText_ = nullptr;
 };
 
-// Khung "Scenes" (thay cho Media Pool + cot Scene): nut nhap media / NDI / camera va mot luoi o Scene cua kenh dang chon.
+// Khung "Scenes" (thay cho Media Pool + cot Scene): nut nhap media / NDI / camera / cua so va mot luoi o Scene cua kenh dang chon.
 // Lua chon o (Preview/CUT) do cua so chinh xu ly qua tin hieu cua list(); khung nay chi goi nguoc lai cho cac viec SUA
 // (doi ten, xoa, lap) va tu gui lenh phat/tieng cho render thread.
 class ScenePanel : public QWidget {
@@ -85,6 +85,7 @@ public:
     QToolButton* importButton() const { return importB_; }
     QToolButton* ndiButton() const { return ndiB_; }
     QToolButton* cameraButton() const { return camB_; }
+    QToolButton* windowButton() const { return winB_; }
     SceneCard* card(int row) const;
 
     void setScenes(int channel, const std::vector<std::shared_ptr<Scene>>& scenes, const std::vector<QString>& names);
@@ -110,7 +111,7 @@ private:
     Project& project_;
     RenderEngine& engine_;
     QListWidget* list_ = nullptr;
-    QToolButton *importB_ = nullptr, *ndiB_ = nullptr, *camB_ = nullptr;
+    QToolButton *importB_ = nullptr, *ndiB_ = nullptr, *camB_ = nullptr, *winB_ = nullptr;
     QLabel* hint_ = nullptr;
     std::vector<std::shared_ptr<Scene>> scenes_;
     std::vector<QString> names_;

@@ -1,4 +1,5 @@
 #include "Osc.h"
+#include "core/I18n.h"
 #include <cstring>
 
 namespace lc {
@@ -40,11 +41,11 @@ struct Reader {
 bool parseMessage(const uchar* d, int n, OscMessage& m, QString* err) {
     Reader r{d, n};
     m.address = r.str();
-    if (r.fail || !m.address.startsWith('/')) { if (err) *err = "địa chỉ OSC không hợp lệ"; return false; }
+    if (r.fail || !m.address.startsWith('/')) { if (err) *err = LC_TR("địa chỉ OSC không hợp lệ"); return false; }
     if (r.left() == 0) return true;                                      // OSC cu: khong co chuoi kieu
     const QString tags = r.str();
-    if (r.fail || !tags.startsWith(',')) { if (err) *err = "thiếu chuỗi kiểu tham số"; return false; }
-    if (tags.size() > 33) { if (err) *err = "quá nhiều tham số"; return false; }
+    if (r.fail || !tags.startsWith(',')) { if (err) *err = LC_TR("thiếu chuỗi kiểu tham số"); return false; }
+    if (tags.size() > 33) { if (err) *err = LC_TR("quá nhiều tham số"); return false; }
     for (int i = 1; i < tags.size(); ++i) {
         switch (tags[i].unicode()) {
         case 'i': m.args << qint32(r.u32()); break;
@@ -54,26 +55,26 @@ bool parseMessage(const uchar* d, int n, OscMessage& m, QString* err) {
         case 'F': m.args << false; break;
         case 'N': m.args << QVariant(); break;
         case 'I': m.args << true; break;
-        default: if (err) *err = QString("kiểu tham số OSC không hỗ trợ: '%1'").arg(tags[i]); return false;
+        default: if (err) *err = QString(LC_TR("kiểu tham số OSC không hỗ trợ: '%1'")).arg(tags[i]); return false;
         }
-        if (r.fail) { if (err) *err = "gói OSC bị cụt"; return false; }
+        if (r.fail) { if (err) *err = LC_TR("gói OSC bị cụt"); return false; }
     }
     return true;
 }
 
 bool parseRec(const uchar* d, int n, QList<OscMessage>& out, QString* err, int depth) {
-    if (n <= 0) { if (err) *err = "gói rỗng"; return false; }
+    if (n <= 0) { if (err) *err = LC_TR("gói rỗng"); return false; }
     if (d[0] == '#') {
-        if (depth >= kOscMaxDepth) { if (err) *err = "bundle lồng quá sâu"; return false; }
+        if (depth >= kOscMaxDepth) { if (err) *err = LC_TR("bundle lồng quá sâu"); return false; }
         static const char kTag[8] = {'#', 'b', 'u', 'n', 'd', 'l', 'e', 0};
-        if (n < 16 || std::memcmp(d, kTag, 8) != 0) { if (err) *err = "bundle hỏng"; return false; }
+        if (n < 16 || std::memcmp(d, kTag, 8) != 0) { if (err) *err = LC_TR("bundle hỏng"); return false; }
         Reader r{d, n, 16};                                               // bo qua timetag 8 byte
         while (r.left() > 0) {
             const int len = int(r.u32());
-            if (r.fail || len <= 0 || len % 4 != 0 || len > r.left()) { if (err) *err = "phần tử bundle sai kích thước"; return false; }
+            if (r.fail || len <= 0 || len % 4 != 0 || len > r.left()) { if (err) *err = LC_TR("phần tử bundle sai kích thước"); return false; }
             if (!parseRec(d + r.pos, len, out, err, depth + 1)) return false;
             r.pos += len;
-            if (out.size() > kOscMaxMessages) { if (err) *err = "quá nhiều thông điệp trong một gói"; return false; }
+            if (out.size() > kOscMaxMessages) { if (err) *err = LC_TR("quá nhiều thông điệp trong một gói"); return false; }
         }
         return true;
     }
@@ -91,11 +92,11 @@ void putU32(QByteArray& b, quint32 v) { b.append(char(v >> 24)); b.append(char(v
 
 bool parseOscPacket(const QByteArray& data, QList<OscMessage>& out, QString* err) {
     out.clear();
-    if (data.size() > kOscMaxPacket) { if (err) *err = "gói OSC quá lớn"; return false; }
-    if (data.size() < 4 || data.size() % 4 != 0) { if (err) *err = "gói OSC sai kích thước"; return false; }
+    if (data.size() > kOscMaxPacket) { if (err) *err = LC_TR("gói OSC quá lớn"); return false; }
+    if (data.size() < 4 || data.size() % 4 != 0) { if (err) *err = LC_TR("gói OSC sai kích thước"); return false; }
     QList<OscMessage> tmp;
     if (!parseRec(reinterpret_cast<const uchar*>(data.constData()), int(data.size()), tmp, err, 0)) return false;
-    if (tmp.size() > kOscMaxMessages) { if (err) *err = "quá nhiều thông điệp trong một gói"; return false; }
+    if (tmp.size() > kOscMaxMessages) { if (err) *err = LC_TR("quá nhiều thông điệp trong một gói"); return false; }
     out = tmp;                                                            // chi giao ra khi ca goi hop le
     return true;
 }

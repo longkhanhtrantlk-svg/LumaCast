@@ -1,4 +1,5 @@
 #include "OutputWindow.h"
+#include "core/I18n.h"
 #include "core/ScreenSetup.h"
 #include "media/StaticSources.h"
 #include <QGuiApplication>
@@ -86,7 +87,7 @@ void OutputWindow::present(QOpenGLContext& ctx, Compositor& comp, RenderTarget* 
         const QSize size = area.isEmpty() ? QSize(W, H) : area.size();
         QString label = cfg_.name;
         if (!area.isEmpty())
-            label += QString("\nvùng LED tại (%1, %2)\nkhung tín hiệu %3×%4").arg(area.x()).arg(area.y()).arg(W).arg(H);
+            label += QString(LC_TR("\nvùng LED tại (%1, %2)\nkhung tín hiệu %3×%4")).arg(area.x()).arg(area.y()).arg(W).arg(H);
         const QString key = QString("%1x%2 %3").arg(size.width()).arg(size.height()).arg(label);
         if (!testTex_.id() || testKey_ != key) {
             // GL: hang dau cua texture la hang DUOI man hinh -> lat doc, khong thi mau thu (va toa do 4 goc) lon nguoc

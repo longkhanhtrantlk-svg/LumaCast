@@ -1,4 +1,5 @@
 #pragma once
+#include "core/I18n.h"
 #include "core/Transition.h"
 #include <QJsonObject>
 #include <QString>
@@ -72,11 +73,11 @@ private:
     void step(Channel& ch, double now, int dir);
     void cueFrom(Channel& ch, double now, int pos);   // tim tu `pos` muc phat duoc roi chuan bi (video: tua ve dau)
     void tryAir(Channel& ch, double now);             // muc dang chuan bi da san sang -> dua len Program
-    void fail(Channel& ch, double now, int pos, const QString& why);
+    void fail(Channel& ch, double now, int pos, const i18n::Text& why);
     double switchAt() const;                          // thoi diem (dong ho engine) chuyen sang muc ke tiep
     QString problemOf(const Channel& ch, const PlaylistItem& it) const;
     QString label(int pos) const;
-    void notice(const Channel& ch, const QString& msg);
+    void notice(const Channel& ch, const i18n::Text& msg);
     void publish(double now);
 
     std::atomic<State> state_{State::Stopped};

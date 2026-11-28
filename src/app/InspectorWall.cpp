@@ -1,5 +1,6 @@
 // Bu khe video wall (OUT-04): phan cua InspectorPanel cho khung "Video wall" o dau tab Output.
 #include "InspectorPanel.h"
+#include "core/I18n.h"
 #include <QComboBox>
 #include <QGridLayout>
 #include <QGroupBox>
@@ -17,7 +18,7 @@ namespace {
 class WallCmd : public QUndoCommand {
 public:
     WallCmd(InspectorPanel* p, int channel, InspectorPanel::WallState before, InspectorPanel::WallState after, int axis)
-        : QUndoCommand("Đổi khe video wall"), panel_(p), channel_(channel), before_(std::move(before)), after_(std::move(after)),
+        : QUndoCommand(LC_TR("Đổi khe video wall")), panel_(p), channel_(channel), before_(std::move(before)), after_(std::move(after)),
           mergeId_(4000000 + channel * 2 + axis) {}
     int id() const override { return mergeId_; }
     void undo() override { panel_->applyWall(channel_, before_); }
@@ -51,7 +52,7 @@ void InspectorPanel::addWallBoxes(QVBoxLayout* root) {
         w.box = new QGroupBox;
         w.box->setObjectName("wallBox");
         auto* g = new QGridLayout(w.box);
-        const char* prefix[2] = {"khe ngang ", "khe dọc "};
+        const QString prefix[2] = {LC_TR("khe ngang "), LC_TR("khe dọc ")};
         const char* name[2] = {"wallGapX", "wallGapY"};
         for (int axis = 0; axis < 2; ++axis) {
             auto* s = new QSpinBox;
@@ -59,7 +60,7 @@ void InspectorPanel::addWallBoxes(QVBoxLayout* root) {
             s->setPrefix(prefix[axis]);
             s->setSuffix(" px");
             s->setKeyboardTracking(false);                // go "40" khong ap dung "4" truoc (moi lan ap dung la doi co canvas)
-            s->setToolTip("Số điểm ảnh bị che sau viền/khe giữa hai màn kề nhau. Canvas và Scene rộng thêm phần này, mỗi Output vẫn 1:1.");
+            s->setToolTip(LC_TR("Số điểm ảnh bị che sau viền/khe giữa hai màn kề nhau. Canvas và Scene rộng thêm phần này, mỗi Output vẫn 1:1."));
             g->addWidget(s, 0, axis);
             w.gap[axis] = s;
         }
@@ -85,11 +86,11 @@ void InspectorPanel::syncWallBoxes() {
         if (!detectWall(outCache_, w.channel, canvas, wall)) {
             // Chua tung la wall: an. Da la wall roi bi sua crop lech luoi: giu khung, khoa o nhap va giai thich.
             for (QSpinBox* s : w.gap) s->setEnabled(false);
-            w.info->setText("Vùng crop không còn khớp lưới wall nên không bù khe được. Hoàn tác (Ctrl+Z) hoặc sửa crop về đúng lưới.");
+            w.info->setText(LC_TR("Vùng crop không còn khớp lưới wall nên không bù khe được. Hoàn tác (Ctrl+Z) hoặc sửa crop về đúng lưới."));
             continue;
         }
         w.box->setVisible(true);
-        w.box->setTitle(QString("Video wall %1×%2, ô %3×%4 (kênh %5)").arg(wall.cols).arg(wall.rows)
+        w.box->setTitle(QString(LC_TR("Video wall %1×%2, ô %3×%4 (kênh %5)")).arg(wall.cols).arg(wall.rows)
                             .arg(wall.cell.width()).arg(wall.cell.height()).arg(w.channel + 1));
         const QSize max = wall.maxGap();
         const int value[2] = {wall.gap.width(), wall.gap.height()}, limit[2] = {max.width(), max.height()}, count[2] = {wall.cols, wall.rows};
@@ -101,7 +102,7 @@ void InspectorPanel::syncWallBoxes() {
         }
         QString info = QString("Canvas %1×%2").arg(canvas.width()).arg(canvas.height());
         for (const auto& c : wall.cells)
-            if (outCache_[size_t(c.output)].size != wall.cell) { info += ". Lưu ý: có Output khác cỡ ô nên không đúng 1:1."; break; }
+            if (outCache_[size_t(c.output)].size != wall.cell) { info += LC_TR(". Lưu ý: có Output khác cỡ ô nên không đúng 1:1."); break; }
         w.info->setText(info);
     }
 }

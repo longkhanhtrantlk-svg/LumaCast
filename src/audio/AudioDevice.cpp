@@ -1,4 +1,5 @@
 #include "AudioDevice.h"
+#include "core/I18n.h"
 #include "AudioStream.h"
 #include <QDebug>
 #include <atomic>
@@ -49,7 +50,7 @@ std::vector<AudioDeviceInfo> listAudioDevices() {
 #ifdef _WIN32
     return listWasapiDevices();
 #else
-    return {AudioDeviceInfo{"", "Mặc định (Null — chưa hỗ trợ phát trên hệ điều hành này)", true}};
+    return {AudioDeviceInfo{"", LC_TR("Mặc định (Null — chưa hỗ trợ phát trên hệ điều hành này)"), true}};
 #endif
 }
 

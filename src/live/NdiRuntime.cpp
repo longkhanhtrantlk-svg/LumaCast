@@ -7,6 +7,7 @@
 // Truoc khi phat hanh PHAI doi chieu tung dong voi Processing.NDI.Lib.h cua SDK ban dang dung va thu T-NDI-IN / T-NDI-OUT tren Windows.
 // Khong co file nao cua NDI SDK nam trong repo. NDI® la thuong hieu dang ky cua Vizrt NDI AB.
 #include "live/Ndi.h"
+#include "core/I18n.h"
 #include <QByteArray>
 #include <QDebug>
 #include <QDir>
@@ -224,7 +225,7 @@ public:
         c.allow_video_fields = false;
         c.p_ndi_recv_name = rn.constData();
         Inst h = api_->recv_create_v3(&c);               // NDI sao chep chuoi vao ben trong
-        if (!h) { r.error = "Không tạo được bộ nhận NDI"; return r; }
+        if (!h) { r.error = LC_TR("Không tạo được bộ nhận NDI"); return r; }
         r.input = std::make_unique<RealInput>(api_, h, name);
         return r;
     }
@@ -232,7 +233,7 @@ public:
         const QByteArray n = name.toUtf8();
         abi::send_create_t c{n.constData(), nullptr, false, false};
         Inst h = api_->send_create(&c);
-        if (!h) { if (err) *err = "Không tạo được nguồn NDI ra (tên trùng hoặc NDI lỗi)"; return nullptr; }
+        if (!h) { if (err) *err = LC_TR("Không tạo được nguồn NDI ra (tên trùng hoặc NDI lỗi)"); return nullptr; }
         return std::make_unique<RealSender>(api_, h);
     }
 private:
@@ -307,13 +308,13 @@ std::shared_ptr<NdiBackend> createRealNdiBackend(QString* reason) {
         LC_NDI_SYM(send_send_audio_v2, "NDIlib_send_send_audio_v2");
 #undef LC_NDI_SYM
         api->send_get_no_connections = reinterpret_cast<decltype(api->send_get_no_connections)>(lib->resolve("NDIlib_send_get_no_connections"));   // tuy chon
-        if (!ok) { lastErr = "Runtime NDI thiếu hàm cần dùng (phiên bản không tương thích): " + cand; lib->unload(); continue; }
-        if (!api->initialize()) { lastErr = "NDIlib_initialize thất bại (CPU không được NDI hỗ trợ?)"; lib->unload(); continue; }
+        if (!ok) { lastErr = LC_TR("Runtime NDI thiếu hàm cần dùng (phiên bản không tương thích): ") + cand; lib->unload(); continue; }
+        if (!api->initialize()) { lastErr = LC_TR("NDIlib_initialize thất bại (CPU không được NDI hỗ trợ?)"); lib->unload(); continue; }
         const QString ver = QString::fromUtf8(api->version());
         qInfo().noquote() << "NDI Runtime nạp từ" << cand << "| phiên bản" << ver << "(ABI tự khai báo, chưa đối chiếu header chính thức)";
         return std::make_shared<RealBackend>(std::move(lib), std::move(api), ver);
     }
-    return fail(lastErr.isEmpty() ? QString("Chưa cài NDI Runtime") : "Chưa cài NDI Runtime (" + lastErr + ")");
+    return fail(lastErr.isEmpty() ? QString(LC_TR("Chưa cài NDI Runtime")) : LC_TR("Chưa cài NDI Runtime (") + lastErr + ")");
 }
 
 } // namespace lc

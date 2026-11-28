@@ -1,4 +1,5 @@
 #include "StaticSources.h"
+#include "core/I18n.h"
 #include <QFileInfo>
 #include <QImageReader>
 #include <QFontMetrics>
@@ -87,7 +88,7 @@ QImage makeOutputTestPattern(int w, int h, const QString& label) {
             p.fillRect(vertical.x() + i, vertical.y(), 1, side, Qt::white);
             p.fillRect(horizontal.x(), horizontal.y() + i, side, 1, Qt::white);
         }
-        p.drawText(QRect(0, y + side + 2, w, f.pixelSize() + 6), Qt::AlignHCenter, "1:1: sọc phải đều, không nhoè");
+        p.drawText(QRect(0, y + side + 2, w, f.pixelSize() + 6), Qt::AlignHCenter, LC_TR("1:1: sọc phải đều, không nhoè"));
     }
     // toa do diem anh o 4 goc
     p.drawText(8, f.pixelSize() + 4, "(0,0)");
@@ -125,13 +126,13 @@ static QImage missingImage(const QString& name) {
     f.setBold(true);
     p.setFont(f);
     p.setPen(Qt::white);
-    p.drawText(img.rect().adjusted(40, 40, -40, -40), Qt::AlignCenter | Qt::TextWrapAnywhere, "THIẾU FILE\n" + name);
+    p.drawText(img.rect().adjusted(40, 40, -40, -40), Qt::AlignCenter | Qt::TextWrapAnywhere, LC_TR("THIẾU FILE\n") + name);
     return img;
 }
 
 MissingSource::MissingSource(const QString& path)
     : ImageSource(missingImage(QFileInfo(path).fileName()), QFileInfo(path).fileName()),
-      error_("Thiếu hoặc không đọc được file: " + QFileInfo(path).fileName()) {}
+      error_(LC_TR("Thiếu hoặc không đọc được file: ") + QFileInfo(path).fileName()) {}
 
 TexRef ImageSource::acquire(GL& gl) {
     if (!uploaded_ && !img_.isNull()) {

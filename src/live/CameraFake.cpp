@@ -1,4 +1,5 @@
 #include "CameraFake.h"
+#include "core/I18n.h"
 #include "live/LiveSource.h"
 #include <chrono>
 #include <cmath>
@@ -68,8 +69,8 @@ LiveOpenResult FakeCameraBackend::open(const QString& id, const QString& name, C
         else for (auto& [k, x] : devs_) if (x->present && !name.isEmpty() && x->name == name) d = x;     // id doi nhung ten con: nhan ra lai
     }
     ++opens_;
-    if (!d) { r.error = "Không thấy camera: " + (name.isEmpty() ? id : name); return r; }
-    if (d->busy) { r.error = "Camera đang được chương trình khác sử dụng: " + d->name; return r; }
+    if (!d) { r.error = LC_TR("Không thấy camera: ") + (name.isEmpty() ? id : name); return r; }
+    if (d->busy) { r.error = LC_TR("Camera đang được chương trình khác sử dụng: ") + d->name; return r; }
     CameraFormat best;
     double bestScore = 1e18;
     for (const CameraFormat& f : d->formats) {

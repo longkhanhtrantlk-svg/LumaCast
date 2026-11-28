@@ -5,6 +5,7 @@
 #ifdef _WIN32
 #define NOMINMAX
 #include "live/Camera.h"
+#include "core/I18n.h"
 #include <QDebug>
 #include <atomic>
 #include <chrono>
@@ -174,7 +175,7 @@ public:
     ~MfBackend() override { if (ok_) MFShutdown(); }
     QString id() const override { return "mf"; }
     bool available() const override { return ok_; }
-    QString unavailableReason() const override { return ok_ ? QString() : "Media Foundation không khởi động được"; }
+    QString unavailableReason() const override { return ok_ ? QString() : LC_TR("Media Foundation không khởi động được"); }
     std::vector<CameraDevice> list() override {
         std::vector<CameraDevice> v;
         for (auto& e : enumerate()) v.push_back({e.id, e.name});
@@ -216,9 +217,9 @@ public:
         DevEntry* d = nullptr;
         for (auto& e : devs) if (e.id == deviceId) d = &e;
         if (!d && !deviceName.isEmpty()) for (auto& e : devs) if (!d && e.name == deviceName) d = &e;      // id doi, ten con
-        if (!d) return fail("Không thấy camera: " + (deviceName.isEmpty() ? deviceId : deviceName));
+        if (!d) return fail(LC_TR("Không thấy camera: ") + (deviceName.isEmpty() ? deviceId : deviceName));
         Com<IMFMediaSource> src;
-        if (FAILED(d->act->ActivateObject(IID_PPV_ARGS(src.put())))) return fail("Không mở được camera (đang được chương trình khác dùng?): " + d->name);
+        if (FAILED(d->act->ActivateObject(IID_PPV_ARGS(src.put())))) return fail(LC_TR("Không mở được camera (đang được chương trình khác dùng?): ") + d->name);
         auto sh = std::make_shared<Shared>();
         auto* cb = new Callback(sh);                      // ref = 1, thuoc ve MfInput
         Com<IMFAttributes> attr;
@@ -226,7 +227,7 @@ public:
         attr->SetUnknown(MF_SOURCE_READER_ASYNC_CALLBACK, cb);
         attr->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE);   // cho phep doi YUY2/NV12/MJPG -> RGB32
         Com<IMFSourceReader> rd;
-        if (FAILED(MFCreateSourceReaderFromMediaSource(src.p, attr.p, rd.put()))) { cb->Release(); src->Shutdown(); return fail("Không tạo được bộ đọc camera"); }
+        if (FAILED(MFCreateSourceReaderFromMediaSource(src.p, attr.p, rd.put()))) { cb->Release(); src->Shutdown(); return fail(LC_TR("Không tạo được bộ đọc camera")); }
         // chon che do goc gan nhat voi `want`
         double best = 1e18;
         Com<IMFMediaType> bestMt;
@@ -250,7 +251,7 @@ public:
         out->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
         if (FAILED(rd->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, out.p))) {
             cb->Release(); rd.put(); src->Shutdown();
-            return fail("Camera không xuất được RGB32");
+            return fail(LC_TR("Camera không xuất được RGB32"));
         }
         Com<IMFMediaType> cur;
         UINT32 w = 0, h = 0;
@@ -266,7 +267,7 @@ public:
         cb->setReader(rd.p);
         if (FAILED(rd->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, nullptr, nullptr, nullptr, nullptr))) {
             cb->setReader(nullptr); cb->Release(); rd.put(); src->Shutdown();
-            return fail("Không bắt đầu đọc được camera");
+            return fail(LC_TR("Không bắt đầu đọc được camera"));
         }
         r.input = std::make_unique<MfInput>(sh, cb, std::move(src), std::move(rd), d->name + QString(" %1x%2").arg(w).arg(h));
         return r;

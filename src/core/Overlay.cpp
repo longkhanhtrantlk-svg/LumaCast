@@ -1,4 +1,5 @@
 #include "Overlay.h"
+#include "core/I18n.h"
 #include <QJsonObject>
 #include <algorithm>
 #include <cmath>
@@ -10,20 +11,20 @@ OverlayDef defaultOverlay(OverlayType type) {
     d.type = type;
     switch (type) {
     case OverlayType::Title:
-        d.name = "Tiêu đề";
-        d.text = "Tiêu đề";
+        d.name = LC_TR("Tiêu đề");
+        d.text = LC_TR("Tiêu đề");
         d.bold = true;
         d.background = QColor(0, 0, 0, 160);
         break;
     case OverlayType::Ticker:
-        d.name = "Chữ chạy";
-        d.text = "Nội dung chữ chạy";
+        d.name = LC_TR("Chữ chạy");
+        d.text = LC_TR("Nội dung chữ chạy");
         d.rect = QRectF(0, 0.9, 1, 0.1);
         d.fontSize = 56;
         d.background = QColor(0, 0, 0, 180);
         break;
     case OverlayType::Countdown:
-        d.name = "Đếm ngược";
+        d.name = LC_TR("Đếm ngược");
         d.rect = QRectF(0.35, 0.05, 0.3, 0.15);
         d.fontSize = 96;
         d.bold = true;

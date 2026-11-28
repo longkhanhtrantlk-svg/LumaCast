@@ -1,7 +1,10 @@
 #include "MainWindow.h"
+#include "Icons.h"
+#include "core/I18n.h"
 #include "core/Log.h"
 #include "core/AppSettings.h"
 #include "core/Startup.h"
+#include "core/Update.h"
 #include "media/FFmpegSource.h"
 #include "render/Benchmark.h"
 #include "Theme.h"
@@ -13,6 +16,7 @@
 #include <QSettings>
 #include <QStandardPaths>
 #include <QSurfaceFormat>
+#include <QTimer>
 
 using namespace lc;
 
@@ -52,6 +56,7 @@ static bool parseGap(const QString& s, QSize& gap) {
 }
 
 int main(int argc, char** argv) {
+    update::runStartupHooks();             // DAU TIEN: trinh cai / go cai goi lai exe voi tham so rieng va co the thoat o day
     QSurfaceFormat fmt;
     fmt.setVersion(3, 3);
     fmt.setProfile(QSurfaceFormat::CoreProfile);
@@ -61,6 +66,8 @@ int main(int argc, char** argv) {
 
     QApplication app(argc, argv);
     app.setApplicationName("LumaCast");
+    app.setApplicationVersion(LUMACAST_VERSION);
+    app.setWindowIcon(appIcon());
     // LUMACAST_CONFIG_DIR: dat thu muc cau hinh + log rieng (ban mang theo/kiem thu); khong dat thi dung vi tri chuan cua he dieu hanh (registry tren Windows).
     const QString cfgDir = qEnvironmentVariable("LUMACAST_CONFIG_DIR");
     if (!cfgDir.isEmpty()) {
@@ -69,12 +76,17 @@ int main(int argc, char** argv) {
     }
     initLogging(cfgDir.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/logs" : cfgDir + "/logs");
     qInfo() << "LumaCast khoi dong";
+    {   // ngon ngu giao dien: chon trong app > chon luc cai > tieng Viet. Doi ngon ngu co tac dung o lan mo sau.
+        QSettings st = appSettings();
+        i18n::install(i18n::configured(st, QCoreApplication::applicationDirPath()));
+    }
     applyDarkTheme(app);
     QCommandLineParser cli;
     cli.setApplicationDescription("LumaCast - LED Display Controller");
     cli.addHelpOption();
     cli.addOption({{"p", "project"}, "Mo file project (.json). Bo qua cac tuy chon -o/-m/--wall.", "file"});
     cli.addOption({"save", "Luu project ra file roi chay tiep.", "file"});
+    cli.addOption({"reopen", "Dung sau khi cap nhat: mo lai project; khong mo duoc thi chay project trong va bao (khong thoat).", "file"});
     cli.addOption({{"o", "output"}, "Output: WxH[@man_hinh][/kenh]. Lap lai de them output. Mac dinh 1920x1080.", "spec"});
     cli.addOption({{"m", "media"}, "File video/anh de tao Scene. Lap lai duoc.", "file"});
     cli.addOption({"wall", "Video wall CxR: chia 1 kenh rong cho C*R output (dung cung --cell).", "CxR"});
@@ -98,6 +110,22 @@ int main(int argc, char** argv) {
     }
     Project proj;
     QSettings cfg = appSettings();
+    // Tu cap nhat. Ban moi vua cai ma lan mo truoc khong chay on: de nghi quay ve TRUOC khi dung toi GPU / project.
+    const std::shared_ptr<update::Backend> updateBackend = update::createBackend(update::configuredSource(cfg));
+    if (update::guard::beginStartup(cfg, updateBackend->currentVersion()) && !updateBackend->previousVersion().isEmpty()) {
+        const QString from = updateBackend->currentVersion(), to = updateBackend->previousVersion();
+        if (QMessageBox::question(nullptr, "LumaCast", QString(LC_TR("Lần mở trước, bản %1 chưa chạy ổn.\n\nQuay về bản %2?")).arg(from, to),
+                                  QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes) {
+            QString err;
+            if (updateBackend->rollback(&err)) {
+                cfg.setValue(update::kKeySkipVersion, from);
+                update::guard::confirm(cfg);
+                qWarning().noquote() << "Cap nhat: quay ve ban" << to << "vi ban" << from << "khong khoi dong on";
+                return 0;
+            }
+            QMessageBox::warning(nullptr, "LumaCast", err);
+        }
+    }
     {   // M6: tuy chon giai ma video (uu tien: dong lenh > bien moi truong > cai dat "video/hwdec")
         VideoDecodeOptions vo = VideoDecodeOptions::defaults();
         if (cli.isSet("hwdec")) vo.hwDecode = cli.value("hwdec").toLower();
@@ -105,20 +133,24 @@ int main(int argc, char** argv) {
         if (cli.isSet("no-gpu-yuv")) vo.gpuColor = false;
         VideoDecodeOptions::setDefaults(vo);
     }
-    QString startupNotice;
+    QString startupNotice, startupNoticeLog;
     auto askRestore = [](const QFileInfo& autosave) {
-        return QMessageBox::question(nullptr, "Khôi phục project",
-                                     QString("Tìm thấy bản tự động lưu mới hơn:\n%1\n(%2)\n\nKhôi phục bản này?")
+        return QMessageBox::question(nullptr, LC_TR("Khôi phục project"),
+                                     QString(LC_TR("Tìm thấy bản tự động lưu mới hơn:\n%1\n(%2)\n\nKhôi phục bản này?"))
                                          .arg(autosave.fileName(), autosave.lastModified().toString("dd/MM/yyyy HH:mm:ss")),
                                      QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes) == QMessageBox::Yes;
     };
     // OPS-01: khong co --project va khong co cau hinh tu dong lenh -> tu mo lai project gan nhat (neu bat); thieu file thi chay binh thuong.
     QString projectArg = cli.value("project");
     bool autoOpened = false;
-    if (!cli.isSet("project")) {
+    if (!cli.isSet("project") && cli.isSet("reopen")) {         // loi mo = bao loi va chay tiep, nhu tu mo lai
+        projectArg = cli.value("reopen");
+        autoOpened = true;
+    } else if (!cli.isSet("project")) {
         const bool explicitCfg = cli.isSet("output") || cli.isSet("media") || cli.isSet("wall") || cli.isSet("save");
         const StartupDecision dec = decideStartupProject(cfg, explicitCfg);
         startupNotice = dec.notice;
+        startupNoticeLog = dec.noticeLog;
         projectArg = dec.path;
         autoOpened = !dec.path.isEmpty();
     }
@@ -139,8 +171,10 @@ int main(int argc, char** argv) {
             return 2;
         } else {                                         // tu mo that bai: khong lam hong buoi chay, chay project trong va bao
             proj = Project();
-            startupNotice = QString("Không mở lại được project gần nhất (%1): %2").arg(projectArg, err);
-            qWarning().noquote() << startupNotice;
+            const i18n::Text notice = LC_BOTH(QString(LC_TR("Không mở lại được project gần nhất (%1): %2")).arg(projectArg, err));
+            startupNotice = notice.shown;
+            startupNoticeLog = notice.source;
+            qWarning().noquote() << startupNoticeLog;
         }
     }
     if (!loaded) {
@@ -186,8 +220,8 @@ int main(int argc, char** argv) {
         };
         SourceDef t; t.type = "testpattern"; t.size = canvas; t.label = "Test";
         addScene("Test", proj.addSource(t), LayerFit::Stretch);
-        SourceDef c; c.type = "color"; c.color = QColor(20, 60, 200); c.label = "Xanh";
-        addScene("Xanh", proj.addSource(c), LayerFit::Stretch);
+        SourceDef c; c.type = "color"; c.color = QColor(20, 60, 200); c.label = LC_TR("Xanh");
+        addScene(LC_TR("Xanh"), proj.addSource(c), LayerFit::Stretch);
         for (const QString& f : cli.values("media")) {
             SourceDef d;
             d.path = QFileInfo(f).absoluteFilePath();
@@ -223,8 +257,16 @@ int main(int argc, char** argv) {
     }
     MainWindow window(proj, engine);
     window.show();
-    if (!startupNotice.isEmpty()) { qWarning().noquote() << startupNotice; window.showStartupNotice(startupNotice); }
+    window.setUpdateBackend(updateBackend);
+    // chay duoc 20 s: coi nhu ban moi on. Kiem tra ban moi sau do de khong tranh viec luc mo may.
+    QTimer::singleShot(20000, &window, [&window] {
+        QSettings st = appSettings();
+        update::guard::confirm(st);
+        window.updates().checkAuto();
+    });
+    if (!startupNotice.isEmpty()) { qWarning().noquote() << startupNoticeLog; window.showStartupNotice(startupNotice); }
     const int rc = app.exec();
+    if (rc == 0) update::guard::confirm(cfg);          // thoat binh thuong: ban nay chay duoc
     qInfo() << "LumaCast thoat, ma" << rc;
     engine.stopEngine();
     if (!engine.error().isEmpty()) qCritical().noquote() << engine.error();

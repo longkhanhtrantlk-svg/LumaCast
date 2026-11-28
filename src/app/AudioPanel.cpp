@@ -1,4 +1,5 @@
 #include "AudioPanel.h"
+#include "core/I18n.h"
 #include "Text.h"
 #include "Theme.h"
 #include "Ui.h"
@@ -63,7 +64,7 @@ AudioPanel::AudioPanel(Project& project, RenderEngine& engine, QWidget* parent) 
     device_->setObjectName("audioDevice");
     device_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);     // ten thiet bi dai khong ep cot rong ra
     device_->setMinimumContentsLength(6);
-    device_->setToolTip("Thiết bị phát âm thanh của toàn bộ các Channel (mix chung). Lưu trong project; máy khác không có thiết bị này sẽ dùng mặc định.");
+    device_->setToolTip(LC_TR("Thiết bị phát âm thanh của toàn bộ các Channel (mix chung). Lưu trong project; máy khác không có thiết bị này sẽ dùng mặc định."));
     top->addWidget(device_, 1);
     auto* refresh = ui::iconButton(Glyph::Refresh, "audioDevRefresh", text::audioRefresh());
     top->addWidget(refresh);
@@ -78,7 +79,7 @@ AudioPanel::AudioPanel(Project& project, RenderEngine& engine, QWidget* parent) 
     for (size_t i = 0; i < project_.channels.size(); ++i) {
         Strip s;
         const int row = int(i) * 2;
-        s.name = new QLabel(QString("Kênh %1").arg(i + 1));
+        s.name = new QLabel(QString(LC_TR("Kênh %1")).arg(i + 1));
         s.name->setToolTip(project_.channels[i]->name);
         s.mute = new QToolButton;
         s.mute->setObjectName(QString("muteBtn%1").arg(i));
@@ -90,7 +91,7 @@ AudioPanel::AudioPanel(Project& project, RenderEngine& engine, QWidget* parent) 
         s.vol->setObjectName(QString("volSlider%1").arg(i));
         s.vol->setRange(0, 150);
         s.vol->setValue(int(std::lround(project_.channels[i]->volume.load() * 100)));
-        s.vol->setToolTip("Âm lượng Channel (100% = nguyên gốc, tối đa 150%)");
+        s.vol->setToolTip(LC_TR("Âm lượng Channel (100% = nguyên gốc, tối đa 150%)"));
         s.volText = new QLabel;
         s.volText->setMinimumWidth(40);
         s.meter = new LevelMeter;
@@ -114,7 +115,7 @@ AudioPanel::AudioPanel(Project& project, RenderEngine& engine, QWidget* parent) 
     }
     v->addLayout(grid);
     auto* mrow = new QHBoxLayout;
-    mrow->addWidget(new QLabel("Tổng (master)"));
+    mrow->addWidget(new QLabel(LC_TR("Tổng (master)")));
     master_ = new LevelMeter;
     master_->setObjectName("meterMaster");
     mrow->addWidget(master_, 1);
@@ -128,7 +129,7 @@ AudioPanel::AudioPanel(Project& project, RenderEngine& engine, QWidget* parent) 
         const QString id = device_->itemData(i).toString();
         if (id == project_.audioDevice) return;
         const QString e = applyDevice(id);
-        if (!e.isEmpty()) status_->setText("Thiết bị lỗi, dùng Null: " + e);
+        if (!e.isEmpty()) status_->setText(LC_TR("Thiết bị lỗi, dùng Null: ") + e);
     });
     building_ = false;
     refreshMeters();
@@ -141,11 +142,11 @@ void AudioPanel::reloadDevices() {
     int sel = 0;
     const auto devs = listAudioDevices();
     for (size_t i = 0; i < devs.size(); ++i) {
-        device_->addItem(devs[i].name + (devs[i].isDefault && !devs[i].id.isEmpty() ? "  (mặc định)" : ""), devs[i].id);
+        device_->addItem(devs[i].name + (devs[i].isDefault && !devs[i].id.isEmpty() ? LC_TR("  (mặc định)") : ""), devs[i].id);
         if (devs[i].id == project_.audioDevice) sel = int(i);
     }
     if (!project_.audioDevice.isEmpty() && device_->itemData(sel).toString() != project_.audioDevice) {      // thiet bi cua project khong co tren may nay
-        device_->addItem("(không có trên máy này) " + project_.audioDevice.left(40), project_.audioDevice);
+        device_->addItem(LC_TR("(không có trên máy này) ") + project_.audioDevice.left(40), project_.audioDevice);
         sel = device_->count() - 1;
     }
     device_->setCurrentIndex(sel);
@@ -164,7 +165,7 @@ QString AudioPanel::applyDevice(const QString& id) {
 
 void AudioPanel::updateStatus() {
     AudioMixer& m = engine_.audio();
-    status_->setText(m.running() ? QString("Đang phát: %1").arg(m.deviceName()) : QString("Âm thanh chưa chạy"));
+    status_->setText(m.running() ? QString(LC_TR("Đang phát: %1")).arg(m.deviceName()) : QString(LC_TR("Âm thanh chưa chạy")));
 }
 
 void AudioPanel::setEditLocked(bool on) {

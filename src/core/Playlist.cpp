@@ -1,4 +1,5 @@
 #include "Playlist.h"
+#include "core/I18n.h"
 #include "core/Channel.h"
 #include <QJsonArray>
 #include <QtGlobal>
@@ -116,14 +117,14 @@ int Playlist::indexOf(int itemId) const {
 
 QString Playlist::label(int pos) const {
     const auto& s = data.items[size_t(pos)].scene;
-    return QString("mục %1 '%2'").arg(pos + 1).arg(s ? s->name : QString("?"));
+    return QString(LC_TR("mục %1 '%2'")).arg(pos + 1).arg(s ? s->name : QString("?"));
 }
 
-void Playlist::notice(const Channel& ch, const QString& msg) {
-    const QString m = QString("Playlist %1: %2").arg(ch.name, msg);
-    qWarning().noquote() << m;
+void Playlist::notice(const Channel& ch, const i18n::Text& msg) {
+    const QString head = QString("Playlist %1: ").arg(ch.name);
+    qWarning().noquote() << head + msg.source;
     std::lock_guard lk(noticeMutex_);
-    if (notices_.size() < 50) notices_.push_back(m);
+    if (notices_.size() < 50) notices_.push_back(head + msg.shown);
 }
 
 std::vector<QString> Playlist::takeNotices() {
@@ -134,7 +135,7 @@ std::vector<QString> Playlist::takeNotices() {
 }
 
 QString Playlist::problemOf(const Channel& ch, const PlaylistItem& it) const {
-    if (!it.scene || !channelHas(ch, it.scene.get())) return "Scene không còn trong kênh";
+    if (!it.scene || !channelHas(ch, it.scene.get())) return LC_TR("Scene không còn trong kênh");
     for (const Layer& l : it.scene->layers) {
         if (!l.visible || !l.source) continue;
         const QString e = l.source->error();
@@ -224,7 +225,7 @@ void Playlist::cueFrom(Channel& ch, double now, int pos) {
     while (n > 0) {
         if (pos >= n) {
             if (!data.loop) {
-                notice(ch, "đã phát hết danh sách");
+                notice(ch, LC_BOTH(LC_TR("đã phát hết danh sách")));
                 stop();
                 return;
             }
@@ -233,9 +234,9 @@ void Playlist::cueFrom(Channel& ch, double now, int pos) {
         const PlaylistItem& it = data.items[size_t(pos)];
         const QString why = problemOf(ch, it);
         if (why.isEmpty()) break;
-        notice(ch, QString("bỏ qua %1: %2").arg(label(pos), why));
+        notice(ch, LC_BOTH(QString(LC_TR("bỏ qua %1: %2")).arg(label(pos), problemOf(ch, it))));
         if (++fails_ >= n) {
-            notice(ch, "không còn mục nào phát được, đã dừng");
+            notice(ch, LC_BOTH(LC_TR("không còn mục nào phát được, đã dừng")));
             stop();
             return;
         }
@@ -259,11 +260,14 @@ void Playlist::cueFrom(Channel& ch, double now, int pos) {
     cueRestarted_ = true;
 }
 
-void Playlist::fail(Channel& ch, double now, int pos, const QString& why) {
-    notice(ch, QString("bỏ qua %1: %2").arg(label(pos), why));
+void Playlist::fail(Channel& ch, double now, int pos, const i18n::Text& why) {
+    i18n::Text msg = LC_BOTH(QString(LC_TR("bỏ qua %1: ")).arg(label(pos)));
+    msg.shown += why.shown;
+    msg.source += why.source;
+    notice(ch, msg);
     cue_ = 0;
     if (++fails_ >= int(data.items.size())) {
-        notice(ch, "không còn mục nào phát được, đã dừng");
+        notice(ch, LC_BOTH(LC_TR("không còn mục nào phát được, đã dừng")));
         stop();
         return;
     }
@@ -276,11 +280,11 @@ void Playlist::tryAir(Channel& ch, double now) {
     if (pos < 0) { cueFrom(ch, now, cuePos_); return; }                    // muc vua bi xoa
     const PlaylistItem it = data.items[size_t(pos)];
     const QString why = problemOf(ch, it);
-    if (!why.isEmpty()) { fail(ch, now, pos, why); return; }
+    if (!why.isEmpty()) { fail(ch, now, pos, LC_BOTH(problemOf(ch, it))); return; }
     for (const Layer& l : it.scene->layers) {
         if (!l.visible || !l.source || l.source->ready()) continue;
         if (now - cueSince_ < kReadyTimeout) return;                       // cho khung hinh dau; Program giu nguyen
-        fail(ch, now, pos, "video không ra hình");
+        fail(ch, now, pos, LC_BOTH(LC_TR("video không ra hình")));
         return;
     }
     if (ch.inTransition()) return;
@@ -331,7 +335,7 @@ void Playlist::tick(Channel& ch, double now) {
         cue_ = 0;
         if (state_ == State::Playing) {
             pause(now);
-            notice(ch, "tạm dừng vì người vận hành đổi hình");
+            notice(ch, LC_BOTH(LC_TR("tạm dừng vì người vận hành đổi hình")));
         }
         return;
     }
@@ -346,7 +350,7 @@ void Playlist::tick(Channel& ch, double now) {
             for (const Layer& l : onAir_->layers)
                 if (l.visible && l.source && broken.isEmpty()) broken = l.source->error();
             if (!broken.isEmpty()) {                          // hong giua chung
-                notice(ch, QString("bỏ qua mục đang phát '%1': %2").arg(onAir_->name, broken));
+                notice(ch, LC_BOTH(QString(LC_TR("bỏ qua mục đang phát '%1': %2")).arg(onAir_->name, broken)));
                 cueFrom(ch, now, k >= 0 ? k + 1 : currentPos_);
             } else if (!ch.inTransition() && now >= switchAt()) {
                 cueFrom(ch, now, k >= 0 ? k + 1 : currentPos_);

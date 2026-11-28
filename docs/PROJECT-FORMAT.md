@@ -14,6 +14,8 @@ Mã nguồn tham chiếu: `src/core/Project.cpp` (`saveProject`, `loadProject`).
 
 **Thêm ở M5b (tất cả tuỳ chọn, `version` vẫn 1):** nguồn `type: "ndi"` và `"camera"` ở `sources[]`, và Output `type: "ndi"` ở `outputs[]` (xem bảng). Project cũ mở bình thường; project có nguồn/Output NDI mở được cả trên máy **không có** NDI Runtime/camera (nguồn ở trạng thái "không khả dụng", Output NDI chờ — không phải lỗi nạp). Bản LumaCast cũ (trước M5b) mở project mới sẽ báo "Loai nguon khong biet" ở nguồn trực tiếp.
 
+**Thêm sau M6 (tuỳ chọn, `version` vẫn 1):** nguồn `type: "window"` (slideshow PowerPoint / cửa sổ, xem bảng). Bản LumaCast cũ mở project có nguồn này sẽ báo "Loai nguon khong biet".
+
 **Không đổi ở M5c:** vẫn `version` 1, không thêm trường. Cài đặt điều khiển ngoài (cổng, LAN, token), Khoá vận hành, tuỳ chọn tự khởi động và "project gần nhất" là **cài đặt theo máy/phiên** (`QSettings`), cố ý **không** lưu vào file project để mở project trên máy khác không mang theo token hay mở cổng mạng.
 
 **Thêm cho overlay (SRC-08; tuỳ chọn, `version` vẫn 1):** `overlays[]` trong `channels[]` (mục 2.3a). Không có overlay thì không ghi ra, nên project cũ mở và lưu lại không đổi. Bản LumaCast cũ mở project có overlay sẽ bỏ qua chúng (và mất khi lưu lại).
@@ -43,7 +45,7 @@ Mã nguồn tham chiếu: `src/core/Project.cpp` (`saveProject`, `loadProject`).
 | Trường | Kiểu | Ghi chú |
 |---|---|---|
 | `id` | chuỗi | **duy nhất, không rỗng**; Layer tham chiếu theo `id` |
-| `type` | chuỗi | `video` · `image` · `color` · `testpattern` · `ndi` · `camera` |
+| `type` | chuỗi | `video` · `image` · `color` · `testpattern` · `ndi` · `camera` · `window` |
 | `path` | chuỗi | `video`/`image`: đường dẫn tương đối |
 | `color` | chuỗi `#AARRGGBB` | `color` |
 | `label` | chuỗi | `color`, `testpattern` |
@@ -53,7 +55,9 @@ Mã nguồn tham chiếu: `src/core/Project.cpp` (`saveProject`, `loadProject`).
 | `device` | chuỗi | `camera`: id thiết bị (Windows: symbolic link của Media Foundation) |
 | `deviceName` | chuỗi | `camera`: tên hiển thị; dùng nhận lại thiết bị khi `device` đổi (cổng USB khác). Cần ít nhất một trong `device`/`deviceName` |
 | `fps` | số | `camera`: fps yêu cầu (0 = để thiết bị chọn; giá trị không hợp lệ → 0) |
-| `label` | chuỗi | cũng dùng cho `ndi`/`camera` (tên hiển thị của nguồn / tên Scene tạo ra) |
+| `app` | chuỗi | `window`: tên file chạy của cửa sổ cần bắt (vd. `notepad.exe`), hoặc `powerpoint-slideshow` = bất kỳ cửa sổ slideshow PowerPoint nào; **bắt buộc** |
+| `windowClass`, `title` | chuỗi | `window`: lớp và tiêu đề cửa sổ để tìm lại (không dùng cho `powerpoint-slideshow`). Nhiều cửa sổ cùng lớp mà không cái nào trùng tiêu đề thì không bắt cái nào. Không lưu định danh phiên (HWND) |
+| `label` | chuỗi | cũng dùng cho `ndi`/`camera`/`window` (tên hiển thị của nguồn / tên Scene tạo ra) |
 
 ### 2.2 `scenes[]`
 | Trường | Kiểu | Mặc định | Ghi chú |

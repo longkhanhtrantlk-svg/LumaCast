@@ -1,4 +1,5 @@
 #include "LockButton.h"
+#include "core/I18n.h"
 #include <QMouseEvent>
 
 namespace lc {
@@ -14,9 +15,9 @@ LockButton::LockButton(QWidget* parent) : QPushButton(parent) {
 void LockButton::setLocked(bool on) {
     locked_ = on;
     cancelHold();
-    setText(on ? "🔒 ĐANG KHOÁ — giữ 1 giây để mở" : "🔓 Khoá vận hành");
-    setToolTip(on ? "Mọi điều khiển SỬA đang bị khoá; điều khiển live vẫn hoạt động.\nGiữ nút này khoảng 1 giây để mở khoá."
-                  : "Khoá các điều khiển sửa (Inspector, Timeline, Nhập media, Plug-in, Hoàn tác…) khi đang On Air.\nCUT/TAKE/FTB/Đen/chọn Scene… vẫn dùng được." + (shortcut_.isEmpty() ? QString() : " (" + shortcut_ + ")"));
+    setText(on ? LC_TR("🔒 ĐANG KHOÁ — giữ 1 giây để mở") : LC_TR("🔓 Khoá vận hành"));
+    setToolTip(on ? LC_TR("Mọi điều khiển SỬA đang bị khoá; điều khiển live vẫn hoạt động.\nGiữ nút này khoảng 1 giây để mở khoá.")
+                  : LC_TR("Khoá các điều khiển sửa (Inspector, Timeline, Nhập media, Plug-in, Hoàn tác…) khi đang On Air.\nCUT/TAKE/FTB/Đen/chọn Scene… vẫn dùng được.") + (shortcut_.isEmpty() ? QString() : " (" + shortcut_ + ")"));
     setStyleSheet(on ? "QPushButton{background:#8a1c1c;color:white;font-weight:bold;border:1px solid #ff6b6b}" : QString());
 }
 

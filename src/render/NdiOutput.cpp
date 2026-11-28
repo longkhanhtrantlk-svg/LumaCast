@@ -1,4 +1,5 @@
 #include "NdiOutput.h"
+#include "core/I18n.h"
 #include "media/StaticSources.h"
 #include <QDebug>
 #include <algorithm>
@@ -12,7 +13,7 @@ NdiOutputSink::NdiOutputSink(const OutputConfig& cfg, double fps, AudioMixer* mi
     cfg_.kind = OutputKind::Ndi;
     cfg_.size = QSize(std::clamp(cfg_.size.width(), 16, 8192), std::clamp(cfg_.size.height(), 16, 8192));
     nameUsed_ = cfg_.ndiName.isEmpty() ? cfg_.name : cfg_.ndiName;
-    status_ = "Đang khởi động NDI...";
+    status_ = LC_TR("Đang khởi động NDI...");
     if (cfg_.ndiAudio && mixer_) {
         tap_ = std::make_shared<AudioStream>(kAudioRate);
         mixer_->setTap(cfg_.channel, tap_);
@@ -132,8 +133,8 @@ void NdiOutputSink::senderMain() {
                 auto b = ndiBackend();
                 QString err;
                 if (!b->available()) setStatus(b->unavailableReason());
-                else if ((snd = b->createSender(nameUsed_, &err))) { setStatus("Đang phát NDI: " + nameUsed_); sending_ = true; }
-                else setStatus("Không phát được NDI: " + err);
+                else if ((snd = b->createSender(nameUsed_, &err))) { setStatus(LC_TR("Đang phát NDI: ") + nameUsed_); sending_ = true; }
+                else setStatus(LC_TR("Không phát được NDI: ") + err);
             }
         }
         bool haveFrame = false;
@@ -153,7 +154,7 @@ void NdiOutputSink::senderMain() {
             lastSend = Clock::now();
             ++sentFrames_;
             conns_ = snd->connections();
-            setStatus(QString("Đang phát NDI: %1 (%2 người nhận)").arg(nameUsed_).arg(std::max(0, conns_.load())));
+            setStatus(QString(LC_TR("Đang phát NDI: %1 (%2 người nhận)")).arg(nameUsed_).arg(std::max(0, conns_.load())));
         }
         if (tap_) {
             // chi gui am thanh khi co nguoi nhan hoac khong biet (tranh tich tru); lay theo khoi 10 ms

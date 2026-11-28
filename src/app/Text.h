@@ -1,12 +1,12 @@
 #pragma once
-#include <QCoreApplication>
+#include "core/I18n.h"
 #include <QString>
 
-// Hop chu chung cua giao dien: chu MOI viet o day (khong viet thang trong ma), boc translate() de dot dich tieng Anh chi can them
-// file .qm. Ngu canh "lc". Chuoi co tham so dung %1, %2 de ban dich doi duoc thu tu.
+// Hop chu dung chung cua giao dien. Chu goc la tieng Viet, ban tieng Anh o translations/lumacast_en.ts (xem core/I18n.h).
+// Chuoi co tham so dung %1, %2 de ban dich doi duoc thu tu.
 namespace lc::text {
 
-#define LC_TEXT(name, vi) inline QString name() { return QCoreApplication::translate("lc", vi); }
+#define LC_TEXT(name, vi) inline QString name() { return LC_TR(vi); }
 
 // ---- chung ----
 LC_TEXT(lockedWhy, "Đang khoá vận hành")

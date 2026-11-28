@@ -1,4 +1,5 @@
 #include "TimelineWidget.h"
+#include "core/I18n.h"
 #include "Text.h"
 #include "Ui.h"
 #include "InspectorPanel.h"
@@ -131,7 +132,7 @@ protected:
         if (!layer) {
             p.setPen(QColor(0x7a, 0x80, 0x94));
             p.drawText(QRect(TimelineWidget::kLabelW, TimelineWidget::kRulerH, width() - TimelineWidget::kLabelW, kAnimPropCount * TimelineWidget::kRowH),
-                       Qt::AlignCenter, "Chọn một layer (tab Scene / Layer) để xem và đặt keyframe");
+                       Qt::AlignCenter, LC_TR("Chọn một layer (tab Scene / Layer) để xem và đặt keyframe"));
         }
         // het thoi luong + playhead
         p.setPen(QPen(QColor(0x4d, 0x55, 0x70), 1, Qt::DashLine));
@@ -209,7 +210,7 @@ protected:
             if (!hitKey(pos, hr, hi)) {
                 if (pos.x() >= TimelineWidget::kLabelW && o_->hasClipboard() && l) {
                     QMenu menu(this);
-                    connect(menu.addAction("Dán keyframe tại playhead"), &QAction::triggered, this, [this] { o_->paste(); });
+                    connect(menu.addAction(LC_TR("Dán keyframe tại playhead")), &QAction::triggered, this, [this] { o_->paste(); });
                     menu.exec(e->globalPosition().toPoint());
                 }
                 return;
@@ -227,9 +228,9 @@ protected:
                 connect(a, &QAction::triggered, this, [this, i] { o_->setSelectionInterp(Interp(i)); });
             }
             menu.addSeparator();
-            connect(menu.addAction(n > 1 ? QString("Sao chép %1 keyframe").arg(n) : "Sao chép keyframe"), &QAction::triggered, this, [this] { o_->copySelection(); });
-            if (o_->hasClipboard()) connect(menu.addAction("Dán keyframe tại playhead"), &QAction::triggered, this, [this] { o_->paste(); });
-            connect(menu.addAction(n > 1 ? QString("Xoá %1 keyframe").arg(n) : "Xoá keyframe"), &QAction::triggered, this, [this] { o_->deleteSelection(); });
+            connect(menu.addAction(n > 1 ? QString(LC_TR("Sao chép %1 keyframe")).arg(n) : LC_TR("Sao chép keyframe")), &QAction::triggered, this, [this] { o_->copySelection(); });
+            if (o_->hasClipboard()) connect(menu.addAction(LC_TR("Dán keyframe tại playhead")), &QAction::triggered, this, [this] { o_->paste(); });
+            connect(menu.addAction(n > 1 ? QString(LC_TR("Xoá %1 keyframe")).arg(n) : LC_TR("Xoá keyframe")), &QAction::triggered, this, [this] { o_->deleteSelection(); });
             menu.exec(e->globalPosition().toPoint());
         }
     }
@@ -338,14 +339,14 @@ TimelineWidget::TimelineWidget(InspectorPanel& inspector, RenderEngine& engine, 
     durSpin_->setRange(0.1, 3600);
     durSpin_->setDecimals(2);
     durSpin_->setSingleStep(0.5);
-    durSpin_->setPrefix("dài ");
+    durSpin_->setPrefix(LC_TR("dài "));
     durSpin_->setSuffix(" s");
-    loopChk_ = new QCheckBox("Lặp");
+    loopChk_ = new QCheckBox(LC_TR("Lặp"));
     loopChk_->setObjectName("tlLoop");
-    restartChk_ = new QCheckBox("Phát lại khi lên Program");
+    restartChk_ = new QCheckBox(LC_TR("Phát lại khi lên Program"));
     restartChk_->setObjectName("tlRestart");
-    restartChk_->setToolTip("Mỗi lần Scene lên Program (hoặc bắt đầu chuyển vào), hoạt hoạ và video phát lại từ đầu "
-                            "(ở Preview video vẫn chạy).\nBỏ chọn: video của Scene này chạy tiếp, không tua về đầu.");
+    restartChk_->setToolTip(LC_TR("Mỗi lần Scene lên Program (hoặc bắt đầu chuyển vào), hoạt hoạ và video phát lại từ đầu "
+                            "(ở Preview video vẫn chạy).\nBỏ chọn: video của Scene này chạy tiếp, không tua về đầu."));
     for (QWidget* w : std::initializer_list<QWidget*>{stopBtn_, playBtn_, timeLabel_, durSpin_, loopChk_, restartChk_}) bar->addWidget(w);
     warnLabel_ = new QLabel;
     warnLabel_->setObjectName("tlWarn");
@@ -469,7 +470,7 @@ void TimelineWidget::refresh() {
             const int pg = c->program;
             if (pg >= 0 && pg < int(c->scenes.size()) && c->scenes[pg] == sc) onAir = true;
         }
-    warnLabel_->setText(onAir ? "● Scene đang ở PROGRAM: phát/tua/sửa tác động trực tiếp lên màn hình" : QString());
+    warnLabel_->setText(onAir ? LC_TR("● Scene đang ở PROGRAM: phát/tua/sửa tác động trực tiếp lên màn hình") : QString());
     { QSignalBlocker b(durSpin_); durSpin_->setValue(sp.duration); }
     { QSignalBlocker b(loopChk_); loopChk_->setChecked(sp.loop); }
     { QSignalBlocker b(restartChk_); restartChk_->setChecked(sp.restart); }
@@ -539,7 +540,7 @@ void TimelineWidget::setSceneLoop(int si, bool on) {
     SceneProps after = before;
     after.loop = on;
     applySceneProps(si, sc, after);
-    insp_.undoStack()->push(new ScenePropsCmd(this, si, sc, before, after, on ? "Bật lặp Scene" : "Tắt lặp Scene", 5000000 + (si % 10000) * 10 + 1));
+    insp_.undoStack()->push(new ScenePropsCmd(this, si, sc, before, after, on ? LC_TR("Bật lặp Scene") : LC_TR("Tắt lặp Scene"), 5000000 + (si % 10000) * 10 + 1));
 }
 
 // Ap dung thuoc tinh Scene (tu Hoan tac/Lam lai): cap nhat cache UI + gui render thread.
@@ -569,15 +570,15 @@ void TimelineWidget::setDuration(double d) {
     if (locked_) return;
     d = std::max(0.1, d);
     if (std::abs(props().duration - d) < 1e-9) return;
-    editSceneProps([d](SceneProps& p) { p.duration = d; }, "Đổi thời lượng Scene", 0);
+    editSceneProps([d](SceneProps& p) { p.duration = d; }, LC_TR("Đổi thời lượng Scene"), 0);
 }
 void TimelineWidget::setLoop(bool on) {
     if (locked_ || props().loop == on) return;
-    editSceneProps([on](SceneProps& p) { p.loop = on; }, on ? "Bật lặp Scene" : "Tắt lặp Scene", 1);
+    editSceneProps([on](SceneProps& p) { p.loop = on; }, on ? LC_TR("Bật lặp Scene") : LC_TR("Tắt lặp Scene"), 1);
 }
 void TimelineWidget::setRestartOnAir(bool on) {
     if (locked_ || props().restart == on) return;
-    editSceneProps([on](SceneProps& p) { p.restart = on; }, on ? "Bật phát lại khi lên Program" : "Tắt phát lại khi lên Program", 2);
+    editSceneProps([on](SceneProps& p) { p.restart = on; }, on ? LC_TR("Bật phát lại khi lên Program") : LC_TR("Tắt phát lại khi lên Program"), 2);
 }
 
 // ---- keyframe (moi thao tac la mot buoc Hoan tac) ----
@@ -589,7 +590,7 @@ void TimelineWidget::addKey(AnimProp p, double t) {
         Track* tr = l.track(p);
         if (!tr) { l.tracks.push_back(Track{p, {}}); tr = &l.tracks.back(); }
         setKey(*tr, t, v, Interp::Linear);
-    }, "Thêm keyframe");
+    }, LC_TR("Thêm keyframe"));
     afterEdit();
 }
 
@@ -618,7 +619,7 @@ int TimelineWidget::moveKey(AnimProp p, int index, double newTime, bool merge) {
         Keyframe k = tr->keys[index];
         tr->keys.erase(tr->keys.begin() + index);
         newIdx = setKey(*tr, newTime, k.value, k.interp);
-    }, "Dời keyframe", merge ? 4000000 + (dragSession_ % 20000) * 100 + int(p) : -1);
+    }, LC_TR("Dời keyframe"), merge ? 4000000 + (dragSession_ % 20000) * 100 + int(p) : -1);
     afterEdit();
     return newIdx;
 }
@@ -634,7 +635,7 @@ void TimelineWidget::deleteKey(AnimProp p, int index) {
             setBase(l, p, last);
             l.tracks.erase(std::remove_if(l.tracks.begin(), l.tracks.end(), [p](const Track& t) { return t.prop == p; }), l.tracks.end());
         }
-    }, "Xoá keyframe");
+    }, LC_TR("Xoá keyframe"));
     afterEdit();
 }
 
@@ -643,7 +644,7 @@ void TimelineWidget::setKeyInterp(AnimProp p, int index, Interp interp) {
     insp_.editCurrentLayer([p, index, interp](Layer& l) {
         Track* tr = l.track(p);
         if (tr && index >= 0 && index < int(tr->keys.size())) tr->keys[index].interp = interp;
-    }, "Đổi kiểu nội suy keyframe");
+    }, LC_TR("Đổi kiểu nội suy keyframe"));
     afterEdit();
 }
 
@@ -735,7 +736,7 @@ double TimelineWidget::moveSelection(double dt, bool merge) {
             removeKey(*tr, i);
         }
         for (const Moved& m : moved) setKey(*l.track(m.prop), m.t, m.value, m.interp);
-    }, sel.size() > 1 ? "Dời nhóm keyframe" : "Dời keyframe", merge ? 4100000 + (dragSession_ % 20000) : -1);
+    }, sel.size() > 1 ? LC_TR("Dời nhóm keyframe") : LC_TR("Dời keyframe"), merge ? 4100000 + (dragSession_ % 20000) : -1);
     afterEdit();
     return dt;
 }
@@ -762,7 +763,7 @@ void TimelineWidget::deleteSelection() {
                 l.tracks.erase(std::remove_if(l.tracks.begin(), l.tracks.end(), [pi](const Track& t) { return t.prop == AnimProp(pi); }), l.tracks.end());
             }
         }
-    }, sel.size() > 1 ? "Xoá nhóm keyframe" : "Xoá keyframe");
+    }, sel.size() > 1 ? LC_TR("Xoá nhóm keyframe") : LC_TR("Xoá keyframe"));
     sel_.clear();
     afterEdit();
 }
@@ -798,7 +799,7 @@ int TimelineWidget::paste(double at) {
             if (!tr) { l.tracks.push_back(Track{c.prop, {}}); tr = &l.tracks.back(); }
             setKey(*tr, std::max(0.0, at + c.dt), c.value, c.interp);
         }
-    }, use.size() > 1 ? "Dán nhóm keyframe" : "Dán keyframe");
+    }, use.size() > 1 ? LC_TR("Dán nhóm keyframe") : LC_TR("Dán keyframe"));
     sel_.clear();
     for (const ClipKey& c : use) sel_.push_back({c.prop, std::max(0.0, at + c.dt)});
     afterEdit();
@@ -814,7 +815,7 @@ void TimelineWidget::setSelectionInterp(Interp interp) {
             const int i = tr ? findKey(*tr, k.time) : -1;
             if (i >= 0) tr->keys[i].interp = interp;
         }
-    }, "Đổi kiểu nội suy keyframe");
+    }, LC_TR("Đổi kiểu nội suy keyframe"));
     afterEdit();
 }
 

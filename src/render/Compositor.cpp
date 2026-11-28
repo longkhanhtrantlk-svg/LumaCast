@@ -1,4 +1,5 @@
 #include "Compositor.h"
+#include "core/I18n.h"
 #include <QMatrix2x2>
 #include <QDebug>
 #include <QVector2D>
@@ -279,7 +280,7 @@ QOpenGLShaderProgram* Compositor::effectProgram(const EffectDef& d) {
     const bool ok = prog->addShaderFromSourceCode(QOpenGLShader::Vertex, kVert) &&
                     prog->addShaderFromSourceCode(QOpenGLShader::Fragment, buildFragmentSource(d).toUtf8()) && prog->link();
     if (!ok) {
-        const QString log = prog->log().isEmpty() ? QString("bien dich that bai") : prog->log();
+        const QString log = prog->log().isEmpty() ? QString(LC_TR("bien dich that bai")) : prog->log();
         if (registry_) registry_->setCompileError(d.id, d.revision, log);
         qWarning().noquote() << QString("Shader '%1' loi, tat Effect nay:").arg(d.id) << log;
         fxCache_[key] = nullptr;

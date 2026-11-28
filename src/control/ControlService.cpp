@@ -1,4 +1,5 @@
 #include "ControlService.h"
+#include "core/I18n.h"
 #include "core/Features.h"
 #include <QNetworkDatagram>
 #include <QRandomGenerator>
@@ -31,10 +32,10 @@ void ControlSettings::save(QSettings& st) const {
 
 QString ControlSettings::validate() const {
     if (httpEnabled && oscEnabled && httpPort == oscPort) { /* TCP va UDP khac nhau nen trung so cong van duoc */ }
-    if (httpEnabled && httpPort == 0) return "Cổng HTTP không hợp lệ";
-    if (oscEnabled && oscPort == 0) return "Cổng OSC không hợp lệ";
+    if (httpEnabled && httpPort == 0) return LC_TR("Cổng HTTP không hợp lệ");
+    if (oscEnabled && oscPort == 0) return LC_TR("Cổng OSC không hợp lệ");
     if (httpEnabled && httpLan && token.size() < kMinLanTokenLen)
-        return QString("Nghe trên mạng LAN bắt buộc có token dài ít nhất %1 ký tự").arg(kMinLanTokenLen);
+        return QString(LC_TR("Nghe trên mạng LAN bắt buộc có token dài ít nhất %1 ký tự")).arg(kMinLanTokenLen);
     return {};
 }
 
@@ -68,13 +69,19 @@ void OscServer::readPending() {
         QString err;
         if (!parseOscPacket(data, msgs, &err)) {
             ++dropped_;
-            api_.noteRejected(dg.senderAddress().toString(), "gói OSC hỏng: " + err);
+            i18n::Text what = LC_BOTH(LC_TR("gói OSC hỏng: "));      // chi tiet loi giu nguyen o ca hai ban
+            what.shown += err;
+            what.source += err;
+            api_.noteRejected(dg.senderAddress().toString(), what);
             continue;
         }
         ++accepted_;
         for (const OscMessage& m : msgs) {
             const CmdResult r = api_.handleOsc(m);
-            if (!r.ok()) api_.noteRejected(dg.senderAddress().toString(), QString("OSC %1 → %2: %3").arg(m.address.left(80), r.code, r.message));
+            if (!r.ok()) {
+                const QString head = QString("OSC %1 → %2: ").arg(m.address.left(80), r.code);
+                api_.noteRejected(dg.senderAddress().toString(), i18n::Text{head + r.message, head + r.logMessage});
+            }
         }
     }
     if (sock_.hasPendingDatagrams()) QMetaObject::invokeMethod(this, &OscServer::readPending, Qt::QueuedConnection);
@@ -113,14 +120,15 @@ QString ControlService::apply(const ControlSettings& sIn) {
         s.httpEnabled = s.oscEnabled = false;
         cur_ = s;
         emit statusChanged();
-        return "Điều khiển ngoài không có trong gói giấy phép hiện tại";
+        return LC_TR("Điều khiển ngoài không có trong gói giấy phép hiện tại");
     }
     cur_ = s;
     QStringList errors;
     api_.setToken(s.token.toUtf8());
     const QString bad = s.validate();
     if (!bad.isEmpty()) {
-        qWarning().noquote() << "Điều khiển ngoài: từ chối cấu hình —" << bad;
+        i18n::SourceScope logLanguage;
+        qWarning().noquote() << "Điều khiển ngoài: từ chối cấu hình —" << s.validate();
         errors << bad;
     }
     if (s.httpEnabled && !(s.httpLan && s.token.size() < ControlSettings::kMinLanTokenLen)) {
@@ -135,9 +143,9 @@ QString ControlService::apply(const ControlSettings& sIn) {
             stateTimer_.start(100);
             lastState_.clear();
         } else {
-            const QString e = QString("Không mở được cổng HTTP %1: %2").arg(s.httpPort).arg(http_.errorString());
-            qWarning().noquote() << "Điều khiển ngoài:" << e;
-            errors << e;
+            const i18n::Text e = LC_BOTH(QString(LC_TR("Không mở được cổng HTTP %1: %2")).arg(s.httpPort).arg(http_.errorString()));
+            qWarning().noquote() << "Điều khiển ngoài:" << e.source;
+            errors << e.shown;
         }
     }
     if (s.oscEnabled) {
@@ -147,9 +155,9 @@ QString ControlService::apply(const ControlSettings& sIn) {
                                      .arg(s.oscLan ? "0.0.0.0" : "127.0.0.1").arg(osc_.port())
                                      .arg(s.oscLan ? "mạng LAN, KHÔNG có xác thực" : "chỉ máy này");
         } else {
-            const QString e = QString("Không mở được cổng OSC %1: %2").arg(s.oscPort).arg(osc_.errorString());
-            qWarning().noquote() << "Điều khiển ngoài:" << e;
-            errors << e;
+            const i18n::Text e = LC_BOTH(QString(LC_TR("Không mở được cổng OSC %1: %2")).arg(s.oscPort).arg(osc_.errorString()));
+            qWarning().noquote() << "Điều khiển ngoài:" << e.source;
+            errors << e.shown;
         }
     }
     emit statusChanged();

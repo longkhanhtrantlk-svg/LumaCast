@@ -2,6 +2,7 @@
 // (Windows tu doi tan so/so kenh cho thiet bi that) -> khong can resampler rieng. Chi dung Win32/COM, khong dung Qt Multimedia.
 #ifdef _WIN32
 #include "AudioDevice.h"
+#include "core/I18n.h"
 #include "AudioStream.h"
 #include <QDebug>
 #ifndef NOMINMAX
@@ -45,7 +46,7 @@ struct ComInit {
     ~ComInit() { if (ok) CoUninitialize(); }
 };
 
-QString hrText(const char* what, HRESULT hr) { return QString("%1 (0x%2)").arg(what).arg(quint32(hr), 8, 16, QChar('0')); }
+QString hrText(const QString& what, HRESULT hr) { return QString("%1 (0x%2)").arg(what).arg(quint32(hr), 8, 16, QChar('0')); }
 
 bool getEnumerator(Com<IMMDeviceEnumerator>& e) {
     return SUCCEEDED(CoCreateInstance(kClsidEnumerator, nullptr, CLSCTX_ALL, kIidEnumerator, reinterpret_cast<void**>(e.out())));
@@ -112,16 +113,16 @@ private:
     bool openAndPlay(QString& err, bool& invalidated) {
         invalidated = false;
         Com<IMMDeviceEnumerator> en;
-        if (!getEnumerator(en)) { err = "Không tạo được bộ liệt kê thiết bị âm thanh"; return false; }
+        if (!getEnumerator(en)) { err = LC_TR("Không tạo được bộ liệt kê thiết bị âm thanh"); return false; }
         Com<IMMDevice> dev;
         HRESULT hr;
         if (id_.isEmpty()) hr = en->GetDefaultAudioEndpoint(eRender, eConsole, dev.out());
         else hr = en->GetDevice(reinterpret_cast<LPCWSTR>(id_.utf16()), dev.out());
-        if (FAILED(hr)) { err = hrText("Không tìm thấy thiết bị âm thanh", hr); return false; }
+        if (FAILED(hr)) { err = hrText(LC_TR("Không tìm thấy thiết bị âm thanh"), hr); return false; }
         { std::lock_guard lk(m_); name_ = deviceName(dev.p); }
         Com<IAudioClient> cl;
         hr = dev->Activate(kIidAudioClient, CLSCTX_ALL, nullptr, reinterpret_cast<void**>(cl.out()));
-        if (FAILED(hr)) { err = hrText("Không kích hoạt được IAudioClient", hr); return false; }
+        if (FAILED(hr)) { err = hrText(LC_TR("Không kích hoạt được IAudioClient"), hr); return false; }
 
         WAVEFORMATEXTENSIBLE wf{};
         wf.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
@@ -140,9 +141,9 @@ private:
         hr = cl->Initialize(AUDCLNT_SHAREMODE_SHARED,
                             AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
                             defPeriod * 2, 0, &wf.Format, nullptr);
-        if (FAILED(hr)) { err = hrText("Thiết bị không nhận định dạng float32 stereo 48 kHz", hr); return false; }
+        if (FAILED(hr)) { err = hrText(LC_TR("Thiết bị không nhận định dạng float32 stereo 48 kHz"), hr); return false; }
         HANDLE ev = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        if (!ev) { err = "Không tạo được sự kiện"; return false; }
+        if (!ev) { err = LC_TR("Không tạo được sự kiện"); return false; }
         struct EvGuard { HANDLE h; ~EvGuard() { CloseHandle(h); } } evGuard{ev};
         cl->SetEventHandle(ev);
         UINT32 bufFrames = 0;
@@ -152,11 +153,11 @@ private:
         latency_ = double(bufFrames) / kAudioRate + double(streamLat) / 1e7;
         Com<IAudioRenderClient> rc;
         hr = cl->GetService(kIidRenderClient, reinterpret_cast<void**>(rc.out()));
-        if (FAILED(hr)) { err = hrText("Không lấy được IAudioRenderClient", hr); return false; }
+        if (FAILED(hr)) { err = hrText(LC_TR("Không lấy được IAudioRenderClient"), hr); return false; }
         BYTE* data = nullptr;
         if (SUCCEEDED(rc->GetBuffer(bufFrames, &data))) rc->ReleaseBuffer(bufFrames, AUDCLNT_BUFFERFLAGS_SILENT);   // nap im lang
         hr = cl->Start();
-        if (FAILED(hr)) { err = hrText("Không khởi động được luồng âm thanh", hr); return false; }
+        if (FAILED(hr)) { err = hrText(LC_TR("Không khởi động được luồng âm thanh"), hr); return false; }
         signalReady({});
 
         DWORD mmIdx = 0;
@@ -210,7 +211,7 @@ private:
 
 std::vector<AudioDeviceInfo> listWasapiDevices() {
     std::vector<AudioDeviceInfo> v;
-    v.push_back({QString(), "Mặc định của hệ thống", true});
+    v.push_back({QString(), LC_TR("Mặc định của hệ thống"), true});
     ComInit com;
     Com<IMMDeviceEnumerator> en;
     if (!getEnumerator(en)) return v;
